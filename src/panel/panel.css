@@ -34,3 +34,4 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 
 #efficiency-tokens-panel,#efficiency-patterns-panel,#efficiency-review-panel{display:flex;flex-direction:column;gap:16px}
 #content[data-metric=tokens] [data-measure=tokens],#content[data-metric=credits] [data-measure=credits]{font-weight:650;color:var(--fg);background:color-mix(in srgb,var(--s1) 8%,transparent)}
+.toolbar-actions{display:flex;align-items:center;gap:inherit;margin-inline-start:auto;flex-shrink:0}

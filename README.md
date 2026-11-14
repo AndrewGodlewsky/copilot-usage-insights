@@ -42,13 +42,13 @@ Start a **new session** in Copilot desktop and send:
 
 > Open Usage Insights.
 
-Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
+Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. **Refresh** and **Settings** sit together at the right of the top toolbar and wrap together when space is limited. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
 
 The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, icon spacing, and overflow fade; its plugin API does not expose settings for these. The title may fade near the close button when the host leaves too little room.
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.36** replaces Projects with recorded skill-load Failures in Breakdown > Skills, including skills whose loads failed without a successful activation. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.37** moves Refresh and Settings together to the right side of the toolbar. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
