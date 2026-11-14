@@ -1,4 +1,4 @@
-// Number formatting shared by the panel and the status bar. Pure: no Node built-in or Orca imports.
+// Pure number formatting shared by the dashboard and charts.
 // scripts/build.mjs bundles this file first, so the panel can use compact() without an import.
 
 // Compact magnitude: 950 -> '950', 114500 -> '114.5k', 999999 -> '1M', 999950000 -> '1B'.

@@ -1,193 +1,30 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
-<title>Usage Insights</title>
-<style>/* PANEL_STYLES */</style>
-</head>
-<body>
-<main id="app" aria-busy="true">
-  <section class="hero">
-    <div id="banner" class="banner-wrap"></div>
-    <div class="hero-text">
-      <h1>Usage Insights</h1>
-      <p id="updated" class="muted">Reading your Claude Code, Codex and OpenCode usage…</p>
-    </div>
-    <div class="hero-stat"><strong id="hero-total"></strong><span id="hero-sub" class="muted"></span></div>
-  </section>
-
-  <nav class="controls" aria-label="Filters">
-    <div class="seg" role="radiogroup" aria-label="View" id="view">
-      <button role="radio" data-view="usage" aria-checked="true">Usage</button><button role="radio" data-view="breakdown" aria-checked="false" tabindex="-1">Breakdown</button>
-    </div>
-    <div class="seg" role="radiogroup" aria-label="Range" id="ranges">
-      <button role="radio" data-range="1d" aria-checked="false" tabindex="-1">Today</button><button role="radio" data-range="7d" aria-checked="true">7d</button><button role="radio" data-range="30d" aria-checked="false" tabindex="-1">30d</button><button role="radio" data-range="90d" aria-checked="false" tabindex="-1">90d</button><button role="radio" data-range="all" aria-checked="false" tabindex="-1">All</button><button role="radio" data-range="custom" aria-checked="false" tabindex="-1" aria-controls="custom-range">Custom</button>
-    </div>
-    <div class="seg" role="radiogroup" aria-label="Measure" id="metric">
-      <button role="radio" data-metric="tokens" aria-checked="true">Tokens</button><button role="radio" data-metric="cost" aria-checked="false" tabindex="-1">Cost</button>
-    </div>
-    <div class="filters-wrap">
-      <button class="filter-btn" id="filters-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="filters-pop">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
-        Filters<span class="count" id="filters-count" hidden></span>
-      </button>
-      <div class="popover" id="filters-pop" role="dialog" aria-label="Filters" hidden>
-        <section class="pop-section">
-          <h3 class="pop-title" id="scope-title">Sessions</h3>
-          <div class="opt-list" role="radiogroup" aria-labelledby="scope-title" id="scope">
-            <button role="radio" data-scope="all" aria-checked="true"><span class="dot" aria-hidden="true"></span><span><b>All sessions</b><small>Everything on the sources below</small></span></button>
-            <button role="radio" data-scope="worktrees" aria-checked="false" tabindex="-1"><span class="dot" aria-hidden="true"></span><span><b>Orca worktrees only</b><small>Sessions that ran inside a worktree</small></span></button>
-          </div>
-        </section>
-        <section class="pop-section" id="sec-providers" hidden>
-          <h3 class="pop-title" id="providers-title">Provider</h3>
-          <div class="opt-list" role="radiogroup" aria-labelledby="providers-title" id="providers"></div>
-        </section>
-        <section class="pop-section" id="sec-models">
-          <h3 class="pop-title" id="models-title">Models</h3>
-          <label class="sr-only" for="model-search">Search models</label>
-          <input type="search" id="model-search" class="model-search" placeholder="Search models…" autocomplete="off">
-          <button class="link-btn" id="models-all">All models</button>
-          <div class="model-list" role="group" aria-labelledby="models-title" id="models"></div>
-        </section>
-        <section class="pop-section" id="sec-hosts" hidden>
-          <h3 class="pop-title" id="hosts-title">Machine</h3>
-          <div class="opt-list" role="radiogroup" aria-labelledby="hosts-title" id="hosts"></div>
-        </section>
-        <section class="pop-section" id="sec-cache">
-          <label class="toggle"><input type="checkbox" id="cache" checked> Include cache tokens</label>
-        </section>
-        <footer class="pop-foot"><button class="link-btn" id="filters-reset">Reset filters</button><button class="link-btn" id="filters-done">Done</button></footer>
-      </div>
-    </div>
-    <div class="chips" id="chips" aria-label="Active filters"></div>
-    <button class="icon-btn" id="refresh" title="Rescan transcripts" aria-label="Rescan transcripts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></button>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Copilot Usage Insights</title><style>/* PANEL_STYLES */</style></head>
+<body><main id="app">
+  <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
+  <nav class="controls" aria-label="Dashboard controls">
+    <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button></div>
+    <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
+    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true">Tokens</button><button data-metric="credits" aria-pressed="false">AI credits</button></div>
+    <button id="refresh">Refresh</button><button id="settings-open">Settings</button>
   </nav>
-
-  <section id="custom-range" class="custom-range" aria-label="Custom date range" hidden>
-    <label>Start date<input type="date" id="start-date" aria-describedby="date-hint date-error"></label>
-    <label>End date<input type="date" id="end-date" aria-describedby="date-hint date-error"></label>
-    <button id="date-apply" class="filter-btn">Apply</button>
-    <p id="date-hint" class="muted">Inclusive dates in your local time zone. Use the same date for one day.</p>
-    <p id="date-error" class="date-error" role="alert" hidden></p>
-  </section>
-  <p id="selection-summary" class="muted" aria-live="polite"></p>
-
-  <p id="status" class="status" role="status" hidden></p>
-  <p id="notice" class="notice" role="status" hidden></p>
-  <p id="note" class="notice note" hidden></p>
-  <section id="sources" class="sources" aria-label="Sources" hidden></section>
-  <div id="skeleton" class="skeleton" aria-hidden="true">
-    <div class="sk-tiles"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <i class="sk-card tall"></i><i class="sk-card"></i>
+  <div id="custom" class="controls" hidden><label>From <input type="date" id="start-date"></label><label>Through <input type="date" id="end-date"></label><button id="apply-dates">Apply dates</button><span class="muted">Inclusive, in local time</span></div>
+  <details id="filters"><summary>Filter usage</summary><div class="filter-grid"><label>Model<select id="model"><option value="">All models</option></select></label><label>Project<select id="project"><option value="">All projects</option></select></label><label>Session<select id="session"><option value="">All sessions</option></select></label><label class="check"><input type="checkbox" id="cache" checked> Include cache tokens</label><button id="clear-filters">Reset filters</button></div></details>
+  <p id="status" role="status" class="notice">Reading local Copilot usage…</p>
+  <p id="coverage" class="notice warning" hidden></p>
+  <div id="content" hidden>
+    <section id="tiles" class="tiles" aria-label="Usage totals"></section>
+    <section id="usage-view">
+      <article class="card"><header><h2 id="daily-title">Daily tokens</h2><span class="muted" id="daily-caption"></span></header><div id="daily"></div><div id="legend" class="legend"></div></article>
+      <div class="grid-2"><article class="card"><header><h2>Activity</h2><span class="muted">26 weeks · filtered history</span></header><div id="calendar"></div></article><article class="card"><header><h2>When you work</h2><span class="muted">Local time · selected dates</span></header><div id="rhythm"></div></article></div>
+      <div class="grid-2"><article class="card"><header><h2>Token mix</h2></header><div class="mix"><div id="donut"></div><div id="mix-legend" class="legend vertical"></div></div></article><article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article></div>
+      <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
+    </section>
+    <section id="breakdown-view" hidden><article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article><p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p></section>
   </div>
-  <p id="live" class="sr-only" aria-live="polite"></p>
-
-  <section id="content" hidden>
-    <div class="tiles" id="tiles"></div>
-
-    <article class="card">
-      <div class="overview">
-        <div class="ov-left">
-          <div class="ov-total" id="ov-total">—</div>
-          <p class="muted" id="ov-sessions"></p>
-          <ul class="prov-list" id="ov-providers"></ul>
-          <ul class="prov-list host-list" id="ov-hosts" hidden></ul>
-          <div class="totals" id="totals"></div>
-        </div>
-        <div class="ov-right">
-          <header><h2 id="trend-title">Daily by provider</h2></header>
-          <div id="trend"></div>
-        </div>
-      </div>
-      <h2 class="sub-h">Tokens by type</h2>
-      <div id="typebar"></div>
-      <ul class="legend" id="type-legend"></ul>
-    </article>
-
-    <article class="card">
-      <header><h2>Daily usage</h2><p class="muted" id="daily-sub"></p></header>
-      <div id="daily"></div>
-      <ul class="legend" id="daily-legend"></ul>
-    </article>
-
-    <div class="grid-2">
-      <article class="card">
-        <header><h2>Activity</h2><span class="pill" id="peak"></span></header>
-        <p class="muted">Last 26 weeks with the selected filters, whatever the date range.</p>
-        <div id="calendar" class="scroll-x"></div>
-        <div class="scale"><span class="muted">Less</span><i class="cell q0"></i><i class="cell q1"></i><i class="cell q2"></i><i class="cell q3"></i><i class="cell q4"></i><span class="muted">More</span></div>
-      </article>
-      <article class="card">
-        <header><h2>Rhythm</h2></header>
-        <p class="muted">When you work in the date range, by weekday and hour.</p>
-        <div id="punch" class="scroll-x"></div>
-      </article>
-    </div>
-
-    <article class="card">
-      <header><h2>Ranking</h2>
-        <div class="seg" role="radiogroup" aria-label="Rank by" id="bd-mode"><button role="radio" data-mode="model" aria-checked="true">By model</button><button role="radio" data-mode="day" aria-checked="false" tabindex="-1">By day</button><button role="radio" data-mode="day-model" aria-checked="false" tabindex="-1">Date × model</button></div>
-      </header>
-      <label class="rank-sort" for="rank-sort">Sort rows
-        <select id="rank-sort"><option value="default">Default</option><option value="date-desc">Date: newest first</option><option value="date-asc">Date: oldest first</option><option value="model-asc">Model: A–Z</option><option value="tokens-desc">Tokens: highest first</option><option value="tokens-asc">Tokens: lowest first</option></select>
-      </label>
-      <p id="rank-note" class="muted"></p>
-      <div class="table-wrap" tabindex="0" role="region" aria-label="Usage ranking, scroll sideways for more columns"><table class="bd" id="breakdown"></table></div>
-    </article>
-
-    <div class="grid-2">
-      <article class="card">
-        <header><h2>Token mix</h2></header>
-        <div class="mix"><div id="donut"></div><ul class="legend legend-col" id="mix-legend"></ul></div>
-      </article>
-      <article class="card">
-        <header><h2>Projects</h2></header>
-        <div id="projects"></div>
-      </article>
-    </div>
-
-    <p class="footnote muted">Read from Claude Code and Codex transcripts and the local OpenCode database on this machine, including Orca's account homes, and the folders and SSH hosts in Settings. Account histories are combined. No usage data is sent anywhere. Cost is an estimate at list API prices.</p>
-  </section>
-  <section id="bd" aria-label="Breakdown" hidden>
-    <p id="bd-status" class="status" role="status" hidden></p>
-    <button id="bd-stale" class="stale" hidden>New usage since this view · Update</button>
-    <div id="bd-body" hidden>
-      <article class="card" id="bd-head"></article>
-      <article class="card">
-        <header><h2>Where it went</h2><span class="muted small">Projects › folders › files, commands and tools</span></header>
-        <nav class="crumbs" id="bd-crumbs" aria-label="Location"></nav>
-        <div id="bd-tree"></div>
-      </article>
-      <section aria-labelledby="bd-find-title" class="findings-wrap">
-        <h2 id="bd-find-title">Patterns worth a look</h2>
-        <p class="muted small">Each card is one pattern and what it cost. They overlap, so they don't add up. Explain gives you a prompt for your own agent to find the cause.</p>
-        <div class="findings" id="bd-findings"></div>
-      </section>
-      <article class="card" id="bd-not" hidden></article>
-      <p class="footnote muted" id="bd-foot"></p>
-    </div>
-  </section>
-
-  <section id="prices" class="prices" aria-label="Prices" hidden></section>
-
-  <dialog id="sync-dlg" aria-labelledby="sync-title">
-    <header><h2 id="sync-title">Sync prices</h2><button class="icon-btn" data-close aria-label="Close">✕</button></header>
-    <p class="muted small">Fetches public price lists from LiteLLM and models.dev. Nothing about your usage is sent. Only the rows you tick are applied, and Undo puts the previous prices back.</p>
-    <div id="sync-body" class="dlg-body"></div>
-    <footer><button class="btn" data-close>Cancel</button><button class="btn primary" id="sync-apply" disabled>Apply ticked</button></footer>
-  </dialog>
-
-  <dialog id="explain-dlg" aria-labelledby="explain-title">
-    <header><h2 id="explain-title">Explain this pattern</h2><button class="icon-btn" data-close aria-label="Close">✕</button></header>
-    <p class="muted small">Paste this into Claude Code or Codex in any folder. The agent reads the transcript excerpts listed in the prompt and sends them to its model provider, like any other file it reads.</p>
-    <textarea id="explain-text" readonly rows="12" spellcheck="false" aria-label="Prompt"></textarea>
-    <footer><span class="muted small" id="explain-size"></span><button class="btn" data-close>Close</button><button class="btn primary" id="explain-copy">Copy prompt</button></footer>
-  </dialog>
-  <div id="tip" class="tip" role="tooltip" hidden></div>
-</main>
-<script>/* PANEL_SCRIPT */</script>
-</body>
-</html>
+  <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
+  <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. No conversation text is retained or uploaded. <span id="updated"></span></footer>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Copilot sources</h2><button id="settings-close" aria-label="Close settings">×</button></header><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save sources</button></footer></dialog>
+  <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
+</main><script>/* PANEL_SCRIPT */</script></body></html>

@@ -17,6 +17,14 @@ export function esc(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
+// Keep unavailable values distinct from zero in both charts and tables.
+export function usageValue(row, key, fmt = compact) {
+  const missing = key === 'credits' ? row.missingCredits || row.partialCredits : key === 'total' ? row.missingTokens : row.missing?.[key];
+  const unavailable = row[key] === null || row.requests > 0 && (key === 'total' ? row.knownTokenRequests === 0 : row.missing?.[key] === row.requests);
+  if (unavailable) return 'Unavailable';
+  return `${fmt(row[key] ?? 0)}${missing ? ' *' : ''}`;
+}
+
 // Which day indices get an axis label: all of them when each has `minPx` of room, otherwise
 // every k-th, counted back from the latest day so today is always labelled.
 export function dayTicks(n, slotPx, minPx = 46) {
@@ -71,7 +79,11 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     const total = totals[i]
     const h = (total / max) * plotH
     const show = (v) => (fmt ? fmt(v) : v)
-    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: keys.map((k) => [labels[k] ?? k, show(d[k] || 0)]), total: keys.length > 1 ? show(total) : undefined }))
+    const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show)])
+    if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
+    if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
+    if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
+    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined }))
     body += `<g class="mark" data-tip="${tip}">`
     body += `<rect x="${x - (slot - barW) / 2}" y="${top}" width="${slot}" height="${plotH}" class="hit"/>`
     if (h > 0) {
@@ -232,7 +244,7 @@ export function sparkline(values, { width = 96, height = 26 } = {}) {
   return svg(width, height, `<polyline points="${d}" fill="none" class="spark" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${lx}" cy="${ly}" r="2.5" class="spark-dot"/>`, 'Trend')
 }
 
-export const PROVIDER_COLORS = { claude: 'var(--s2)', codex: 'var(--s1)', opencode: 'var(--s3)' }
+export const PROVIDER_COLORS = { copilot: 'var(--s1)' }
 export const providerColor = (p, i = 0) => PROVIDER_COLORS[p] ?? ['var(--s3)', 'var(--s4)', 'var(--s5)'][i % 3]
 
 // Monotone cubic (Fritsch–Carlson) path through points, so smoothing never overshoots below 0.

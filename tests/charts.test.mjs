@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels } from '../src/panel/charts.mjs'
+import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue } from '../src/panel/charts.mjs'
 import { pixelBanner, paintScene, resample, skyFor } from '../src/panel/art.mjs'
 
-const day = (d, v) => ({ day: d, input: v, output: v / 2, cacheRead: v * 4, cacheWrite: v / 4, total: v * 5.75, costUsd: 0 })
+const day = (d, v) => ({ day: d, input: v, output: v / 2, cacheRead: v * 4, cacheWrite: v / 4, total: v * 5.75, credits: 0 })
 const wellFormed = (s) => {
   assert.match(s, /^<svg [^>]*>/)
   assert.ok(s.endsWith('</svg>'))
@@ -22,6 +22,15 @@ test('stackedBars renders one mark per day with tooltips and handles empty', () 
   assert.match(stackedBars([]), /No usage yet/)
   assert.match(stackedBars([day('2026-10-28', 0)]), /No usage yet/)
 })
+test('usage displays preserve unavailable and partial credits and token categories', () => {
+  const days = [{ day: '2026-11-12', credits: null, missingCredits: 1, requests: 1 }, { day: '2026-11-13', credits: 2, partialCredits: 1, requests: 1 }];
+  const svg = stackedBars(days, { keys: ['credits'], labels: { credits: 'AI credits' }, colors: { credits: 'blue' } });
+  assert.match(svg, /Unavailable/);
+  assert.match(svg, /2 \*/);
+  assert.equal(usageValue({ output: 0, requests: 1, missing: { output: 1 } }, 'output'), 'Unavailable');
+  assert.equal(usageValue({ output: 20, requests: 2, missing: { output: 1 } }, 'output'), '20 *');
+  assert.equal(usageValue({ total: 0, requests: 1, knownTokenRequests: 0, missingTokens: 1 }, 'total'), 'Unavailable');
+});
 
 test('calendarHeatmap places every day and uses quantile levels', () => {
   const cal = Array.from({ length: 182 }, (_, i) => ({ day: new Date(2026, 4, 5 + i).toLocaleDateString('en-CA'), total: i % 3 ? i : 0 }))
@@ -76,14 +85,14 @@ test('pixel banner is deterministic and follows the data', () => {
 })
 
 test('areaTrend draws one smoothed line per provider with hover columns', () => {
-  const mk = (p, vals) => ({ provider: p, daily: vals.map((v, i) => ({ day: `2026-10-2${i}`, total: v, costUsd: v / 10 })) })
-  const s = areaTrend([mk('claude', [5, 9, 0, 3]), mk('codex', [1, 2, 8, 4])])
+  const mk = (p, vals) => ({ provider: p, daily: vals.map((v, i) => ({ day: `2026-10-2${i}`, total: v, credits: v / 10 })) })
+  const s = areaTrend([mk('copilot', [5, 9, 0, 3]), mk('model-b', [1, 2, 8, 4])])
   wellFormed(s)
   assert.equal((s.match(/stroke-width="2"/g) || []).length, 2)
   assert.equal((s.match(/class="mark xhair"/g) || []).length, 4)
-  wellFormed(areaTrend([mk('claude', [1])]))
-  assert.match(areaTrend([mk('claude', [0, 0])]), /No usage yet/)
-  assert.match(areaTrend([mk('claude', [5, 9])], { metric: 'costUsd', fmt: (v) => '$' + v }), /\$/)
+  wellFormed(areaTrend([mk('copilot', [1])]))
+  assert.match(areaTrend([mk('copilot', [0, 0])]), /No usage yet/)
+  assert.match(areaTrend([mk('copilot', [5, 9])], { metric: 'credits', fmt: (v) => '$' + v }), /\$/)
 })
 
 test('smoothPath never dips below the lowest point (monotone)', () => {

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compact } from '../src/core/format.mjs';
 import { compact as chartsCompact } from '../src/panel/charts.mjs';
-import { compact as workerCompact } from '../src/worker.mjs';
 
 test('compact formats magnitudes', () => {
   assert.equal(compact(950), '950');
@@ -15,7 +14,6 @@ test('compact formats magnitudes', () => {
   assert.equal(compact(999), '999');
 });
 
-test('the panel and the status bar use the core compact', () => {
+test('the charts use the core compact formatter', () => {
   assert.equal(chartsCompact, compact);
-  assert.equal(workerCompact, compact);
 });

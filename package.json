@@ -1,0 +1,16 @@
+{
+  "name": "copilot-usage-insights",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local GitHub Copilot usage and AI credits in a desktop canvas.",
+  "license": "MIT",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "install:local": "node scripts/build.mjs && node scripts/install-local.mjs",
+    "preview": "node scripts/build.mjs && node scripts/preview.mjs",
+    "preview:demo": "node scripts/build.mjs && node scripts/preview.mjs --demo"
+  }
+}
