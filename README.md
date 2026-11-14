@@ -110,7 +110,20 @@ Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Window
 
 Open **Breakdown** to see **Skills used** below the token table. It shows skill name with folder actions, source plugin, plugin version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions and locations, so skills with the same name in different folders remain separate. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
 
-**Source plugin** and **Plugin version** come from Copilot's recorded `pluginName` and `pluginVersion` fields. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. Personal skills such as `~/.copilot/skills/hello-test/SKILL.md`, and project skills, normally have no source plugin. **No plugin recorded** / **—** means those fields were absent; it does not mean the skill failed to run.
+**Source plugin** and **Plugin version** come from `data.pluginName` and `data.pluginVersion` in Copilot's saved `skill.invoked` events under `session-state/<session>/events.jsonl`. The tracker reads the values recorded for that activation, rather than looking up the plugin's currently installed version. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. These fields are optional in GitHub's [`skill.invoked` event reference](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events#skillinvoked). Personal skills such as `~/.copilot/skills/example-skill/SKILL.md`, and project skills, normally have no source plugin. **No plugin recorded** / **—** means those fields were absent; it does not mean the skill failed to run.
+
+A skill can declare its own optional version in its `SKILL.md` frontmatter. The [Agent Skills specification](https://agentskills.io/specification#metadata-field) demonstrates `metadata.version` as a string; it does not define a top-level `version` field:
+
+```yaml
+---
+name: example-skill
+description: Explain how to perform an example task.
+metadata:
+  version: "1.2.3"
+---
+```
+
+**Skill versions are not currently collected or displayed.** Neither GitHub's event reference nor the SDK's [`SkillInvokedData` type](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts) defines a dedicated `skillVersion` field. The event's `content` contains the skill text injected into the conversation, but YAML frontmatter is not explicitly guaranteed; inspected local records omitted it. A historical skill version could only be extracted when the saved activation actually retained it. Reading `metadata.version` from the file at the recorded path would instead show that file's **current installed version**, which may have changed since the activation. The [current reader](src/core/copilot.mjs) keeps the recorded plugin fields and path alongside activation metadata, discards skill content and arguments, and does not read skill files for versions.
 
 Click a skill name to open the folder containing its recorded `SKILL.md` in Explorer, Finder, or your Linux file manager. Use the copy button beside the name to copy just the containing folder path to your clipboard, then paste it into your file manager if opening the folder is blocked. The folder path is no longer displayed beneath the name. The dashboard uses that exact saved location; it does not search for another skill with the same name. Missing or moved files show an explanation. Paths from another computer may not be available locally; remote paths are not opened. Copying works from the recorded path even if the folder has moved or is on another computer. If Copilot did not record a path, the name is plain text with no copy button and a **Location not recorded** tooltip.
 
