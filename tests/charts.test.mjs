@@ -138,3 +138,32 @@ test('stackedBars labels each of 7 days with its weekday', () => {
   for (const d of ['Oct 28', 'Oct 29', 'Oct 30', 'Oct 31', 'Nov 1', 'Nov 2', 'Nov 3']) assert.ok(s.includes(`>${d}<`), d)
   assert.match(s, />Tue</)
 })
+
+test('larger chart text gets more label room while daily bars stay selectable', () => {
+  const days = Array.from({ length: 7 }, (_, i) => day(`2026-11-0${i + 1}`, 100));
+  const small = stackedBars(days, { width: 360, selectable: true });
+  const large = stackedBars(days, { width: 360, selectable: true, textScale: 1.3 });
+  assert.equal((large.match(/role="button"/g) || []).length, 7);
+  assert.ok((large.match(/>Nov \d</g) || []).length < (small.match(/>Nov \d</g) || []).length);
+  assert.match(large, />Nov 7</);
+  const ranking = [{ label: 'Long model name that needs room', value: 1 }, { label: 'Second', value: 2 }];
+  const height = html => Number(html.match(/viewBox="0 0 \S+ (\S+)"/)[1]);
+  assert.ok(height(hBars(ranking, { textScale: 1.3 })) > height(hBars(ranking)));
+});
+
+test('daily date labels stay within dense charts without overlapping at every text size', () => {
+  const days = Array.from({ length: 90 }, (_, i) => day(new Date(2026, 7, 16 + i).toLocaleDateString('en-CA'), 100));
+  for (const width of [280, 500]) for (const textScale of [1, 1.15, 1.3]) {
+    const chart = stackedBars(days, { width, textScale, selectable: true });
+    const labels = [...chart.matchAll(/<text x="([^"]+)"[^>]*text-anchor="middle">([A-Z][a-z]{2} \d+)<\/text>/g)];
+    const halfLabel = 23 * textScale;
+    assert.ok(labels.length > 1);
+    assert.equal(labels.at(-1)[2], 'Nov 13', 'latest date stays visible');
+    for (let i = 0; i < labels.length; i++) {
+      const x = Number(labels[i][1]);
+      assert.ok(x - halfLabel >= -0.1 && x + halfLabel <= width + 0.1, 'date labels fit within the chart');
+      if (i) assert.ok(x - Number(labels[i - 1][1]) >= halfLabel * 2 - 0.1, 'neighboring dates have room');
+    }
+    assert.equal((chart.match(/role="button"/g) || []).length, 90);
+  }
+});

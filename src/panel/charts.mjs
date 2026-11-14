@@ -35,10 +35,10 @@ export function dayTicks(n, slotPx, minPx = 46) {
 }
 
 // Axis label: "Oct 28", plus the weekday on a second line for short ranges.
-function dayLabel(day, x, y, anchor, withWeekday) {
+function dayLabel(day, x, y, anchor, withWeekday, textScale = 1) {
   const date = new Date(day + 'T00:00:00')
   let out = `<text x="${x}" y="${y}" class="t-muted" text-anchor="${anchor}">${esc(shortDay(day))}</text>`
-  if (withWeekday) out += `<text x="${x}" y="${y + 12}" class="t-faint" text-anchor="${anchor}">${WEEKDAYS[date.getDay()]}</text>`
+  if (withWeekday) out += `<text x="${x}" y="${y + 12 * textScale}" class="t-faint" text-anchor="${anchor}">${WEEKDAYS[date.getDay()]}</text>`
   return out
 }
 
@@ -57,12 +57,12 @@ function empty(w, h, label) {
 
 // Daily stacked bars. Segments stack bottom-up in `keys` order with a 2px surface gap,
 // the bar's top is rounded via a clip path, and every bar carries a tooltip payload.
-export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null } = {}) {
+export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null, textScale = 1 } = {}) {
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
-  const top = 18
-  const bottom = withWeekday ? 30 : 18
+  const top = 18 * textScale
+  const bottom = (withWeekday ? 30 : 18) * textScale
   const plotH = height - top - bottom
   const totals = daily.map((d) => keys.reduce((s, k) => s + (d[k] || 0), 0))
   const max = Math.max(...totals)
@@ -73,7 +73,7 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   const radius = Math.min(6, barW / 2)
   let defs = ''
   let body = `<line x1="0" x2="${width}" y1="${top + plotH + 0.5}" y2="${top + plotH + 0.5}" class="axis"/>`
-  body += `<text x="0" y="11" class="t-muted">${esc(fmt ? fmt(max) : compact(max))}</text>`
+  body += `<text x="0" y="${11 * textScale}" class="t-muted">${esc(fmt ? fmt(max) : compact(max))}</text>`
   daily.forEach((d, i) => {
     const x = i * slot + (slot - barW) / 2
     const total = totals[i]
@@ -105,10 +105,16 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     }
     body += `</g>`
   })
-  // Every label sits centred under its own bar.
-  for (const i of dayTicks(daily.length, slot)) {
-    body += dayLabel(daily[i].day, (i * slot + slot / 2).toFixed(1), top + plotH + 14, 'middle', withWeekday)
+  // Inset edge labels and keep the latest date when labels would crowd each other.
+  const labelGap = 46 * textScale, dateLabels = []
+  let nextLabelX = Infinity
+  for (const i of dayTicks(daily.length, slot, labelGap).reverse()) {
+    const x = Math.max(labelGap / 2, Math.min(width - labelGap / 2, i * slot + slot / 2))
+    if (nextLabelX - x < labelGap - 0.1) continue
+    dateLabels.unshift(dayLabel(daily[i].day, x.toFixed(1), top + plotH + 14 * textScale, 'middle', withWeekday, textScale))
+    nextLabelX = x
   }
+  body += dateLabels.join('')
   return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img')
 }
 
@@ -215,7 +221,7 @@ export function donut(segments, { size = 132, thickness = 16, centerLabel = 'tok
 }
 
 // Horizontal bar list. items: [{ label, value, note? }]
-export function hBars(items, { width = 360, row = 24, labelW = Math.min(180, Math.max(110, width * 0.3)), valueW = 64 } = {}) {
+export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale } = {}) {
   const label = 'Ranking'
   if (!items?.length) return empty(width, row * 2, label)
   const max = Math.max(...items.map((i) => i.value), 0)
@@ -224,13 +230,13 @@ export function hBars(items, { width = 360, row = 24, labelW = Math.min(180, Mat
   items.forEach((it, i) => {
     const y = i * row
     const w = max > 0 ? Math.max(it.value > 0 ? 3 : 0, (it.value / max) * barMax) : 0
-    const maxChars = Math.floor(labelW / 6.6)
+    const maxChars = Math.floor(labelW / (6.6 * textScale))
     const name = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label
     const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.value], ...(it.note ? [['', it.note]] : [])] }))
     body += `<g class="mark" data-tip="${tip}"><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
-    body += `<text x="0" y="${y + row / 2 + 4}" class="t-label">${esc(name)}</text>`
-    body += `<rect x="${labelW}" y="${y + 6}" width="${w}" height="${row - 12}" rx="3" class="bar"/>`
-    body += `<text x="${width}" y="${y + row / 2 + 4}" text-anchor="end" class="t-muted">${esc(it.note ?? compact(it.value))}</text></g>`
+    body += `<text x="0" y="${y + row / 2 + 4 * textScale}" class="t-label">${esc(name)}</text>`
+    body += `<rect x="${labelW}" y="${y + 6 * textScale}" width="${w}" height="${row - 12 * textScale}" rx="3" class="bar"/>`
+    body += `<text x="${width}" y="${y + row / 2 + 4 * textScale}" text-anchor="end" class="t-muted">${esc(it.note ?? compact(it.value))}</text></g>`
   })
   return svg(width, items.length * row, body, label)
 }

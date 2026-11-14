@@ -5,6 +5,41 @@ import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
 
+async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
+  const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
+    const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
+    return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, hidden: /\shidden\b/.test(tag),
+      setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
+      showModal() { this.open = true; }, close() { this.open = false; },
+      querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
+  }));
+  const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
+  get('cache').checked = true; get('group').value = 'models'; get('sort').value = 'total';
+  const requests = [], rootStyle = new Map(), server = { config, saveError: '' };
+  const context = createContext({
+    document: { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: {
+      classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
+    } },
+    window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval() {},
+    fetch: async (url, options) => {
+      const message = JSON.parse(options.body); requests.push(message);
+      if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
+      if (message.method === 'settings.set') {
+        if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
+        server.config = { ...server.config, ...message.input };
+        report.preferences = { textSize: server.config.textSize };
+        return { ok: true, json: async () => server.config };
+      }
+      assert.ok(['usage.report', 'usage.refresh'].includes(message.method));
+      return { ok: true, json: async () => report };
+    },
+  });
+  new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
+  await new Promise(setImmediate);
+  return { get, nodes, requests, rootStyle, server };
+}
+
 test('dashboard shows skill versions and separate trigger counts, with last use last and request/tool metrics separate', async () => {
   const now = new Date(2026, 10, 13, 12), timestamp = now.toISOString();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
@@ -21,23 +56,7 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   snapshot.records[0].sessionName = '<Planning "work">';
   const report = { ...buildReport(snapshot.records, { range: '1d' }, now, snapshot), sources: [], coverage: {} };
   report.skills.rows[0].installedVersion = { value: '1.0.1', status: 'available' };
-  const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
-  const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
-    const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-    return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, hidden: /\shidden\b/.test(tag),
-      setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
-      querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
-  }));
-  const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
-  get('cache').checked = true; get('group').value = 'models'; get('sort').value = 'total';
-  const requests = [];
-  const context = createContext({
-    document: { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: { classList: { toggle() {} } } },
-    window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval() {},
-    fetch: async (url, options) => { requests.push(JSON.parse(options.body)); return { ok: true, json: async () => report }; },
-  });
-  new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
-  await new Promise(setImmediate);
+  const { get, nodes, requests } = await mountPanel(report);
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
   assert.deepEqual(headers, ['Skill', 'Activations', 'By user', 'By agent', 'Sessions', 'Projects', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
@@ -70,4 +89,35 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   await get('refresh').onclick();
   assert.equal(get('session').value, 's1');
   assert.match(get('session').innerHTML, />Renamed session<\/option>/);
+});
+
+test('settings restore saved text size and apply changes only after a successful save', async () => {
+  const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {}, preferences: { textSize: 'large' } };
+  const { get, requests, rootStyle, server } = await mountPanel(report, { textSize: 'large', extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
+  assert.equal(rootStyle.get('--text-scale'), '1.3');
+  await get('settings-open').onclick();
+  assert.equal(get('text-size').value, 'large');
+  get('text-size').value = 'small';
+  get('settings-close').onclick();
+  assert.equal(rootStyle.get('--text-scale'), '1.3');
+  assert.ok(!requests.some(r => r.method === 'settings.set'));
+  await get('settings-open').onclick();
+  get('text-size').value = 'medium';
+  await get('settings-save').onclick();
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
+  assert.equal(rootStyle.get('--text-scale'), '1.15');
+  assert.equal(get('settings-dialog').open, false);
+  await get('settings-open').onclick();
+  server.saveError = 'Cannot save settings';
+  get('text-size').value = 'small';
+  await get('settings-save').onclick();
+  assert.equal(rootStyle.get('--text-scale'), '1.15');
+  assert.equal(get('settings-dialog').open, true);
+  assert.equal(get('settings-error').hidden, false);
+  server.saveError = '';
+  await get('settings-save').onclick();
+  assert.equal(rootStyle.get('--text-scale'), '1');
+  delete report.preferences;
+  await get('refresh').onclick();
+  assert.equal(rootStyle.get('--text-scale'), '1');
 });

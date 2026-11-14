@@ -17,12 +17,25 @@ test('settings validate paths, persist atomic changes, and never replace corrupt
   const dir = await fixture(t), settings = createSettings(dir);
   await settings.set({ extraHomes: [dir] });
   await Promise.all([settings.set({ disabledHomes: [dir] }), settings.set({ extraHomes: [] })]);
-  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir] });
+  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small' });
   await assert.rejects(settings.set({ extraHomes: ['relative'] }), /absolute/);
   await assert.rejects(settings.set({ unexpected: true }), /Unknown/);
   await fs.writeFile(path.join(dir, 'settings.json'), '{bad');
   await assert.rejects(settings.set({ extraHomes: [] }), /settings/i);
   assert.equal(await fs.readFile(path.join(dir, 'settings.json'), 'utf8'), '{bad');
+});
+
+test('text size defaults to small and persists only supported choices without changing source settings', async t => {
+  const dir = await fixture(t), settings = createSettings(dir);
+  assert.equal((await settings.get()).textSize, 'small');
+  await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ extraHomes: [dir], disabledHomes: [] }));
+  assert.equal((await settings.get()).textSize, 'small');
+  for (const textSize of ['large', 'medium', 'small']) {
+    await settings.set({ textSize });
+    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize });
+  }
+  for (const textSize of ['huge', '', 1, null, {}]) await assert.rejects(settings.set({ textSize }), /textSize/);
+  assert.equal((await settings.get()).textSize, 'small');
 });
 test('dashboard API requires the instance token and same origin, and validates requests', async t => {
   const dir = await fixture(t);
@@ -33,6 +46,10 @@ test('dashboard API requires the instance token and same origin, and validates r
   assert.equal((await fetch(origin + '/')).status, 404);
   const request = (body, headers = {}) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
   assert.equal((await request({ method: 'usage.report', input: { range: '7d' } })).status, 200);
+  assert.equal((await (await request({ method: 'usage.report' })).json()).preferences.textSize, 'small');
+  assert.equal((await request({ method: 'settings.set', input: { textSize: 'medium' } })).status, 200);
+  assert.equal((await (await request({ method: 'usage.refresh' })).json()).preferences.textSize, 'medium');
+  assert.equal((await request({ method: 'settings.set', input: { textSize: 'huge' } })).status, 400);
   assert.equal((await request({ method: 'settings.set', input: { extraHomes: [] } }, { Origin: 'https://example.com' })).status, 403);
   assert.equal((await request('{')).status, 400);
   assert.equal((await request({ method: 'usage.report', input: { range: 'bogus' } })).status, 400);

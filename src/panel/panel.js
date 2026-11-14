@@ -4,10 +4,15 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false };
+const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small' };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
+function applyTextSize(value) {
+  state.textSize = typeof value === 'string' && Object.hasOwn(TEXT_SCALES, value) ? value : 'small';
+  document.documentElement.style.setProperty('--text-scale', TEXT_SCALES[state.textSize]);
+}
 async function request(method, input = {}) {
   const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
   const result = await response.json();
@@ -34,6 +39,7 @@ async function load(force = false) {
         const report = await request(method, input);
         if (version !== state.version) continue;
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.filterKey = filterKey; }
+        applyTextSize(report.preferences?.textSize);
         state.report = report;
         render();
         $('live').textContent = 'Usage updated';
@@ -107,7 +113,7 @@ function renderBreakdown() {
 function render() {
   const r = state.report;
   if (!r) return;
-  const t = r.totals, credits = state.metric === 'credits';
+  const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
   const selected = r.daily.find(d => d.day === state.selectedDay);
   if (!selected) state.selectedDay = null;
@@ -152,7 +158,7 @@ function render() {
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null, selectable: true, selectedDay: state.selectedDay });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null, selectable: true, selectedDay: state.selectedDay, textScale });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
@@ -161,7 +167,7 @@ function render() {
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth) });
   $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth) });
+  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.generatedAt).toLocaleTimeString()}. Refreshes every 30 seconds while visible.`;
@@ -221,6 +227,7 @@ $('settings-open').onclick = async () => {
   $('settings-dialog').showModal();
   try {
     const config = await request('settings.get');
+    $('text-size').value = config.textSize ?? 'small';
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
     $('settings-save').disabled = false;
@@ -231,7 +238,8 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    await request('settings.set', { extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes') });
+    const config = await request('settings.set', { textSize: $('text-size').value, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes') });
+    applyTextSize(config.textSize); render();
     $('settings-dialog').close(); await load(true);
   } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
   finally { $('settings-save').disabled = false; }
