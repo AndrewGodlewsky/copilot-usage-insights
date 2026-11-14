@@ -59,7 +59,7 @@ export function createReceiptParser({ sessionId: initialSession, source }) {
         } else if (!toolOutcomes.has(key) || ms > toolOutcomes.get(key).completedMs) {
           toolOutcomes.set(key, { success: typeof e.data?.success === 'boolean' ? e.data.success : null, completedMs: ms });
         }
-      } else if (e?.type === 'skill.invoked') {
+      } else if (e?.type === 'skill.invoked' || e?.type === 'skill.invoked_ref') {
         if (e.ephemeral) return;
         const id = textValue(e.id), name = textValue(e.data?.name).trim(), ms = Date.parse(e.timestamp);
         if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; return; }

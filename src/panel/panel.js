@@ -4,7 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, skillDetails: false };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -72,9 +72,9 @@ function skillName(skill) {
   if (!skill.path) return `<span title="Location not recorded">${esc(skill.name)}</span>`;
   return `<span class="skill-actions"><button class="skill-link" data-skill-id="${esc(skill.id)}" data-skill-action="open" aria-label="Open folder for ${esc(skill.name)}" title="Open folder containing ${esc(skill.path)}">${esc(skill.name)}</button>${skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
 }
-function skillTriggers(skill) {
+function skillTriggerSummary(skill) {
   const triggers = skill.triggers || { manual: 0, agent: 0, preloaded: 0, unknown: skill.invocations };
-  return `<div class="skill-triggers"><span>Manual ${number(triggers.manual)}</span><span>Agent ${number(triggers.agent)}</span>${triggers.preloaded ? `<span>Preloaded ${number(triggers.preloaded)}</span>` : ''}${triggers.unknown ? `<span>Unknown ${number(triggers.unknown)}</span>` : ''}</div>`;
+  return `By user: ${number(triggers.manual)}; By agent: ${number(triggers.agent)}; Preloaded: ${number(triggers.preloaded)}; Unknown: ${number(triggers.unknown)}`;
 }
 function renderTools(report) {
   const tools = report.tools;
@@ -94,8 +94,7 @@ function renderBreakdown() {
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skill-details').setAttribute('aria-expanded', String(state.skillDetails));
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Activations</th><th title="Manual: explicitly invoked by the user. Agent: requested by the agent. Preloaded: loaded with other context. Unknown: trigger not recorded or not recognized.">Triggered by</th><th>Sessions</th><th>Projects</th><th>Last used</th>${state.skillDetails ? '<th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th>' : ''}</tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td>${number(s.invocations)}</td><td>${skillTriggers(s)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td>${state.skillDetails ? `<td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '\u2014')}</td><td>${esc(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="All recorded activations, including preloaded and unknown triggers. Hover over a count for its breakdown.">Activations</th><th title="Activations explicitly requested by the user.">By user</th><th title="Activations requested by the agent.">By agent</th><th>Sessions</th><th>Projects</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '\u2014')}</td><td>${esc(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
   if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
@@ -189,7 +188,6 @@ $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
 for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
-$('skill-details').onclick = () => { state.skillDetails = !state.skillDetails; renderBreakdown(); };
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
   if (!button || state.skillActionPending) return;

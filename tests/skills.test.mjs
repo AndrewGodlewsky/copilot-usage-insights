@@ -20,6 +20,9 @@ const skill = (id = 'k1', extra = {}) => ({ id, type: 'skill.invoked', timestamp
   name: 'code-review', pluginName: 'team-tools', pluginVersion: '1.2.3',
   content: 'PRIVATE SKILL BODY', arguments: 'PRIVATE ARGUMENTS', path: path.join(os.tmpdir(), 'skill-fixture', 'SKILL.md'), ...extra,
 } });
+const skillRef = (id = 'k1', extra = {}) => ({ ...skill(id, extra), type: 'skill.invoked_ref', data: {
+  ...skill(id, extra).data, content: undefined, contentId: 'sha256:shared-body', contentLength: 87,
+} });
 const parse = events => {
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
   [start, ...events].forEach(e => parser.push(JSON.stringify(e)));
@@ -27,15 +30,31 @@ const parse = events => {
 };
 const report = (snapshot, input = {}) => buildReport(snapshot.records, { range: '1d', ...input }, now, snapshot);
 
-test('skill parser deduplicates persisted activations and retains only metadata', () => {
-  const snapshot = parse([usage(), skill(), skill(), { ...skill('live'), ephemeral: true },
-    skill('', {}), skill('empty', { name: '  ' }), { ...skill('bad-time'), timestamp: 'bad' }]);
+for (const event of [skill, skillRef]) test(`${event().type} parser deduplicates persisted activations and retains only metadata`, () => {
+  const snapshot = parse([usage(), event(), event(), { ...event('live'), ephemeral: true },
+    event('', {}), event('empty', { name: '  ' }), { ...event('bad-time'), timestamp: 'bad' }]);
   assert.equal(snapshot.skills.length, 1);
   assert.equal(snapshot.skills[0].name, 'code-review');
   assert.equal(snapshot.skills[0].project, 'project-one');
   assert.equal(snapshot.skills[0].path, skill().data.path);
   assert.equal(snapshot.invalidSkills, 3);
   assert.ok(!JSON.stringify(snapshot).includes('PRIVATE'));
+});
+
+test('reference activations count separately even with the same content, while full/ref replays count once', () => {
+  const events = [usage(), skill('full', { trigger: 'user-invoked' }), skillRef('full', { trigger: 'user-invoked' }),
+    skillRef('repeat-one', { trigger: 'user-invoked' }), skillRef('repeat-two', { trigger: 'agent-invoked' }),
+    skillRef('repeat-one', { trigger: 'user-invoked' })];
+  for (const ordered of [events, [...events].reverse()]) {
+    const snapshot = parse(ordered);
+    const row = report(snapshot).skills.rows[0];
+    assert.equal(row.invocations, 3);
+    assert.deepEqual(row.triggers, { manual: 2, agent: 1, preloaded: 0, unknown: 0 });
+    assert.equal(row.plugin, 'team-tools');
+    assert.equal(row.version, '1.2.3');
+    assert.equal(row.path, skill().data.path);
+    assert.ok(!JSON.stringify(snapshot).includes('shared-body'));
+  }
 });
 
 test('skills from different paths stay separate and row IDs survive date filters', () => {
@@ -128,7 +147,7 @@ test('scanner deduplicates copied skill logs, tails complete lines, and drops de
   for (const file of files) { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, lines([start, usage(), skill()])); }
   const scanner = createScanner();
   assert.equal((await scanner.scan(homes)).skills.length, 1);
-  await fs.appendFile(files[0], JSON.stringify(skill('k2')));
+  await fs.appendFile(files[0], JSON.stringify(skillRef('k2')));
   assert.equal((await scanner.scan(homes)).skills.length, 1);
   await fs.appendFile(files[0], '\n');
   assert.equal((await scanner.scan(homes)).skills.length, 2);
