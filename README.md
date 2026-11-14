@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.25** reuses loaded history for filtering and request paging, removes prompt previews, adds session pagination, and refreshes automatically every 60 seconds. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.26** adds a shared support footer with the installed version, Refresh, Settings, copyable diagnostic logs, and a GitHub feedback link. Automatic refresh remains every 60 seconds. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -144,6 +144,24 @@ The first load scans the enabled Copilot homes and creates an in-memory history 
 Automatic refresh checks the source files and existing databases every **60 seconds** while the dashboard is visible, and when it becomes visible again. Unchanged logs reuse their parsed records. The **Refresh** button forces a full reread. The footer shows when the history was last scanned, so changing a filter does not make old data appear freshly scanned. New usage and renamed sessions appear on the next refresh.
 
 Selecting Today or Last 7 days does not skip older files during the first scan. Session logs can span dates, file modification times are not reliable usage timestamps, and the calendar, streak, and filter choices also use history. Safely skipping those files would require an additional date index. After the initial scan, filter changes do not rescan usage files; the smaller result is computed from memory. Installed skill versions and current plugin/MCP inventory are still checked when a report is requested.
+
+## Support footer and diagnostic logs
+
+Every tab has a centered footer: **Usage Insights**, the packaged **version**, **Refresh**, **Settings**, **Show logs**, and **Feedback**. Refresh and Settings use the same actions as the top controls. The version comes from the package at build time.
+
+To report a problem:
+
+1. Open **Show logs** after the problem happens, then click **Copy logs**.
+2. Click **Feedback** to open this repository's new-issue form. The form includes the plugin version and spaces for what happened, reproduction steps, and logs.
+3. Paste the copied logs, add your description, and submit the issue yourself. GitHub may ask you to sign in. Logs are not attached or submitted automatically.
+
+Logs include UTC timestamps, operation starts/completions/failures, durations in milliseconds, cache reuse, file/record/row counts, source and inventory availability, and safe error types, codes, and code locations. Timings cover scans, report calculations, installed skill-version reads, inventory reads, individual prompt lookups, API calls, and dashboard JavaScript/DOM updates. UI timings do not include the browser's final paint. The export also identifies the plugin and Node versions, operating system, and CPU architecture.
+
+The dashboard and local server each keep their latest **300 entries in memory**, with a count of discarded older entries. No log file, database, or background recorder is installed. Reloading the page resets its dashboard logs; closing the last canvas stops the server and discards its logs. Copy logs before closing or restarting. A process crash can lose these logs, and failures before startup are not captured.
+
+Only approved diagnostic fields are retained. Copied logs omit prompts, conversation content, skill/model/session names, session IDs, local filesystem paths, raw error messages, credentials, and the private canvas URL. Source files are identified by safe code filenames and line numbers, and data sources by an ordinal number. This limits sensitive information in an issue while preserving the operation and timing needed to investigate it.
+
+Opening or reloading logs does not rescan usage history. Dashboard logs are immediately copyable while server logs load; if that request fails or takes more than three seconds, the dialog keeps the dashboard logs available. If clipboard permission is blocked, it selects the text for manual copying. **Reload logs** updates the snapshot while the dialog stays open.
 
 ## Skills
 

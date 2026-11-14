@@ -14,6 +14,8 @@ test('marketplace package has a runnable desktop entry and self-contained dashbo
   assert.equal(entry.source, './');
   assert.match(plugin.$schema, /agent-plugins\.org\/schemas\/1\.0\.0\/plugin\.schema\.json$/);
   const html = await read('panel/index.html');
+  assert.ok(html.includes(`<span id="plugin-version">v${plugin.version}</span>`));
+  assert.ok(html.includes(`const BUILD_VERSION = ${JSON.stringify(plugin.version)};`));
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]);
   assert.doesNotMatch(html, /PANEL_SCRIPT|PANEL_STYLES|<script[^>]+src=/);
   // Exercise the package's real relative import graph with only the host SDK substituted.

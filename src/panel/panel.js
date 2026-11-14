@@ -1,8 +1,14 @@
 import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
+import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 
 const $ = id => document.getElementById(id);
+const clientDiagnostics = createDiagnostics();
+clientDiagnostics.record('info', 'ui.started');
+window.addEventListener('error', event => clientDiagnostics.record('error', 'ui.error', { ...diagnosticError(event.error), line: event.lineno, column: event.colno }));
+window.addEventListener('unhandledrejection', event => clientDiagnostics.record('error', 'ui.rejection', diagnosticError(event.reason)));
+$('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VERSION}\n\nWhat happened?\n\nSteps to reproduce:\n\nExpected behavior:\n\nDiagnostic logs (Show logs > Copy logs):\n\n`);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
@@ -14,12 +20,61 @@ function applyTextSize(value) {
   state.textSize = typeof value === 'string' && Object.hasOwn(TEXT_SCALES, value) ? value : 'small';
   document.documentElement.style.setProperty('--text-scale', TEXT_SCALES[state.textSize]);
 }
-async function request(method, input = {}, refresh = false) {
-  const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}) }) });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-  return result;
+async function request(method, input = {}, refresh = false, signal) {
+  const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined };
+  const work = async () => {
+    const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}) }), ...(signal ? { signal } : {}) });
+    fields.httpStatus = response.status;
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+    if (Array.isArray(result.rows)) fields.rows = result.rows.length;
+    return result;
+  };
+  return method === 'diagnostics.get' ? work() : clientDiagnostics.measure('api.request', fields, work);
 }
+function diagnosticText(server) {
+  const client = clientDiagnostics.snapshot();
+  const lines = [`Usage Insights v${BUILD_VERSION}`, `Exported: ${new Date().toISOString()}`,
+    server ? `Server: v${server.version}, Node ${server.runtime.node}, ${server.runtime.platform}/${server.runtime.arch}` : 'Server logs unavailable.',
+    `Dashboard started: ${client.startedAt}; retained ${client.entries.length}/${client.limit} entries; dropped ${client.dropped}`];
+  if (server) lines.push(`Server started: ${server.startedAt}; retained ${server.entries.length}/${server.limit} entries; dropped ${server.dropped}`);
+  lines.push('Structured diagnostics only: no prompts, names, paths, raw error messages, or credentials.', 'Timings are milliseconds; UI timings measure JavaScript/DOM updates, not final browser paint.', '');
+  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' }))];
+  entries.sort((a, b) => a.at.localeCompare(b.at));
+  return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
+}
+let logsLoading = false;
+async function showLogs() {
+  if (!$('logs-dialog').open) $('logs-dialog').showModal();
+  if (logsLoading) return;
+  logsLoading = true;
+  $('logs-reload').disabled = true;
+  $('logs-copy').disabled = false;
+  $('logs-status').textContent = 'Loading logs…';
+  $('logs-output').value = diagnosticText();
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    $('logs-output').value = diagnosticText(await request('diagnostics.get', {}, false, controller.signal));
+    $('logs-status').textContent = 'Ready to copy.';
+  } catch (error) {
+    clientDiagnostics.record('error', 'diagnostics.read', diagnosticError(error));
+    $('logs-output').value = diagnosticText();
+    $('logs-status').textContent = 'Server logs are unavailable. Dashboard logs are still ready to copy.';
+  } finally { clearTimeout(timeout); logsLoading = false; $('logs-reload').disabled = $('logs-copy').disabled = false; }
+}
+$('logs-open').onclick = $('logs-reload').onclick = showLogs;
+$('logs-close').onclick = () => $('logs-dialog').close();
+$('logs-copy').onclick = async () => {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText($('logs-output').value);
+    $('logs-status').textContent = 'Logs copied. Paste them into your GitHub issue.';
+  } catch (error) {
+    clientDiagnostics.record('warn', 'diagnostics.copy', diagnosticError(error));
+    $('logs-status').textContent = 'Clipboard access is unavailable. The logs are selected; copy them manually.';
+    $('logs-output').focus(); $('logs-output').select();
+  }
+};
 function query() {
   return { range: state.range, includeCache: $('cache').checked,
     ...($('model').value ? { models: [$('model').value] } : {}), project: $('project').value, session: $('session').value,
@@ -29,7 +84,7 @@ async function load(force = false, refresh = false) {
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
   state.pending = true;
-  $('refresh').disabled = true;
+  $('refresh').disabled = $('footer-refresh').disabled = true;
   try {
     let version;
     do {
@@ -54,7 +109,7 @@ async function load(force = false, refresh = false) {
         $('content').hidden = true;
       }
     } while (version !== state.version);
-  } finally { state.pending = false; $('refresh').disabled = false; }
+  } finally { state.pending = false; $('refresh').disabled = $('footer-refresh').disabled = false; }
 }
 function options(id, values, all) {
   const select = $(id), selected = select.value;
@@ -200,6 +255,9 @@ function renderIntegrations(report) {
   $('plugins').innerHTML = !plugins.available ? '<p class="muted">Plugin inventory is unavailable. Open this dashboard in an updated Copilot session.</p>' : plugins.rows.length ? `<table><thead><tr><th>Plugin</th><th>Installed version</th><th>State</th><th>Marketplace</th><th>Management</th></tr></thead><tbody>${pluginRows.map(p => `<tr>${textCell(p.name)}${textCell(p.version || '—')}${textCell(!p.installed ? 'Not installed' : p.enabled === null ? 'Unknown' : p.enabled ? 'Enabled' : 'Disabled')}${textCell(pluginMarketplace(p))}${textCell(p.managed ? 'Managed' : '—')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No plugins reported by Copilot.</p>';
 }
 function renderBreakdown() {
+  return clientDiagnostics.measure('ui.breakdown', {}, renderBreakdownContent);
+}
+function renderBreakdownContent() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
@@ -237,6 +295,9 @@ function renderBreakdown() {
   renderIntegrations(report);
 }
 function render() {
+  return clientDiagnostics.measure('ui.render', {}, renderContent);
+}
+function renderContent() {
   const r = state.report;
   if (!r) return;
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
@@ -325,7 +386,7 @@ $('breakdown-sections').onclick = e => {
   for (const name of ['skills', 'plugins', 'mcp']) $(`${name}-panel`).hidden = name !== section;
 };
 $('metric').onclick = e => { if (!e.target.dataset.metric) return; state.metric = e.target.dataset.metric; selectButton('metric', 'metric', state.metric); render(); };
-$('refresh').onclick = () => load(true);
+$('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
@@ -374,11 +435,11 @@ $('skills').onclick = async event => {
       $('live').textContent = 'Folder request sent to your file manager.';
     }
   }
-  catch (error) { status.hidden = false; status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
+  catch (error) { clientDiagnostics.record('error', 'ui.skillAction', { action: copy ? 'copy' : 'open', ...diagnosticError(error) }); status.hidden = false; status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
   finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
-$('settings-open').onclick = async () => {
+$('settings-open').onclick = $('footer-settings').onclick = async () => {
   $('settings-error').hidden = true;
   $('settings-save').disabled = true;
   $('settings-dialog').showModal();

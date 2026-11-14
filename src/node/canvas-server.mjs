@@ -9,10 +9,13 @@ import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
+import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined) } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
+  const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  diagnostics.record('info', 'runtime.started');
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
@@ -20,15 +23,24 @@ export async function startServer({ settings = createSettings(), scanner = creat
   function readHistory(config, { refresh = false, force = false } = {}) {
     const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes]);
     if (!history || history.key !== key || refresh || force) {
-      const entry = { key, promise: scanner.scan(roots, { disabled: config.disabledHomes, force })
-        .then(scan => ({ scan, scannedAt: now().toISOString() })) };
+      const fields = { force };
+      const entry = { key, promise: diagnostics.measure('history.scan', fields, async () => {
+        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force });
+        Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
+          files: scan.sources?.reduce((sum, source) => sum + (source.files || 0), 0) ?? 0, ...scan.coverage });
+        for (const [index, source] of (scan.sources || []).entries()) if (['error', 'warning', 'missing'].includes(source.state)) {
+          diagnostics.record('warn', 'history.source', { sourceIndex: index + 1, sourceState: source.state, ...source.diagnostic });
+        }
+        return { scan, scannedAt: now().toISOString() };
+      }) };
       history = entry;
       entry.promise.catch(() => { if (history === entry) history = undefined; });
-    }
+    } else diagnostics.record('info', 'history.cache', { cacheHit: true });
     return history.promise;
   }
   const server = createServer({ maxHeaderSize: 8192 }, (req, res) => {
     const task = handle(req, res).catch(e => {
+      diagnostics.record('error', 'server.response', diagnosticError(e));
       if (!res.headersSent) json(res, 500, { error: e.message });
       else res.end();
     }).finally(() => pending.delete(task));
@@ -54,23 +66,30 @@ export async function startServer({ settings = createSettings(), scanner = creat
       body += chunk;
     }
     let message;
+    const started = performance.now(), fields = {};
     try {
       message = JSON.parse(body);
       if (!message || typeof message !== 'object' || Array.isArray(message)) throw new TypeError('Expected an object');
       const input = message.input ?? {};
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('input must be an object');
       if (message.refresh !== undefined && typeof message.refresh !== 'boolean') throw new TypeError('refresh must be a boolean');
+      Object.assign(fields, { method: message.method, range: input.range, refresh: message.refresh === true, detail: message.method === 'usage.requests' && input.id !== undefined });
+      if (message.method !== 'diagnostics.get') diagnostics.record('info', 'api.request', { ...fields, phase: 'started' });
       let result;
-      if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
+      if (message.method === 'diagnostics.get') {
+        if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
+        result = { version, runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() };
+      } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
         // Validate before opening any files.
         buildReport([], input, now());
         const config = await settings.get();
         const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
-        result = { ...buildReport(scan.records, input, now(), scan), scannedAt, sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small' } };
-        await addInstalledSkillVersions(result.skills.rows);
-        const inventory = await readIntegrations();
+        result = { ...diagnostics.measure('report.build', { records: scan.records.length, range: input.range }, () => buildReport(scan.records, input, now(), scan)), scannedAt, sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small' } };
+        await diagnostics.measure('skills.versions', { rows: result.skills.rows.length }, () => addInstalledSkillVersions(result.skills.rows));
+        const inventory = await diagnostics.measure('inventory.read', {}, readIntegrations);
+        for (const kind of ['mcp', 'plugins']) if (!inventory[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...inventory[kind].diagnostic });
         result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
         result.plugins = inventory.plugins;
       } else if (message.method === 'usage.requests') {
@@ -80,7 +99,12 @@ export async function startServer({ settings = createSettings(), scanner = creat
         result = buildRequestPage(scan.records, input, now());
         if (input.id !== undefined) {
           const ids = new Set(result.rows.map(row => row.id));
-          const prompts = await readRequestPrompts(scan.records.filter(r => ids.has(r.key)), { maxChars: 12000 });
+          const promptFields = { rows: ids.size };
+          const prompts = await diagnostics.measure('prompt.read', promptFields, async () => {
+            const prompts = await readRequestPrompts(scan.records.filter(r => ids.has(r.key)), { maxChars: 12000 });
+            promptFields.unavailable = [...prompts.values()].filter(p => !p.available).length;
+            return prompts;
+          });
           result.rows = result.rows.map(row => ({ ...row, prompt: prompts.get(row.id) }));
         }
       } else if (message.method === 'skills.openFolder') {
@@ -93,7 +117,12 @@ export async function startServer({ settings = createSettings(), scanner = creat
         result = { ok: true };
       } else throw new TypeError('Unknown dashboard method');
       json(res, 200, result);
-    } catch (e) { json(res, e instanceof TypeError || e instanceof RangeError || e instanceof SyntaxError ? 400 : 500, { error: e.message }); }
+      if (message.method !== 'diagnostics.get') diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
+    } catch (e) {
+      const status = e instanceof TypeError || e instanceof RangeError || e instanceof SyntaxError ? 400 : 500;
+      diagnostics.record('error', 'api.request', { ...fields, ...diagnosticError(e), phase: 'failed', httpStatus: status, durationMs: performance.now() - started });
+      json(res, status, { error: e.message });
+    }
   }
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   origin = `http://127.0.0.1:${server.address().port}`;

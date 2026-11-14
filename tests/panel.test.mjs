@@ -10,9 +10,10 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-    return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
+    return [id, { value: '', href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       focus() { document.activeElement = this; },
+      select() { this.selected = true; },
       showModal() { this.open = true; }, close() { this.open = false; },
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
   }));
@@ -22,15 +23,20 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
-  const requests = [], intervals = [], listeners = new Map(), rootStyle = new Map(), server = { config, saveError: '' };
+  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [] };
   const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
   const context = createContext({
     document,
-    window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
+    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
+    navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
+    AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
     fetch: async (url, options) => {
       const message = JSON.parse(options.body); requests.push(message);
+      if (server.transportError) throw new Error('PRIVATE_NETWORK_ERROR');
+      if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
+      if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
       if (message.method === 'settings.set') {
         if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
@@ -48,8 +54,66 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document, intervals, listeners };
+  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts };
 }
+
+test('footer actions share controls and logs copy safely with offline and clipboard fallbacks', async () => {
+  const report = { ...buildReport([], { range: '7d' }), sources: [], coverage: {} };
+  const { get, requests, server, windowListeners, document } = await mountPanel(report);
+  assert.equal(get('footer-refresh').onclick, get('refresh').onclick);
+  assert.equal(get('footer-settings').onclick, get('settings-open').onclick);
+  await get('footer-refresh').onclick();
+  assert.equal(requests.at(-1).method, 'usage.refresh');
+  assert.equal(get('footer-refresh').disabled, false);
+  await get('footer-settings').onclick();
+  assert.equal(get('settings-dialog').open, true);
+  get('settings-close').onclick();
+  const feedback = new URL(get('feedback').href);
+  assert.equal(feedback.origin + feedback.pathname, 'https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new');
+  assert.match(feedback.searchParams.get('body'), /Usage Insights v\d+\.\d+\.\d+/);
+  assert.doesNotMatch(feedback.searchParams.get('body'), /history\.scan/);
+  assert.equal(get('feedback').getAttribute('target'), '_blank');
+  windowListeners.get('error')({ error: new TypeError('PRIVATE_PROMPT'), lineno: 20, colno: 7 });
+  windowListeners.get('unhandledrejection')({ reason: new Error('SECRET_TOKEN') });
+  await get('logs-open').onclick();
+  assert.equal(get('logs-dialog').open, true);
+  assert.match(get('logs-output').value, /history\.scan|durationMs/);
+  assert.match(get('logs-output').value, /ui\.render/);
+  assert.match(get('logs-output').value, /ui\.error/);
+  assert.match(get('logs-output').value, /ui\.rejection/);
+  assert.doesNotMatch(get('logs-output').value, /PRIVATE|SECRET/);
+  await get('logs-copy').onclick();
+  assert.equal(server.copied.at(-1), get('logs-output').value);
+  server.clipboardError = true;
+  await get('logs-copy').onclick();
+  assert.equal(get('logs-output').selected, true);
+  assert.equal(document.activeElement, get('logs-output'));
+  server.transportError = true;
+  await get('footer-refresh').onclick();
+  assert.equal(get('content').hidden, true);
+  await get('logs-reload').onclick();
+  assert.match(get('logs-status').textContent, /Server logs are unavailable/);
+  assert.match(get('logs-output').value, /diagnostics\.read/);
+  assert.doesNotMatch(get('logs-output').value, /PRIVATE|SECRET/);
+  assert.equal(get('logs-copy').disabled, false);
+  get('logs-close').onclick();
+  assert.equal(get('logs-dialog').open, false);
+});
+
+test('a stalled server log request times out while local logs remain copyable', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, timeouts } = await mountPanel(report);
+  server.logsStalled = true;
+  const loading = get('logs-open').onclick();
+  assert.equal(get('logs-copy').disabled, false);
+  await get('logs-copy').onclick();
+  assert.match(server.copied[0], /ui\.started/);
+  assert.equal(timeouts.at(-1).ms, 3000);
+  timeouts.at(-1).callback(); await loading;
+  assert.match(get('logs-status').textContent, /Server logs are unavailable/);
+  assert.match(get('logs-output').value, /AbortError/);
+  assert.equal(get('logs-reload').disabled, false);
+});
 
 async function requestPanel() {
   const now = new Date(2026, 10, 14, 12), parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });

@@ -23,3 +23,5 @@ td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{d
 .request-paging button[aria-disabled=true]{opacity:.55;cursor:default}.request-paging button:disabled{cursor:default}
 
 .session-paging{color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}
+html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
+.support-footer{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 8px;padding:10px 0;color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}.support-footer button,.support-footer a{font:inherit;border:0;background:transparent;padding:2px 0;color:var(--s1);text-decoration:none}.support-footer button:hover,.support-footer a:hover{color:var(--fg);text-decoration:underline}.support-footer a:focus-visible{outline:2px solid var(--s1);outline-offset:3px}.support-footer button:disabled{cursor:default}#logs-dialog{width:min(900px,calc(100% - 32px))}#logs-output{font-family:ui-monospace,Consolas,monospace;font-size:calc(11px * var(--text-scale));white-space:pre;overflow:auto}#logs-dialog footer{display:flex;justify-content:flex-end;gap:8px}#logs-status{min-height:1.7em}

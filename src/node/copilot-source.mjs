@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
 import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
+import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024;
@@ -37,7 +38,7 @@ export function createScanner() {
     for (const root of roots) {
       let real;
       try { real = await fs.realpath(root); }
-      catch (e) { sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message }); continue; }
+      catch (e) { sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue; }
       const identity = process.platform === 'win32' ? real.toLowerCase() : real;
       if (seenRoots.has(identity)) continue;
       seenRoots.add(identity);
@@ -48,7 +49,7 @@ export function createScanner() {
       const stateDir = path.join(real, 'session-state');
       let dirs = [];
       try { dirs = await fs.readdir(stateDir, { withFileTypes: true }); }
-      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; } }
+      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
       for (const dir of dirs) {
         if (!dir.isDirectory() || dir.name.startsWith('.')) continue;
         const file = path.join(stateDir, dir.name, 'events.jsonl');
@@ -97,11 +98,11 @@ export function createScanner() {
             files.set(file, entry);
             snapshots.push({ ...entry.parser.snapshot(), source });
           } finally { await handle.close(); }
-        } catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; } }
+        } catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
       }
       const db = path.join(real, 'session-store.db');
       try { await fs.access(db); databases.push({ db, source }); }
-      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; } }
+      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
@@ -128,7 +129,7 @@ export function createScanner() {
         for (const session of result.skillExcludedSessions) skillExcludedSessions.add(session);
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
         for (const r of result.records) if (!records.has(r.key)) { records.set(r.key, r); source.records++; coverage.fallbackRequests++; }
-      } catch (e) { source.state = 'warning'; source.message = e.message; }
+      } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
     const sessionIdsByHome = new Map();
     for (const record of records.values()) {

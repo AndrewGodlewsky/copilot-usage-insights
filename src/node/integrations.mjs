@@ -1,3 +1,5 @@
+import { diagnosticError } from '../core/diagnostics.mjs';
+
 const text = (value, limit = 256) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, limit) : '';
 const boolean = value => typeof value === 'boolean' ? value : null;
 const statuses = new Set(['connected', 'failed', 'needs-auth', 'pending', 'disabled', 'stopped', 'not_configured']);
@@ -19,7 +21,7 @@ export function createIntegrationReader(getSession, { timeoutMs = 3000 } = {}) {
     const api = kind === 'mcp' ? session?.rpc?.mcp : session?.rpc?.plugins;
     const method = kind === 'mcp' ? 'listConfigured' : 'list';
     const unavailable = { available: false, rows: [], sessionId: session?.sessionId || '' };
-    if (typeof api?.[method] !== 'function') return unavailable;
+    if (typeof api?.[method] !== 'function') return { ...unavailable, diagnostic: { reason: 'unsupported' } };
     let timer;
     try {
       if (!pending.has(kind)) {
@@ -28,10 +30,10 @@ export function createIntegrationReader(getSession, { timeoutMs = 3000 } = {}) {
         operation.then(() => pending.delete(kind), () => pending.delete(kind));
       }
       const result = await Promise.race([pending.get(kind), new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Inventory timed out')), timeoutMs);
+        timer = setTimeout(() => reject(Object.assign(new Error('Inventory timed out'), { name: 'TimeoutError' })), timeoutMs);
       })]);
       const entries = result?.[kind === 'mcp' ? 'servers' : 'plugins'];
-      if (!Array.isArray(entries)) return unavailable;
+      if (!Array.isArray(entries)) return { ...unavailable, diagnostic: { reason: 'invalid-response' } };
       const rows = entries.filter(entry => entry && typeof entry.name === 'string' && entry.name.trim()).map(entry => kind === 'mcp' ? {
         name: entry.name, displayName: text(entry.displayName), enabled: boolean(entry.enabled),
         status: statuses.has(entry.live?.status) ? entry.live.status : 'unavailable',
@@ -42,7 +44,7 @@ export function createIntegrationReader(getSession, { timeoutMs = 3000 } = {}) {
         enabled: boolean(entry.enabled), managed: entry.managed === true, installed: entry.installed !== false,
       });
       return { available: true, rows, sessionId: session.sessionId || '', checkedAt: new Date().toISOString() };
-    } catch { return unavailable; }
+    } catch (error) { return { ...unavailable, diagnostic: { reason: 'failed', ...diagnosticError(error) } }; }
     finally { clearTimeout(timer); }
   }
   return async () => {
