@@ -181,12 +181,13 @@ function table(rows, heading, details = false, expansion = '', depth = 0) {
     if (!open) return cells;
     return cells + `<tr class="usage-context" data-depth="${depth + 1}"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${child.header}</div></td></tr>${childRows}`;
   }).join('');
-  if (depth) return body;
+  const header = `<tr${details ? ` class="usage-header" data-depth="${depth}" id="usage-header-${depth}"` : ''}><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr>`;
+  if (depth) return header + body;
   // Reserve column space from the whole report before any child rows are loaded.
   const totals = state.report.totals;
   const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => usageValue(totals, key, key === 'credits' ? creditNumber : number).length));
   const layout = details ? ` class="usage-table" style="--usage-metric-width:${metricWidth}ch"` : '';
-  return `<table${layout}>${details ? '<colgroup><col class="usage-name-column"><col span="9"></colgroup>' : ''}<thead><tr><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<table${layout}>${details ? '<colgroup><col class="usage-name-column"><col span="9"></colgroup>' : ''}<thead>${header}</thead><tbody>${body}</tbody></table>`;
 }
 
 function sortedUsage(rows) {

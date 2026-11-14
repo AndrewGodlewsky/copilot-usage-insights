@@ -249,14 +249,19 @@ async function requestPanel() {
   return { ...panel, click, report, records, now };
 }
 
-test('both Breakdown hierarchies keep one aligned table with alternating level backgrounds', async () => {
+test('both Breakdown hierarchies keep aligned columns, repeated headings, and alternating level backgrounds', async () => {
   const { get, click, records, requests } = await requestPanel();
   const html = () => get('breakdown').innerHTML;
   const layout = () => html().match(/<table[^>]*>/)[0] + html().match(/<colgroup>[\s\S]*?<\/colgroup>/)?.[0];
   const initialLayout = layout();
-  const check = () => {
+  const check = headings => {
     assert.equal((html().match(/<table\b/g) || []).length, 1, 'expanded metrics share the original table');
-    assert.equal((html().match(/<thead>/g) || []).length, 1, 'one shared metric header');
+    assert.equal((html().match(/<thead>/g) || []).length, 1, 'one table head with section headings inside the body');
+    const headers = [...html().matchAll(/<tr class="usage-header" data-depth="(\d)"[^>]*>([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual(headers.map(m => m[1]), ['0', '1', '2']);
+    const labels = headers.map(([, , cells]) => [...cells.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(m => m[1]));
+    assert.deepEqual(labels.map(row => row[0]), headings);
+    for (const row of labels) assert.deepEqual(row.slice(1), ['Requests', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / request', 'Tokens', 'AI credits']);
     assert.equal(layout(), initialLayout, 'expansion does not recalculate column widths');
     const rows = [...html().matchAll(/<tr class="usage-row" data-depth="(\d)"[^>]*>([\s\S]*?)<\/tr>/g)];
     assert.deepEqual([...new Set(rows.map(m => m[1]))].sort(), ['0', '1', '2']);
@@ -269,15 +274,15 @@ test('both Breakdown hierarchies keep one aligned table with alternating level b
   };
   await click({ requestModel: '<Sonnet>' });
   await click({ requestSession: 's1' });
-  check();
+  check(['Model', 'Session', 'Time']);
   await click({ requestId: records[0].key });
-  check();
+  check(['Model', 'Session', 'Time']);
   assert.match(html(), /<tr class="usage-context" data-depth="3"[^>]*><td colspan="10"><div id="request-detail" class="request-detail"/);
   assert.match(html(), /Full original prompt/);
   get('group').value = 'projects'; get('group').onchange();
   await click({ projectName: records[0].project });
   await click({ projectSession: 's1' });
-  check();
+  check(['Project', 'Session', 'Model']);
   assert.doesNotMatch(html(), /id="request-detail"/);
   const before = requests.length;
   await click({ projectSession: 's1' });
@@ -556,8 +561,8 @@ test('project sessions expand into filtered model metrics, sort locally, and ref
   assert.match(html(), /&lt;Model A&gt;/);
   assert.match(html(), /&lt;Model B&gt;/);
   assert.doesNotMatch(html(), /Excluded project|Excluded session|<Model|data-request-model|data-request-session|data-request-id/);
-  const headers = [...html().matchAll(/<thead><tr><th[^>]*>[^<]*<\/th>([\s\S]*?)<\/tr><\/thead>/g)].map(m => m[1]);
-  assert.equal(headers.length, 1);
+  const headers = [...html().matchAll(/<tr class="usage-header"[^>]*><th[^>]*>[^<]*<\/th>([\s\S]*?)<\/tr>/g)].map(m => m[1]);
+  assert.equal(headers.length, 3);
   assert.ok(headers.every(h => h === headers[0]));
   const modelNames = () => [...html().slice(html().indexOf('id="session-models"')).matchAll(/<tr class="usage-row" data-depth="2"[^>]*><td class="text-cell"[^>]*><span[^>]*>(.*?)<\/span>/g)].map(m => m[1]);
   assert.deepEqual(modelNames(), ['&lt;Model A&gt;', '&lt;Model B&gt;']);
