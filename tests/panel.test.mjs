@@ -584,15 +584,15 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   const { get, nodes, requests } = await mountPanel(report);
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
-  assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Projects', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
+  assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Failures', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
   const cells = [...get('skills').innerHTML.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(([, value]) => value.replace(/<\/?span[^>]*>/g, ''));
   assert.equal(cells.length, headers.length);
-  assert.deepEqual(cells.slice(1, 9), ['5', '2', '1', '1', '1', '&lt;team-tools&gt;', '2.0', '1.0.1']);
+  assert.deepEqual(cells.slice(1, 9), ['5', '2', '1', '1', '0', '&lt;team-tools&gt;', '2.0', '1.0.1']);
   assert.equal(cells.at(-1), '11/13/26, 10:49 PM');
-  assert.equal(get('skills-summary').textContent, '5 uses · 1 session');
+  assert.equal(get('skills-summary').textContent, '5 uses · 0 failures · 1 session');
   assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
   assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 1; Unknown: 1"/);
-  assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|Failures|<hello-test>/);
+  assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|Projects|<hello-test>/);
   assert.ok(!nodes.has('skill-details'));
   await get('refresh').onclick();
   assert.match(get('skills').innerHTML, /Source plugin/);
@@ -613,6 +613,32 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   await get('refresh').onclick();
   assert.equal(get('session').value, 's1');
   assert.match(get('session').innerHTML, />Renamed session<\/option>/);
+});
+
+test('skills table keeps ten aligned columns and makes unresolved failures readable without folder actions', async () => {
+  const { get, report, records, now } = await requestPanel();
+  const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
+  const timestamp = now.toISOString(), missingName = '<missing-skill-with-a-long-requested-name>';
+  const events = [{ type: 'skill.invoked', id: 'success', timestamp, data: { name: 'known', trigger: 'user-invoked', path: '/skills/known/SKILL.md' } },
+    ...['known', missingName].flatMap((name, i) => [
+      { type: 'tool.execution_start', id: `start-${i}`, timestamp, data: { toolName: 'skill', toolCallId: `load-${i}`, arguments: { skill: name } } },
+      { type: 'tool.execution_complete', id: `end-${i}`, timestamp, data: { toolCallId: `load-${i}`, success: false } },
+    ])];
+  events.forEach(e => parser.push(JSON.stringify(e)));
+  report.skills = buildReport(records, {}, now, parser.snapshot()).skills;
+  await get('refresh').onclick();
+  const html = get('skills').innerHTML;
+  assert.ok(html.includes('title="Recorded failed attempts to load this skill.">Failures</th>'));
+  const rows = html.split('<tbody>')[1].split('</tbody>')[0].split('<tr>').slice(1);
+  assert.equal(rows.length, 2);
+  for (const row of rows) assert.equal(row.split('<td').length - 1, 10, 'every row keeps a cell beneath each header');
+  assert.ok(rows[0].includes('data-skill-action="open"'));
+  assert.ok(rows[1].includes('&lt;missing-skill-with-a-long-requested-name&gt;'));
+  assert.ok(rows[1].includes('(unresolved)'));
+  assert.ok(!rows[1].includes('data-skill-action='), 'missing locations have no open or copy actions');
+  assert.ok(rows[1].includes('<td>0</td><td>0</td><td>1</td><td>1</td>'), 'failure-only row shows zero trigger counts, one session, and one failure');
+  assert.ok(get('skills-summary').textContent.includes('2 failures'));
+  assert.ok(!html.includes('<th>Projects</th>'));
 });
 
 test('MCP and plugin tables distinguish live inventory from filtered usage and escape metadata', async () => {

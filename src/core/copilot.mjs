@@ -73,6 +73,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
             project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project',
             model: textValue(e.data?.model), server: textValue(e.data?.mcpConfigServerName) || textValue(e.data?.mcpServerName),
             mcpTool: textValue(e.data?.mcpToolName),
+            skillName: name === 'skill' ? textValue(e.data?.arguments?.skill).trim() : '',
           });
         } else if (!toolOutcomes.has(key) || ms > toolOutcomes.get(key).completedMs) {
           toolOutcomes.set(key, { success: typeof e.data?.success === 'boolean' ? e.data.success : null, completedMs: ms });
@@ -108,6 +109,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
     },
     snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()],
       tools: [...toolStarts.values()].map(tool => ({ ...tool, success: null, completedMs: null, ...toolOutcomes.get(tool.key) })),
+      toolOutcomes: [...toolOutcomes].map(([key, outcome]) => ({ key, ...outcome })),
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };
 }

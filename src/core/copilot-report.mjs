@@ -25,27 +25,57 @@ function finish(b) {
 function skillReport(records, activity, input, start, end, now) {
   const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
-  let invocations = 0, omitted = 0;
+  const candidates = new Map(), seenFailures = new Set();
+  const identity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
+  const attributed = event => copilotSessions.has(event.sessionId) && !excluded.has(event.sessionId);
+  const scope = (event, name) => JSON.stringify([event.sessionId, event.project, name]);
+  const matching = event => {
+    const day = localDay(new Date(event.ms));
+    return day >= start && day <= end && (!input.project || input.project === event.project) && (!input.session || input.session === event.sessionId);
+  };
+  function rowFor(skill, event) {
+    const key = skill.unresolved ? JSON.stringify(['skill-load-failure', skill.name]) : identity(skill);
+    if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin || '', version: skill.version || '', path: skill.path || '', unresolved: !!skill.unresolved,
+      invocations: 0, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), projects: new Set(), lastUsed: event.ts });
+    const row = groups.get(key);
+    row.sessions.add(event.sessionId); row.projects.add(event.project); sessions.add(event.sessionId);
+    if (event.ts > row.lastUsed) row.lastUsed = event.ts;
+    return row;
+  }
+  let invocations = 0, failures = 0, omitted = 0, omittedFailures = 0;
   for (const skill of activity.skills || []) {
     if (skill.ms > now.getTime()) continue;
-    const attributed = copilotSessions.has(skill.sessionId) && !excluded.has(skill.sessionId);
-    if (attributed) projectOptions.add(skill.project);
-    const day = localDay(new Date(skill.ms));
-    if (day < start || day > end || input.project && input.project !== skill.project || input.session && input.session !== skill.sessionId) continue;
+    if (attributed(skill)) {
+      projectOptions.add(skill.project);
+      // Use all available identities, so narrowing dates cannot make an ambiguous name look unique.
+      const key = scope(skill, skill.name);
+      if (!candidates.has(key)) candidates.set(key, new Map());
+      candidates.get(key).set(identity(skill), skill);
+    }
+    if (!matching(skill)) continue;
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
-    if (!attributed) { omitted++; continue; }
-    const key = JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
-    if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin, version: skill.version, path: skill.path || '', invocations: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
-    const row = groups.get(key);
-    row.invocations++; row.sessions.add(skill.sessionId); row.projects.add(skill.project);
+    if (!attributed(skill)) { omitted++; continue; }
+    const row = rowFor(skill, skill);
+    row.invocations++;
     const trigger = skill.trigger === 'user-invoked' ? 'manual' : skill.trigger === 'agent-invoked' ? 'agent' : skill.trigger === 'context-load' ? 'preloaded' : 'unknown';
     row.triggers[trigger]++;
-    if (skill.ts > row.lastUsed) row.lastUsed = skill.ts;
-    sessions.add(skill.sessionId); invocations++;
+    invocations++;
+  }
+  for (const tool of activity.tools || []) {
+    if (tool.name !== 'skill' || tool.server || tool.mcpTool || tool.success !== false || tool.completedMs == null ||
+      tool.completedMs < tool.ms || tool.completedMs > now.getTime() || tool.ms > now.getTime() || seenFailures.has(tool.key)) continue;
+    seenFailures.add(tool.key);
+    if (attributed(tool)) projectOptions.add(tool.project);
+    if (!matching(tool)) continue;
+    if (!attributed(tool)) { omittedFailures++; continue; }
+    const identities = candidates.get(scope(tool, tool.skillName));
+    const skill = identities?.size === 1 ? identities.values().next().value : { name: tool.skillName || 'Unknown skill', unresolved: true };
+    rowFor(skill, tool).failures++;
+    failures++;
   }
   const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size }))
     .sort((a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name));
-  return { rows, invocations, sessions: sessions.size, omitted, projectOptions: [...projectOptions] };
+  return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, projectOptions: [...projectOptions] };
 }
 
 function toolReport(records, activity, input, start, end, now) {

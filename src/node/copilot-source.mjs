@@ -106,7 +106,7 @@ export function createScanner() {
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
-    const records = new Map(), skills = new Map(), tools = new Map(), interactions = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
+    const records = new Map(), skills = new Map(), tools = new Map(), toolOutcomes = new Map(), interactions = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
     const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
     for (const s of snapshots) {
       for (const r of s.records) if (!records.has(r.key)) { records.set(r.key, r); s.source.records++; }
@@ -116,9 +116,15 @@ export function createScanner() {
         const previous = tools.get(tool.key);
         if (!previous || (tool.completedMs ?? -Infinity) > (previous.completedMs ?? -Infinity)) tools.set(tool.key, tool);
       }
+      for (const outcome of s.toolOutcomes) {
+        const previous = toolOutcomes.get(outcome.key);
+        if (!previous || outcome.completedMs > previous.completedMs) toolOutcomes.set(outcome.key, outcome);
+      }
       for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools']) coverage[k] += s[k];
       if (s.aggregateOnly) coverage.aggregateOnly++;
     }
+    // Copied journals can contain separate portions of a call's start and completion.
+    for (const [key, tool] of tools) if (toolOutcomes.has(key)) tools.set(key, { ...tool, ...toolOutcomes.get(key) });
     for (const { db, source } of databases) {
       try {
         const result = readUsageDatabase(db, receiptSessions, source.path);

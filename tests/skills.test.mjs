@@ -29,6 +29,139 @@ const parse = events => {
   return parser.snapshot();
 };
 const report = (snapshot, input = {}) => buildReport(snapshot.records, { range: '1d', ...input }, now, snapshot);
+const loadStart = (id, name = 'code-review', extra = {}) => ({ id: id + '-start', type: 'tool.execution_start', timestamp,
+  data: { toolCallId: id, toolName: 'skill', arguments: { skill: name, prompt: 'PRIVATE ARGUMENT' }, ...extra } });
+const loadEnd = (id, success = false) => ({ id: id + '-end', type: 'tool.execution_complete', timestamp,
+  data: { toolCallId: id, success, result: { content: 'PRIVATE RESULT' }, error: { message: 'PRIVATE ERROR' } } });
+
+test('skill load failures count explicit paired outcomes once without changing uses or retaining payloads', () => {
+  const events = [usage(), skill('manual', { trigger: 'user-invoked' }), loadStart('failed'), loadEnd('failed'),
+    loadStart('failed'), loadEnd('failed'), loadStart('success'), loadEnd('success', true),
+    loadStart('pending'), loadStart('unknown'), loadEnd('unknown', 'false'), loadEnd('orphan'),
+    loadStart('other-tool', 'code-review', { toolName: 'read_file' }), loadEnd('other-tool'),
+    loadStart('mcp-skill', 'code-review', { mcpServerName: 'external' }), loadEnd('mcp-skill'),
+    { ...loadStart('live'), ephemeral: true }, loadEnd('live'), loadStart('live-end'), { ...loadEnd('live-end'), ephemeral: true }];
+  for (const ordered of [events, [...events].reverse()]) {
+    const snapshot = parse(ordered), result = report(snapshot).skills, row = result.rows[0];
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.failures, 1);
+    assert.equal(row.failures, 1);
+    assert.equal(row.invocations, 1);
+    assert.deepEqual(row.triggers, { manual: 1, agent: 0, preloaded: 0, unknown: 0 });
+    assert.equal(row.path, skill().data.path);
+    assert.ok(!JSON.stringify(snapshot).includes('PRIVATE'));
+  }
+  assert.equal(report(parse([usage(), skill()])).skills.rows[0].failures, 0);
+});
+
+test('failed loads without activations remain identifiable with no invented paths, versions, or uses', () => {
+  const result = report(parse([usage(), loadStart('missing', 'missing-skill'), loadEnd('missing'),
+    loadStart('unnamed', ''), loadEnd('unnamed'), loadStart('successful', 'success-only'), loadEnd('successful', true)])).skills;
+  assert.equal(result.failures, 2);
+  assert.equal(result.invocations, 0);
+  assert.equal(result.sessions, 1);
+  assert.equal(result.rows.length, 2);
+  assert.deepEqual(result.rows.map(r => r.name).sort(), ['Unknown skill', 'missing-skill']);
+  for (const row of result.rows) {
+    assert.equal(row.failures, 1);
+    assert.equal(row.invocations, 0);
+    assert.equal(row.sessions, 1);
+    assert.equal(row.unresolved, true);
+    assert.equal(row.path, ''); assert.equal(row.plugin, ''); assert.equal(row.version, '');
+    assert.deepEqual(row.triggers, { manual: 0, agent: 0, preloaded: 0, unknown: 0 });
+  }
+});
+
+test('a unique skill identity outside the date range can identify a failure without adding a use', () => {
+  const snapshot = parse([usage(), { ...skill(), timestamp: new Date(2026, 10, 12, 10).toISOString() }, loadStart('today'), loadEnd('today')]);
+  const row = report(snapshot).skills.rows[0];
+  assert.equal(row.path, skill().data.path);
+  assert.equal(row.unresolved, false);
+  assert.equal(row.failures, 1);
+  assert.equal(row.invocations, 0);
+  assert.equal(row.lastUsed, timestamp);
+  assert.equal(row.triggers.manual + row.triggers.agent + row.triggers.preloaded + row.triggers.unknown, 0);
+});
+
+test('name-only failure attribution preserves path, plugin and version identities across date filters', () => {
+  for (const variant of [{ path: '/other/SKILL.md' }, { pluginName: 'other-plugin' }, { pluginVersion: '2.0.0' }]) {
+    const snapshot = parse([usage(), { ...skill('earlier'), timestamp: new Date(2026, 10, 12, 10).toISOString() },
+      skill('current', variant), loadStart('ambiguous'), loadEnd('ambiguous')]);
+    for (const range of ['1d', 'all']) {
+      const result = report(snapshot, { range }).skills;
+      assert.equal(result.failures, 1);
+      assert.equal(result.rows.filter(r => r.unresolved).length, 1);
+      assert.equal(result.rows.find(r => r.unresolved).failures, 1);
+      assert.ok(result.rows.filter(r => !r.unresolved).every(r => r.failures === 0));
+    }
+  }
+});
+
+test('failure name matching is exact and limited to the same session and project', () => {
+  const snapshot = parse([usage(), skill('first'), loadStart('same-call'), loadEnd('same-call'),
+    loadStart('case', 'Code-Review'), loadEnd('case'),
+    { type: 'session.context_changed', data: { repository: 'project-two' } }, loadStart('new-project'), loadEnd('new-project'),
+    { type: 'session.start', data: { sessionId: 's2', context: { repository: 'project-one' } } },
+    usage({}, 'second-session'), skill('second', { path: '/second/SKILL.md' }), loadStart('same-call'), loadEnd('same-call')]);
+  const result = report(snapshot).skills;
+  assert.equal(result.failures, 4);
+  assert.equal(result.rows.find(r => r.path === skill().data.path).failures, 1);
+  assert.equal(result.rows.find(r => r.path === '/second/SKILL.md').failures, 1);
+  assert.equal(result.rows.find(r => r.name === 'Code-Review').unresolved, true);
+  assert.equal(report(snapshot, { project: 'project-two' }).skills.rows[0].unresolved, true);
+  assert.equal(report(snapshot, { session: 's2' }).skills.failures, 1);
+});
+
+test('skill failures follow attempt dates, project/session and provider rules, but ignore model filters', () => {
+  const yesterday = new Date(2026, 10, 12, 10).toISOString(), future = new Date(2026, 10, 13, 13).toISOString();
+  const events = [usage(), skill(), loadStart('today'), loadEnd('today'),
+    { ...loadStart('yesterday'), timestamp: yesterday }, loadEnd('yesterday'),
+    { ...loadStart('future'), timestamp: future }, { ...loadEnd('future'), timestamp: future },
+    loadStart('future-end'), { ...loadEnd('future-end'), timestamp: future },
+    loadStart('invalid-order'), { ...loadEnd('invalid-order'), timestamp: yesterday },
+    { type: 'session.context_changed', data: { repository: 'project-two' } }, loadStart('other-project'), loadEnd('other-project')];
+  const snapshot = parse(events);
+  assert.equal(report(snapshot).skills.failures, 2);
+  assert.equal(report(snapshot, { range: 'all' }).skills.failures, 3);
+  assert.equal(report(snapshot, { range: 'custom', startDate: '2026-11-12', endDate: '2026-11-12' }).skills.failures, 1);
+  assert.equal(report(snapshot, { project: 'project-two' }).skills.failures, 1);
+  assert.equal(report(snapshot, { session: 'missing' }).skills.failures, 0);
+  assert.equal(report(snapshot, { models: ['missing'], includeCache: false }).skills.failures, 2);
+  for (const accounting of [[], [usage({ isByok: true })], [usage(), usage({ provider: { kind: 'custom' } }, 'mixed')],
+    [usage(), usage({ provider: undefined }, 'unknown')], [{ ...usage(), timestamp: future }]]) {
+    const result = report(parse([...accounting, loadStart('failure'), loadEnd('failure')])).skills;
+    assert.equal(result.failures, 0);
+    assert.equal(result.omittedFailures, 1);
+    assert.equal(result.rows.length, 0);
+  }
+});
+
+test('scanner joins and deduplicates failed skill calls across copies, refreshes, tails and deletions', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-skill-failures-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const homes = ['a', 'b'].map(name => path.join(root, name));
+  const files = homes.map(home => path.join(home, 'session-state', 's1', 'events.jsonl'));
+  const lines = events => events.map(e => JSON.stringify(e) + '\n').join('');
+  for (const file of files) { await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, lines([start, usage(), skill(), loadStart('load')])); }
+  const scanner = createScanner(), scan = async force => report(await scanner.scan(homes, { force })).skills;
+  assert.equal((await scan()).failures, 0);
+  await fs.appendFile(files[1], JSON.stringify(loadEnd('load')));
+  assert.equal((await scan()).failures, 0, 'partial lines are not counted');
+  await fs.appendFile(files[1], '\n');
+  assert.equal((await scan()).failures, 1);
+  await fs.appendFile(files[0], lines([loadEnd('load'), loadStart('load'), loadEnd('load')]));
+  assert.equal((await scan()).failures, 1);
+  assert.equal((await scan(true)).failures, 1);
+  // The two copies can hold different portions of the same session journal.
+  await fs.writeFile(files[0], lines([start, usage(), skill(), loadStart('load')]));
+  await fs.writeFile(files[1], lines([start, loadEnd('load')]));
+  assert.equal((await scan(true)).failures, 1);
+  await fs.unlink(files[1]);
+  assert.equal((await scan()).failures, 0);
+  await fs.writeFile(files[0], lines([start, usage(), loadStart('new', 'missing'), loadEnd('new')]));
+  const result = await scan();
+  assert.equal(result.failures, 1); assert.equal(result.rows[0].name, 'missing');
+});
 
 for (const event of [skill, skillRef]) test(`${event().type} parser deduplicates persisted activations and retains only metadata`, () => {
   const snapshot = parse([usage(), event(), event(), { ...event('live'), ephemeral: true },
@@ -107,6 +240,9 @@ test('folder API opens only an attributed recorded row from enabled sources', as
   assert.equal((await request({ id })).status, 400);
   snapshot = parse([]);
   assert.equal((await request({ id })).status, 400);
+  snapshot = parse([usage(), loadStart('missing', 'missing-skill'), loadEnd('missing')]);
+  const failureId = report(snapshot).skills.rows[0].id;
+  assert.equal((await request({ id: failureId })).status, 400, 'failure-only rows without paths cannot launch a folder');
   assert.equal(opened.length, 1);
 });
 
