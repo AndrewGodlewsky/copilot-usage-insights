@@ -38,7 +38,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const order = { user: 0, 'turn-start': 1, receipt: 2, message: 3, 'tool-start': 4, 'agent-start': 5, 'agent-end': 6, 'tool-end': 7, 'turn-end': 8 };
   const all = [...unique.values()].sort((a, b) => a.ms - b.ms || order[a.kind] - order[b.kind] || a.id.localeCompare(b.id));
   const nodes = new Map(), byEvent = new Map(), calls = new Map(), receipts = new Map(), receiptCalls = new Map(), receiptLinks = new Map(), owners = new Map(), requestedAt = new Map(), agents = new Map(), toolEvents = new Map(), children = new Map();
-  const uncertainSessions = new Set(), eventNode = new Map(), userNodes = new Map();
+  const uncertainSessions = new Set(), eventNode = new Map(), userNodes = new Map(), userEvents = new Map();
   function nodeFor(e) {
     if (!e.interaction && e.kind !== 'user') return null;
     const id = key(e.sessionId, e.agent || e.parentTool, e.interaction || ['missing', e.promptId]);
@@ -57,7 +57,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     addTo(byEvent, key(e.sessionId, e.id), e);
     if (e.kind === 'receipt') { addTo(receipts, e.receiptKey, e); addTo(receiptCalls, key(e.sessionId, e.api), e.receiptKey); addTo(receiptLinks, key(e.sessionId, e.api), e); continue; }
     const node = nodeFor(e);
-    if (e.kind === 'user') addTo(userNodes, key(e.sessionId, e.promptId), node);
+    if (e.kind === 'user') { addTo(userNodes, key(e.sessionId, e.promptId), node); addTo(userEvents, key(e.sessionId, e.promptId), e); }
     if (e.kind === 'message' && !node) uncertainSessions.add(e.sessionId);
     if (e.kind === 'message' && node) {
       node.messages.push(e);
@@ -222,22 +222,40 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     for (const id of group.receipts.keys()) assignedReceipts.delete(id);
   }
   let nano = 0n;
-  const inScope = e => { const day = localDay(new Date(e.ms)); return day >= start && day <= end && (!query.project || query.project === e.project) && (!query.session || query.session === e.sessionId); };
+  const inDatesAndSession = e => { const day = localDay(new Date(e.ms)); return day >= start && day <= end && (!query.session || query.session === e.sessionId); };
+  const inScope = e => inDatesAndSession(e) && (!query.project || query.project === e.project);
+  // Count submissions separately from cost eligibility; missing charges do not erase a known user action.
+  const projectPrompts = new Map(), copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
+  const otherSessions = new Set(all.filter(e => e.kind === 'receipt' && !e.copilot).map(e => e.sessionId));
+  const projectCount = e => {
+    if (!projectPrompts.has(e.project)) projectPrompts.set(e.project, { name: e.project, count: 0, uncertain: 0 });
+    return projectPrompts.get(e.project);
+  };
+  for (const e of all) if (e.kind === 'user' && (!query.session || query.session === e.sessionId) && !query.models && copilotSessions.has(e.sessionId) && !otherSessions.has(e.sessionId)) projectCount(e);
   for (const group of groups.values()) for (const prompt of group.prompts) {
-    if (!inScope(prompt)) continue;
+    if (query.session && query.session !== prompt.sessionId) continue;
     const charges = [...group.receipts.values()], selected = charges.filter(r => !query.models || query.models.includes(r.model));
-    if (query.models && !selected.length) continue;
-    result.prompts++;
     const origin = eventNode.get(prompt);
     let firstCall;
     for (const node of group.nodes) if (node.scope === origin.scope) for (const m of node.messages) if (!firstCall || m.ms < firstCall.ms) firstCall = m;
     const initial = charges.some(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId && r.initiator === 'user');
+    const linksKnown = group.prompts.length === 1 && !group.nodes.some(n => n.bad);
+    const variants = [...userEvents.get(key(prompt.sessionId, prompt.promptId))];
+    const identityKnown = variants.every(e => e.project === prompt.project && e.origin === prompt.origin && !eventNode.get(e).scope) && (prompt.origin === 'user' || linksKnown && initial);
+    const providerKnown = linksKnown && charges.length ? charges.every(r => r.copilot) : copilotSessions.has(prompt.sessionId) && !otherSessions.has(prompt.sessionId);
+    if (providerKnown && (!query.models || selected.length || !charges.length)) {
+      const count = projectCount(prompt);
+      if (inDatesAndSession(prompt)) count[identityKnown && (!query.models || linksKnown && selected.length) ? 'count' : 'uncertain']++;
+    }
+    if (!inScope(prompt) || query.models && !selected.length) continue;
+    result.prompts++;
     if (group.prompts.length !== 1 || group.nodes.some(n => n.bad || n.events.some(e => uncertainSessions.has(e.sessionId))) || prompt.origin === 'unspecified' && !initial) result.excluded.attribution++;
     else if (!charges.length || group.nodes.some(n => n.accounting)) result.excluded.accounting++;
     else if (group.nodes.some(n => n.unfinished)) result.excluded.unfinished++;
     else { result.eligiblePrompts++; for (const r of selected) nano += BigInt(r.nano); }
   }
   result.unlinkedRequests = records.filter(r => r.ms <= now.getTime() && !assignedReceipts.has(r.key) && inScope(r) && (!query.models || query.models.includes(r.model))).length;
+  result.projectPrompts = [...projectPrompts.values()];
   if (result.eligiblePrompts) { result.credits = Number(nano) / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }
   return result;
 }

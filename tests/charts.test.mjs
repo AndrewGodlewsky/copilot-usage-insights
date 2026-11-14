@@ -81,6 +81,17 @@ test('hBars truncates long labels and escapes', () => {
   assert.ok(!s.includes('<x>'))
 })
 
+test('selectable model bars expose keyboard controls and retain gray alternatives', () => {
+  const items = [{ label: '<Alpha>', value: 20 }, { label: 'Beta', value: 10 }];
+  const s = hBars(items, { selectable: true, selectedLabel: '<Alpha>' });
+  wellFormed(s);
+  assert.match(s, /role="group"/);
+  assert.match(s, /data-usage-model="&lt;Alpha&gt;" role="button" tabindex="0" aria-pressed="true"/);
+  assert.match(s, /class="mark choice-muted"[^>]*data-usage-model="Beta"[^>]*aria-pressed="false"/);
+  assert.match(s, /clear model filter/);
+  assert.doesNotMatch(hBars(items), /data-usage-model|aria-pressed|choice-muted/);
+});
+
 test('ranking bars reserve room for full trillion-scale values at every text size', () => {
   const note = (42_244_916_000_000).toLocaleString();
   for (const textScale of [1, 1.15, 1.3]) {

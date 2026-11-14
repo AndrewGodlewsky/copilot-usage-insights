@@ -16,7 +16,7 @@ const creditNumber = value => formatCredits(value, { simplify: state.simplifyNum
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -163,16 +163,18 @@ function table(rows, heading, details = false, expansion = '') {
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
   const modelExpansion = expansion === 'model', projectExpansion = expansion === 'project';
+  const projectFilter = expansion === 'projectFilter';
   const sessionExpansion = expansion === 'session', requestExpansion = expansion === 'request', sessionModelsExpansion = expansion === 'sessionModels';
   const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion || sessionModelsExpansion;
   const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : sessionModelsExpansion ? 'data-project-session' : 'data-request-id';
   const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : sessionModelsExpansion ? 'session-models' : 'request-detail';
-  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th>Requests</th>'}${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
     const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : sessionModelsExpansion ? state.projectView?.models?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
     const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
     const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
-    const name = expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
-    const cells = `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    const choice = projectFilter ? `<td class="text-cell"><button class="model-toggle cell-text" data-usage-project="${esc(r.name)}" aria-pressed="${$('project').value === r.name}" title="${esc(r.name)}: ${$('project').value === r.name ? 'clear project filter' : 'filter dashboard'}">${esc(r.name)}</button></td>` : '';
+    const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
+    const cells = `<tr${projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? 'Unavailable' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
     const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : sessionModelsExpansion ? sessionModelList() : requestDetail(state.requestView);
     return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
@@ -576,6 +578,11 @@ $('efficiency-models').onclick = event => {
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
+function visibleChoices(rows, selected, limit) {
+  const visible = rows.slice(0, limit);
+  if (selected && !visible.some(r => r.name === selected)) visible.push(rows.find(r => r.name === selected) || { name: selected, requests: 0, total: 0, userPrompts: null, uncertainPrompts: 0 });
+  return visible;
+}
 function renderContent() {
   const r = state.report;
   if (!r) return;
@@ -585,6 +592,7 @@ function renderContent() {
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
+  const focusedChoice = document.activeElement?.dataset;
   const selected = r.daily.find(d => d.day === state.selectedDay);
   if (!selected) state.selectedDay = null;
   const scope = selected || t;
@@ -615,7 +623,7 @@ function renderContent() {
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${promptCoverage}${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
@@ -648,14 +656,32 @@ function renderContent() {
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
   $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
-  $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
+  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+  $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10), 'Project', false, 'projectFilter');
+  $('models-selection').textContent = $('model').value ? 'Model filter on · select again to clear' : 'Top 8 · select to filter';
+  $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
   renderBreakdown();
   renderEfficiency();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
+  for (const type of ['model', 'project']) {
+    const key = type === 'model' ? 'usageModel' : 'usageProject';
+    if (focusedChoice?.[key] !== undefined) [...$(`${type}s-summary`).querySelectorAll(`[data-usage-${type}]`)].find(el => el.dataset[key] === focusedChoice[key])?.focus({ preventScroll: true });
+  }
 }
+function selectUsageFilter(type, value) {
+  if (value === undefined) return;
+  $(type).value = $(type).value === value ? '' : value;
+  $('tip').hidden = true;
+  return load();
+}
+$('models-summary').onclick = e => selectUsageFilter('model', e.target.closest('[data-usage-model]')?.dataset.usageModel);
+$('models-summary').onkeydown = e => {
+  const model = e.target.closest('[data-usage-model]')?.dataset.usageModel;
+  if (model !== undefined && ['Enter', ' '].includes(e.key)) { e.preventDefault(); return selectUsageFilter('model', model); }
+};
+$('projects-summary').onclick = e => selectUsageFilter('project', e.target.closest('[data-usage-project]')?.dataset.usageProject);
 function selectDay(day) {
   const focusDay = day || state.selectedDay;
   state.selectedDay = state.selectedDay === day ? null : day;

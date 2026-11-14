@@ -41,13 +41,15 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 #content[data-metric] :is(td,dd,strong.value)[data-measure]{color:var(--muted-fg)}
 #content[data-metric=tokens] :is(td,dd,strong.value)[data-measure=tokens],#content[data-metric=credits] :is(td,dd,strong.value)[data-measure=credits]{color:var(--metric-accent);font-weight:700}
 .toolbar-actions{display:flex;align-items:center;gap:inherit;margin-inline-start:auto;flex-shrink:0}
+
+#models-summary [role="button"]{cursor:pointer}#models-summary [role="button"]:focus-visible{outline:2px solid var(--s1);outline-offset:1px}#models-summary [role="button"]:hover .hit,#models-summary [aria-pressed="true"] .hit{fill:var(--muted)}#models-summary .choice-muted text{fill:var(--muted-fg)}#models-summary .choice-muted .bar{fill:var(--muted-fg)}#models-summary [aria-pressed="true"] .t-label{font-weight:700}#content #projects-summary .choice-muted td,#projects-summary .choice-muted button{color:var(--muted-fg)}#projects-summary [aria-pressed="true"]{font-weight:700;text-decoration:underline;text-underline-offset:3px}
 </style></head>
 <body><main id="app">
   <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p><p class="hero-credits"><strong id="hero-credits">—</strong><span>Copilot credits</span></p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
   <nav class="controls" aria-label="Dashboard controls">
     <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button><button data-view="efficiency" aria-pressed="false">Efficiency</button></div>
     <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
-    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true" title="Show token values. Click again to clear emphasis.">Tokens</button><button data-metric="credits" aria-pressed="false" title="Show AI credit values. Click again to clear emphasis.">AI credits</button></div>
+    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="false" title="Show token values. Click again to clear emphasis.">Tokens</button><button data-metric="credits" aria-pressed="false" title="Show AI credit values. Click again to clear emphasis.">AI credits</button></div>
     <div class="toolbar-actions" role="group" aria-label="Dashboard actions"><button id="refresh">Refresh</button><button id="settings-open">Settings</button></div>
   </nav>
   <div id="custom" class="controls" hidden><label>From <input type="date" id="start-date"></label><label>Through <input type="date" id="end-date"></label><button id="apply-dates">Apply dates</button><span class="muted">Inclusive, in local time</span></div>
@@ -69,8 +71,9 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
         <p id="token-note" class="footnote"></p>
       </article>
       <div class="grid-2"><article class="card"><header><h2>Activity</h2><span class="muted">26 weeks · filtered history</span></header><div id="calendar"></div></article><article class="card"><header><h2>When you work</h2><span class="muted">Local time · selected dates</span></header><div id="rhythm"></div></article></div>
-      <article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article>
-      <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
+      <article class="card"><header><h2>Models</h2><span class="muted" id="models-selection">Top 8</span></header><div id="models-summary"></div></article>
+      <article class="card"><header><h2>Projects</h2><span class="muted" id="projects-selection"></span></header><div id="projects-summary" class="table-wrap"></div></article>
+      <p class="footnote">Select a model or project to filter the dashboard; select it again to clear. Gray choices show alternatives within the other filters.</p>
     </section>
     <section id="breakdown-view" hidden>
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
@@ -101,14 +104,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.47</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.48</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.47";
+const BUILD_VERSION = "0.1.48";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -471,7 +474,7 @@ function donut(segments, { size = 132, thickness = 16, centerLabel = 'tokens' } 
 }
 
 // Horizontal bar list. items: [{ label, value, note? }]
-function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale } = {}) {
+function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale, selectable = false, selectedLabel = '' } = {}) {
   const label = 'Ranking'
   if (!items?.length) return empty(width, row * 2, label)
   valueW = Math.max(valueW, ...items.map(it => (String(it.note ?? compact(it.value)).length * 6.6 + 12) * textScale))
@@ -486,12 +489,13 @@ function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW
     const maxChars = Math.floor(labelW / (6.6 * textScale))
     const name = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label
     const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.value], ...(it.note ? [['', it.note]] : [])] }))
-    body += `<g class="mark" data-tip="${tip}"><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
+    const selection = selectable ? ` data-usage-model="${esc(it.label)}" role="button" tabindex="0" aria-pressed="${it.label === selectedLabel}" aria-label="${esc(it.label)}: ${esc(it.note ?? compact(it.value))} tokens; ${it.label === selectedLabel ? 'clear model filter' : 'filter dashboard'}"` : ''
+    body += `<g class="mark${selectable && selectedLabel && selectedLabel !== it.label ? ' choice-muted' : ''}" data-tip="${tip}"${selection}><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
     body += `<text x="0" y="${y + row / 2 + 4 * textScale}" class="t-label">${esc(name)}</text>`
     body += `<rect x="${labelW}" y="${y + 6 * textScale}" width="${w}" height="${row - 12 * textScale}" rx="3" class="bar"/>`
     body += `<text x="${width}" y="${y + row / 2 + 4 * textScale}" text-anchor="end" class="t-muted">${esc(it.note ?? compact(it.value))}</text></g>`
   })
-  return svg(width, items.length * row, body, label)
+  return svg(width, items.length * row, body, label, selectable ? 'group' : 'img')
 }
 
 function sparkline(values, { width = 96, height = 26 } = {}) {
@@ -854,7 +858,7 @@ const creditNumber = value => formatCredits(value, { simplify: state.simplifyNum
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -1001,16 +1005,18 @@ function table(rows, heading, details = false, expansion = '') {
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
   const modelExpansion = expansion === 'model', projectExpansion = expansion === 'project';
+  const projectFilter = expansion === 'projectFilter';
   const sessionExpansion = expansion === 'session', requestExpansion = expansion === 'request', sessionModelsExpansion = expansion === 'sessionModels';
   const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion || sessionModelsExpansion;
   const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : sessionModelsExpansion ? 'data-project-session' : 'data-request-id';
   const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : sessionModelsExpansion ? 'session-models' : 'request-detail';
-  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th>Requests</th>'}${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
     const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : sessionModelsExpansion ? state.projectView?.models?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
     const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
     const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
-    const name = expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
-    const cells = `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    const choice = projectFilter ? `<td class="text-cell"><button class="model-toggle cell-text" data-usage-project="${esc(r.name)}" aria-pressed="${$('project').value === r.name}" title="${esc(r.name)}: ${$('project').value === r.name ? 'clear project filter' : 'filter dashboard'}">${esc(r.name)}</button></td>` : '';
+    const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
+    const cells = `<tr${projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? 'Unavailable' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
     const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : sessionModelsExpansion ? sessionModelList() : requestDetail(state.requestView);
     return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
@@ -1414,6 +1420,11 @@ $('efficiency-models').onclick = event => {
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
+function visibleChoices(rows, selected, limit) {
+  const visible = rows.slice(0, limit);
+  if (selected && !visible.some(r => r.name === selected)) visible.push(rows.find(r => r.name === selected) || { name: selected, requests: 0, total: 0, userPrompts: null, uncertainPrompts: 0 });
+  return visible;
+}
 function renderContent() {
   const r = state.report;
   if (!r) return;
@@ -1423,6 +1434,7 @@ function renderContent() {
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
+  const focusedChoice = document.activeElement?.dataset;
   const selected = r.daily.find(d => d.day === state.selectedDay);
   if (!selected) state.selectedDay = null;
   const scope = selected || t;
@@ -1453,7 +1465,7 @@ function renderContent() {
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${promptCoverage}${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
@@ -1486,14 +1498,32 @@ function renderContent() {
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
   $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
-  $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
+  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+  $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10), 'Project', false, 'projectFilter');
+  $('models-selection').textContent = $('model').value ? 'Model filter on · select again to clear' : 'Top 8 · select to filter';
+  $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
   renderBreakdown();
   renderEfficiency();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
+  for (const type of ['model', 'project']) {
+    const key = type === 'model' ? 'usageModel' : 'usageProject';
+    if (focusedChoice?.[key] !== undefined) [...$(`${type}s-summary`).querySelectorAll(`[data-usage-${type}]`)].find(el => el.dataset[key] === focusedChoice[key])?.focus({ preventScroll: true });
+  }
 }
+function selectUsageFilter(type, value) {
+  if (value === undefined) return;
+  $(type).value = $(type).value === value ? '' : value;
+  $('tip').hidden = true;
+  return load();
+}
+$('models-summary').onclick = e => selectUsageFilter('model', e.target.closest('[data-usage-model]')?.dataset.usageModel);
+$('models-summary').onkeydown = e => {
+  const model = e.target.closest('[data-usage-model]')?.dataset.usageModel;
+  if (model !== undefined && ['Enter', ' '].includes(e.key)) { e.preventDefault(); return selectUsageFilter('model', model); }
+};
+$('projects-summary').onclick = e => selectUsageFilter('project', e.target.closest('[data-usage-project]')?.dataset.usageProject);
 function selectDay(day) {
   const focusDay = day || state.selectedDay;
   state.selectedDay = state.selectedDay === day ? null : day;

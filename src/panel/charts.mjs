@@ -221,7 +221,7 @@ export function donut(segments, { size = 132, thickness = 16, centerLabel = 'tok
 }
 
 // Horizontal bar list. items: [{ label, value, note? }]
-export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale } = {}) {
+export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale, selectable = false, selectedLabel = '' } = {}) {
   const label = 'Ranking'
   if (!items?.length) return empty(width, row * 2, label)
   valueW = Math.max(valueW, ...items.map(it => (String(it.note ?? compact(it.value)).length * 6.6 + 12) * textScale))
@@ -236,12 +236,13 @@ export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale,
     const maxChars = Math.floor(labelW / (6.6 * textScale))
     const name = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label
     const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.value], ...(it.note ? [['', it.note]] : [])] }))
-    body += `<g class="mark" data-tip="${tip}"><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
+    const selection = selectable ? ` data-usage-model="${esc(it.label)}" role="button" tabindex="0" aria-pressed="${it.label === selectedLabel}" aria-label="${esc(it.label)}: ${esc(it.note ?? compact(it.value))} tokens; ${it.label === selectedLabel ? 'clear model filter' : 'filter dashboard'}"` : ''
+    body += `<g class="mark${selectable && selectedLabel && selectedLabel !== it.label ? ' choice-muted' : ''}" data-tip="${tip}"${selection}><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
     body += `<text x="0" y="${y + row / 2 + 4 * textScale}" class="t-label">${esc(name)}</text>`
     body += `<rect x="${labelW}" y="${y + 6 * textScale}" width="${w}" height="${row - 12 * textScale}" rx="3" class="bar"/>`
     body += `<text x="${width}" y="${y + row / 2 + 4 * textScale}" text-anchor="end" class="t-muted">${esc(it.note ?? compact(it.value))}</text></g>`
   })
-  return svg(width, items.length * row, body, label)
+  return svg(width, items.length * row, body, label, selectable ? 'group' : 'img')
 }
 
 export function sparkline(values, { width = 96, height = 26 } = {}) {

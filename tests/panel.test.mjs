@@ -59,13 +59,65 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
         return { ok: true, json: async () => server.requestPage(message.input) };
       }
       assert.ok(['usage.report', 'usage.refresh'].includes(message.method));
-      return { ok: true, json: async () => report };
+      return { ok: true, json: async () => server.report ? server.report(message.input) : report };
     },
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
 }
+
+test('Usage selections cross-filter metrics, preserve gray alternatives, and clear on repeat', async () => {
+  const { records, now } = await requestPanel();
+  const data = [
+    { ...records[0], key: 'a', model: 'Alpha', project: 'One' },
+    { ...records[0], key: 'b', model: 'Beta', project: 'One', nanoAiu: 1000000000 },
+    { ...records[0], key: 'c', model: 'Alpha', project: 'Two' },
+  ];
+  const makeReport = input => ({ ...buildReport(data, input, now), sources: [], coverage: {} });
+  const { get, server, requests } = await mountPanel(makeReport({ range: '7d' }));
+  server.report = makeReport;
+  const choose = (type, value) => get(`${type}s-summary`).onclick({ target: { closest: () => ({ dataset: { [type === 'model' ? 'usageModel' : 'usageProject']: value } }) } });
+  assert.match(get('projects-summary').innerHTML, />User prompts<\/th><th>Model turns<\/th>/);
+  assert.doesNotMatch(get('projects-summary').innerHTML, />Requests<\/th>/);
+  assert.match(get('projects-summary').innerHTML, />Unavailable<\/td>/);
+  const original = get('token-total').textContent;
+  await choose('model', 'Alpha');
+  assert.equal(get('model').value, 'Alpha');
+  assert.match(get('models-summary').innerHTML, /data-usage-model="Alpha"[^>]*aria-pressed="true"/);
+  assert.match(get('models-summary').innerHTML, /class="mark choice-muted"[^>]*data-usage-model="Beta"/);
+  assert.notEqual(get('token-total').textContent, original);
+  assert.match(get('token-context').textContent, /2 requests/);
+  await choose('project', 'One');
+  assert.equal(get('project').value, 'One');
+  assert.match(get('token-context').textContent, /1 requests/);
+  assert.match(get('projects-summary').innerHTML, /<tr class="choice-muted">.*?data-usage-project="Two"/);
+  assert.match(get('projects-summary').innerHTML, /data-usage-project="One" aria-pressed="true"/);
+  assert.match(get('models-summary').innerHTML, /data-usage-model="Beta"/);
+  assert.deepEqual(requests.at(-1).input.models, ['Alpha']);
+  assert.equal(requests.at(-1).input.project, 'One');
+  await choose('model', 'Alpha');
+  assert.equal(get('model').value, '');
+  assert.match(get('token-context').textContent, /2 requests/);
+  let prevented = false;
+  await get('models-summary').onkeydown({ key: ' ', preventDefault() { prevented = true; }, target: { closest: () => ({ dataset: { usageModel: 'Beta' } }) } });
+  assert.ok(prevented);
+  assert.equal(get('model').value, 'Beta');
+  assert.equal(get('hero-credits').textContent, '1');
+  await choose('project', 'One');
+  assert.equal(get('project').value, '');
+  assert.equal(get('model').value, 'Beta', 'clearing a dimension preserves the other selection');
+  get('clear-filters').onclick(); await new Promise(setImmediate);
+  assert.equal(get('token-total').textContent, original);
+  assert.doesNotMatch(get('models-summary').innerHTML, /choice-muted/);
+  assert.doesNotMatch(get('projects-summary').innerHTML, /choice-muted/);
+  assert.ok(requests.every(r => r.method === 'usage.report'), 'selections use the cached report without rescans or detail lookups');
+  get('model').value = 'Missing <model>'; get('model').onchange(); await new Promise(setImmediate);
+  assert.match(get('models-summary').innerHTML, /data-usage-model="Missing &lt;model&gt;"[^>]*aria-pressed="true"/);
+  assert.match(get('token-context').textContent, /0 requests/);
+  await choose('model', 'Missing <model>');
+  assert.equal(get('token-total').textContent, original);
+});
 
 test('shared chart tooltips keep their width and flip away from viewport edges', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
@@ -727,12 +779,12 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   const card = index => get('tiles').innerHTML.split('<div class="tile">')[index + 1].split('</div>')[0];
   assert.equal(get('tiles').innerHTML.match(/class="tile"/g).length, 4);
   assert.doesNotMatch(get('tiles').innerHTML, /Current streak|>Models</);
-  assert.match(card(2), /<span class="label">AI credits \/ prompt<\/span>.*>Unavailable<\/strong>.*0 of 0 prompts/);
+  assert.match(card(2), /<span class="label">AI credits \/ prompt<\/span>.*>Unavailable<\/strong>.*<span class="sub">0 prompts<\/span>/);
   assert.match(card(3), /<span class="label">AI credit \/ 1M tokens<\/span>.*>2\.1K<\/strong>/);
   assert.match(card(3), /<span class="sub">input \+ output \+ cache<\/span>/);
   Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0.0678776, averageCredits: 0.0678776 });
   await get('refresh').onclick();
-  assert.match(card(2), />0\.068<\/strong>.*1 of 1 prompts/);
+  assert.match(card(2), />0\.068<\/strong>.*<span class="sub">1 prompts<\/span>/);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();
@@ -747,13 +799,13 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   Object.assign(report, buildReport(incomplete, { range: '7d' }, now));
   Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 1, credits: 0.25, averageCredits: 0.25, modelFiltered: true, excluded: { attribution: 0, accounting: 1, unfinished: 0 } });
   await get('refresh').onclick();
-  assert.match(card(2), />0\.25 \*<\/strong>.*1 of 2 prompts · selected-model contribution/);
+  assert.match(card(2), />0\.25 \*<\/strong>.*1 prompts · selected-model contribution/);
   assert.match(card(2), /1 incomplete charges/);
   assert.match(card(3), /1 of 3 requests/);
   assert.match(card(3), /\*<\/strong>.*<span class="sub">input \+ output \+ cache<\/span>/);
   Object.assign(report, buildReport([incomplete[0]], { range: '7d' }, now));
   await get('refresh').onclick();
-  assert.match(card(2), />Unavailable<\/strong>.*0 of 0 prompts/);
+  assert.match(card(2), />Unavailable<\/strong>.*<span class="sub">0 prompts<\/span>/);
   assert.match(card(3), /0 of 1 requests.*>Unavailable<\/strong>/);
   Object.assign(report, buildReport([{ ...records[0], nanoAiu: 0 }], { range: '7d' }, now));
   Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0, averageCredits: 0 });
@@ -766,12 +818,16 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
 
 test('metric buttons toggle emphasis off without changing chart units or loading data', async () => {
   const { get, requests } = await requestPanel();
-  const buttons = ['tokens', 'credits'].map(metric => ({ dataset: { metric }, 'aria-pressed': String(metric === 'tokens'),
+  const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  for (const metric of ['tokens', 'credits']) assert.ok(html.includes(`data-metric="${metric}" aria-pressed="false"`));
+  const buttons = ['tokens', 'credits'].map(metric => ({ dataset: { metric }, 'aria-pressed': 'false',
     setAttribute(name, value) { this[name] = value; } }));
   get('metric').querySelectorAll = () => buttons;
   const press = metric => get('metric').onclick({ target: { dataset: { metric } } });
   const selected = () => buttons.map(b => b['aria-pressed']);
   const before = requests.length;
+  assert.equal(get('content').dataset.metric, undefined, 'initial load is neutral');
+  press('tokens');
   assert.equal(get('content').dataset.metric, 'tokens');
   press('tokens');
   assert.equal(get('content').dataset.metric, undefined, 'removing the attribute disables both accent and neutral-gray CSS');

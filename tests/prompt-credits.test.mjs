@@ -36,6 +36,88 @@ function snapshot(events) {
 const report = (events, query = {}) => { const s = snapshot(events); return buildReport(s.records, { range: 'all', ...query }, now, s); };
 const metrics = (events, query) => report(events, query).promptCredits;
 
+test('Usage projects count human submissions independently of model turns and complete billing', () => {
+  const f = fixture(); f.user('a'); f.call('a', 'initial', 1, { terminal: false });
+  f.call('a', 'continuation', 2, { turn: '1', initiator: 'agent' });
+  f.user('b'); f.call('b', 'unfinished', null, { complete: false });
+  f.user('auto', { isAutopilotContinuation: true }); f.call('auto', 'auto', 3, { initiator: 'agent', turn: 'auto' });
+  const r = report([...f.events, ...f.events]);
+  assert.equal(r.projects[0].requests, 4);
+  assert.equal(r.projects[0].userPrompts, 2);
+  assert.equal(r.projects[0].uncertainPrompts, 0);
+  assert.equal(r.promptCredits.eligiblePrompts, 1);
+  assert.equal(report(delegated().events).projects[0].userPrompts, 1, 'subagents are work for one originating prompt');
+  const unknown = fixture(); unknown.user('a', { source: undefined }); unknown.call('a', 'a', 1, { initiator: 'agent' });
+  assert.equal(report(unknown.events).projects[0].userPrompts, null);
+  assert.equal(report(unknown.events).projects[0].uncertainPrompts, 1);
+  const legacy = fixture(); legacy.call('a', 'a', 1);
+  assert.equal(report(legacy.events).projects[0].userPrompts, null, 'missing prompt metadata is not a zero count');
+});
+
+test('Usage choices retain alternatives, intersect filters, and date prompts by submission', () => {
+  const a = fixture('a', 'A'); a.time(new Date(2026, 10, 13, 23, 59)); a.user('old');
+  a.time(new Date(2026, 10, 14, 1)); a.call('old', 'continued', 1, { model: 'Model B' });
+  a.user('new'); a.call('new', 'initial', 2); a.call('new', 'next', 3, { model: 'Model B', turn: '1', initiator: 'agent' });
+  const b = fixture('b', 'B'); b.user('new'); b.call('new', 'initial', 4);
+  const events = [...a.events, ...b.events];
+  const selected = report(events, { range: '1d', models: ['Model A'], project: 'A' });
+  assert.equal(selected.totals.requests, 1);
+  assert.deepEqual(selected.usageChoices.models.map(r => r.name).sort(), ['Model A', 'Model B']);
+  assert.deepEqual(selected.usageChoices.projects.map(r => r.name).sort(), ['A', 'B']);
+  assert.equal(selected.projects[0].userPrompts, 1);
+  assert.equal(selected.usageChoices.projects.find(r => r.name === 'B').userPrompts, 1);
+  const today = report(events, { range: '1d', models: ['Model B'] });
+  assert.equal(today.totals.requests, 2);
+  assert.equal(today.projects[0].userPrompts, 1, 'yesterday\'s prompt is not counted again for today\'s continuation');
+  assert.equal(report(events, { range: 'all', models: ['Model B'] }).projects[0].userPrompts, 2);
+  assert.deepEqual(report(events, { session: 'b', project: 'B' }).usageChoices.models.map(r => r.name), ['Model A']);
+  const empty = report(events, { models: ['Missing'], project: 'A' });
+  assert.equal(empty.totals.requests, 0);
+  assert.equal(empty.usageChoices.models.length, 2);
+  assert.equal(empty.usageChoices.projects.length, 0);
+});
+
+test('explicit human counts survive ambiguous billing links but model attribution stays conservative', () => {
+  const f = fixture(); f.user('a'); f.call('a', 'same-call', 1);
+  f.user('b'); f.call('b', 'same-call', 1);
+  assert.equal(report(f.events).projects[0].userPrompts, 2);
+  assert.equal(report(f.events).promptCredits.eligiblePrompts, 0);
+  const model = report(f.events, { models: ['Model A'] }).projects[0];
+  assert.equal(model.userPrompts, null); assert.equal(model.uncertainPrompts, 2);
+  const replay = f.events.filter(e => e.type === 'user.message').map(e => ({ ...e, id: e.id + '-replay' }));
+  assert.equal(report([...f.events, ...replay]).projects[0].userPrompts, 2);
+  const conflict = structuredClone(f.events.find(e => e.type === 'user.message'));
+  conflict.id += '-conflict'; conflict.data.source = undefined;
+  const r = report([...f.events, conflict]).projects[0];
+  assert.equal(r.userPrompts, 1); assert.equal(r.uncertainPrompts, 1);
+  conflict.data.source = 'agent-worker';
+  const automated = report([...f.events, conflict]).projects[0];
+  assert.equal(automated.userPrompts, 1); assert.equal(automated.uncertainPrompts, 1, 'conflicting automatic provenance cannot certify a human');
+});
+
+test('Usage projects show pending submissions and zero new prompts for later continuations', () => {
+  const f = fixture(); f.time(new Date(2026, 10, 13, 10)); f.user('yesterday'); f.call('yesterday', 'initial', 1);
+  f.time(new Date(2026, 10, 14, 1)); f.call('yesterday', 'later', 2, { turn: '1', initiator: 'agent' });
+  for (const models of [undefined, ['Model A']]) {
+    const today = report(f.events, { range: '1d', models });
+    assert.equal(today.projects[0].userPrompts, 0);
+    assert.equal(today.usageChoices.projects[0].userPrompts, 0);
+    assert.equal(today.projects[0].requests, 1);
+  }
+  const pending = fixture('pending', 'Pending project');
+  pending.time(new Date(2026, 10, 13, 10)); pending.user('old'); pending.call('old', 'old-call', 1);
+  pending.time(new Date(2026, 10, 14, 1)); pending.user('waiting');
+  const today = report(pending.events, { range: '1d' });
+  assert.equal(today.projects.length, 0, 'Breakdown remains based on usage receipts');
+  assert.equal(today.usageChoices.projects[0].userPrompts, 1);
+  assert.equal(today.usageChoices.projects[0].requests, 0);
+  assert.equal(report(pending.events, { range: '1d', models: ['Model A'] }).usageChoices.projects.length, 0, 'pending work has no confirmed model');
+  pending.push('session.context_changed', { repository: 'New project' }); pending.user('new-project-prompt');
+  const changed = report(pending.events, { range: '1d' });
+  assert.equal(changed.usageChoices.projects.find(p => p.name === 'New project').userPrompts, 1);
+  assert.ok(changed.options.projects.includes('New project'), 'a prompt-only project must be a valid select option so its filter button works');
+});
+
 test('prompt credits include initial and continuation calls once, using recorded nanounits', () => {
   const f = fixture(); f.user('hello', { source: undefined, parentAgentTaskId: 'telemetry' });
   f.call('hello', 'initial', 33747350, { terminal: false });

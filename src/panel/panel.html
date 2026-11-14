@@ -6,7 +6,7 @@
   <nav class="controls" aria-label="Dashboard controls">
     <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button><button data-view="efficiency" aria-pressed="false">Efficiency</button></div>
     <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
-    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true" title="Show token values. Click again to clear emphasis.">Tokens</button><button data-metric="credits" aria-pressed="false" title="Show AI credit values. Click again to clear emphasis.">AI credits</button></div>
+    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="false" title="Show token values. Click again to clear emphasis.">Tokens</button><button data-metric="credits" aria-pressed="false" title="Show AI credit values. Click again to clear emphasis.">AI credits</button></div>
     <div class="toolbar-actions" role="group" aria-label="Dashboard actions"><button id="refresh">Refresh</button><button id="settings-open">Settings</button></div>
   </nav>
   <div id="custom" class="controls" hidden><label>From <input type="date" id="start-date"></label><label>Through <input type="date" id="end-date"></label><button id="apply-dates">Apply dates</button><span class="muted">Inclusive, in local time</span></div>
@@ -28,8 +28,9 @@
         <p id="token-note" class="footnote"></p>
       </article>
       <div class="grid-2"><article class="card"><header><h2>Activity</h2><span class="muted">26 weeks · filtered history</span></header><div id="calendar"></div></article><article class="card"><header><h2>When you work</h2><span class="muted">Local time · selected dates</span></header><div id="rhythm"></div></article></div>
-      <article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article>
-      <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
+      <article class="card"><header><h2>Models</h2><span class="muted" id="models-selection">Top 8</span></header><div id="models-summary"></div></article>
+      <article class="card"><header><h2>Projects</h2><span class="muted" id="projects-selection"></span></header><div id="projects-summary" class="table-wrap"></div></article>
+      <p class="footnote">Select a model or project to filter the dashboard; select it again to clear. Gray choices show alternatives within the other filters.</p>
     </section>
     <section id="breakdown-view" hidden>
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>

@@ -218,18 +218,34 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   let current = 0;
   for (let d = calendar.has(today) ? today : today - 1; calendar.has(d); d--) current++;
   const activityStart = q.range === 'all' ? -Infinity : start;
+  const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now);
+  const { projectPrompts, ...promptSummary } = promptCredits;
+  const promptCounts = new Map(projectPrompts.map(p => [p.name, p]));
+  const withPrompts = rows => rows.map(row => {
+    const p = promptCounts.get(row.name);
+    return { ...row, userPrompts: p && (p.count || !p.uncertain) ? p.count : null, uncertainPrompts: p?.uncertain || 0 };
+  });
+  // Choice lists ignore their own filter, so other choices remain available after selection.
+  const modelChoices = new Map(), projectChoices = new Map();
+  for (const r of records) {
+    const day = localDay(new Date(r.ms));
+    if (r.ms > now.getTime() || day < activityStart || day > end || input.session && r.sessionId !== input.session) continue;
+    if (!input.project || r.project === input.project) add(get(modelChoices, r.model), r, q.includeCache);
+    if (!q.models || q.models.includes(r.model)) add(get(projectChoices, r.project), r, q.includeCache);
+  }
+  for (const p of projectPrompts) if (p.count) get(projectChoices, p.name);
   const { projectOptions, ...skills } = skillReport(records, activity, input, activityStart, end, now);
   const { projectOptions: toolProjects, ...tools } = toolReport(records, activity, { ...input, models: q.models }, activityStart, end, now);
   return {
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
-    rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions).map(s => {
+    rhythm, models: ranked(models), projects: withPrompts(ranked(projects)), usageChoices: { models: ranked(modelChoices), projects: withPrompts(ranked(projectChoices)) }, sessions: ranked(sessions).map(s => {
       const [project, id] = JSON.parse(s.name);
       return { ...s, project, id, name: sessionLabels.get(id) };
     }),
-    skills, tools, mcp: mcpHistory(tools), promptCredits: summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now),
+    skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
     efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now) },
-    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
+    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects, ...projectChoices.keys()])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }
