@@ -64,6 +64,46 @@ test('banner renders each report range and keeps the full scene width in narrow 
   }
 });
 
+test('banner cycles three patterns per building only when it reappears', async () => {
+  const now = new Date(2026, 10, 14, 22);
+  const report = { ...buildReport([], { range: '7d' }, now), sources: [], coverage: {} };
+  const { get } = await mountPanel(report);
+  const show = async range => {
+    const query = range === 'custom' ? { range, startDate: '2026-11-01', endDate: '2026-11-14' } : { range };
+    Object.assign(report, buildReport([], query, now));
+    get('range').value = range;
+    if (range === 'custom') get('apply-dates').onclick();
+    else get('range').onchange();
+    await new Promise(setImmediate);
+    return get('banner').innerHTML;
+  };
+  for (const range of ['1d', '7d', '30d', '90d']) {
+    const visits = [];
+    for (let i = 0; i < 4; i++) {
+      await show('custom');
+      visits.push(await show(range));
+      report.generatedAt = new Date(2026, 10, 14, 22, 15).toISOString();
+      await get('refresh').onclick();
+      get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+      get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
+      assert.equal(get('banner').innerHTML, visits[i], 'refreshes and other view changes keep the current pattern');
+    }
+    assert.equal(new Set(visits.slice(0, 3)).size, 3, range + ' rotates through three patterns');
+    assert.equal(visits[3], visits[0], range + ' repeats its first pattern on the fourth visit');
+  }
+  const lights = svg => [...svg.matchAll(/<rect x="(\d+)" y="(\d+)" width="\d+" height="1" fill="#ffd27a"\/>/g)].map(([, x, y]) => [Number(x), Number(y)]);
+  const lastBuilding = lights(get('banner').innerHTML);
+  const all = lights(await show('all'));
+  assert.deepEqual(all.filter(([x]) => x >= 100), lastBuilding, 'entering All history keeps an already-visible building unchanged');
+  assert.deepEqual(lights(await show('90d')), lastBuilding, 'leaving All history keeps the remaining building unchanged');
+  await show('custom');
+  const next = lights(await show('all'));
+  for (const [left, right] of [[24, 38], [45, 59], [65, 79], [105, 119]]) {
+    const within = ([x]) => x >= left && x <= right;
+    assert.notDeepEqual(next.filter(within), all.filter(within), 'each hidden building advances when returning to All history');
+  }
+});
+
 test('dashboard keeps skill and request metrics separate from MCP activity', async () => {
   const now = new Date(2026, 10, 13, 22, 49, 37), timestamp = now.toISOString();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });

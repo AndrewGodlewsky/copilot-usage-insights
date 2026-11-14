@@ -1,5 +1,5 @@
 // Pixel-art banner: fixed landmarks identify the selected date-range preset.
-// Seeded window patterns vary gently each minute; the sky follows local time.
+// Each building cycles through three still window patterns; the sky follows local time.
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
 const BUILDINGS = [
@@ -8,6 +8,16 @@ const BUILDINGS = [
   { range: '30d', center: .60, height: .72, seed: 37 },
   { range: '90d', center: .93, height: .74, seed: 53 },
 ]
+
+export function nextBuildingPatterns(patterns, previousRange, range) {
+  const next = { ...patterns }
+  for (const building of BUILDINGS) {
+    const visible = range === 'all' || range === building.range
+    const wasVisible = previousRange === 'all' || previousRange === building.range
+    if (visible && !wasVisible) next[building.range] = ((patterns[building.range] ?? -1) + 1) % 3
+  }
+  return next
+}
 
 const SKIES = {
   night: { top: '#0b1026', bottom: '#2a2f5c', far: '#1c2142', near: '#12152c', window: '#ffd27a', glow: '#f4f1de' },
@@ -46,7 +56,7 @@ function mix(a, b, t) {
 }
 
 // Builds the pixel grid (array of rows of hex colors). Exported for tests.
-export function paintScene(report, { w = 120, h = 34 } = {}) {
+export function paintScene(report, { w = 120, h = 34, patterns = {} } = {}) {
   const generated = report?.generatedAt ? new Date(report.generatedAt) : new Date()
   const sky = SKIES[skyFor(generated.getHours())]
   const range = report?.query?.range || '7d'
@@ -105,12 +115,10 @@ export function paintScene(report, { w = 120, h = 34 } = {}) {
       for (let x = x0; x < x0 + width && x < w; x++) grid[y][x] = sky.near
     }
     for (let y = Math.max(0, h - bh - 3); y < h - bh; y++) grid[y][x0 + (width >> 1)] = sky.near
-    const windows = rng(building.seed)
-    const changingLights = rng(building.seed + Math.floor(generated.getTime() / 60000))
+    const windows = rng(building.seed + (patterns[building.range] ?? 0) * 101)
     for (let y = h - bh + 2; y < h - 1; y += 2) {
       for (let x = x0 + 1; x < x0 + width - 1; x += 2) {
-        const light = windows()
-        if (light < .45 || (light < .65 && changingLights() < .5)) grid[y][x] = sky.window
+        if (windows() < .55) grid[y][x] = sky.window
       }
     }
   }

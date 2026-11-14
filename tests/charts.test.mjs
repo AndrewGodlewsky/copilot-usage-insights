@@ -129,20 +129,19 @@ test('banner presets use the requested fixed positions; all shows four and custo
   }
 });
 
-test('building lights vary gently over time without moving buildings or reshuffling the sky', () => {
-  const report = { generatedAt: new Date(2026, 10, 14, 22, 0).toISOString(), query: { range: 'all' }, streak: { current: 3 } };
-  const first = paintScene(report);
-  assert.deepEqual(paintScene({ ...report, generatedAt: new Date(2026, 10, 14, 22, 0, 30).toISOString() }), first, 'lights remain stable within a minute');
-  const next = paintScene({ ...report, generatedAt: new Date(2026, 10, 14, 22, 1).toISOString() });
-  let changed = 0, lit = 0;
-  first.forEach((row, y) => row.forEach((color, x) => {
-    if (color === '#ffd27a') lit++;
-    if (color === next[y][x]) return;
-    changed++;
-    assert.deepEqual(new Set([color, next[y][x]]), new Set(['#12152c', '#ffd27a']), 'only a window switches between dark and lit');
-  }));
-  assert.ok(lit > 0);
-  assert.ok(changed > 0 && changed < lit / 2, 'a small subset of lights changes, not the whole pattern');
+test('each building has three distinct light patterns that stay still over time', () => {
+  for (const range of ['1d', '7d', '30d', '90d']) {
+    const report = { generatedAt: new Date(2026, 10, 14, 22, 0).toISOString(), query: { range }, streak: { current: 3 } };
+    const patterns = [0, 1, 2].map(pattern => paintScene(report, { patterns: { [range]: pattern } }));
+    assert.equal(new Set(patterns.map(grid => JSON.stringify(grid))).size, 3, range + ' has three different patterns');
+    for (const [pattern, grid] of patterns.entries()) {
+      assert.deepEqual(paintScene({ ...report, generatedAt: new Date(2026, 10, 14, 22, 15).toISOString() }, { patterns: { [range]: pattern } }), grid, 'refresh timestamps do not change the lights');
+      grid.forEach((row, y) => row.forEach((color, x) => {
+        if (color === patterns[0][y][x]) return;
+        assert.deepEqual(new Set([color, patterns[0][y][x]]), new Set(['#12152c', '#ffd27a']), 'only window lights change between patterns');
+      }));
+    }
+  }
 });
 
 test('areaTrend draws one smoothed line per provider with hover columns', () => {

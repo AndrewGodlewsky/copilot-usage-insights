@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.21** gives each date-range preset a fixed building position. All history shows all four buildings; Custom dates shows none. A few window lights vary on the regular refresh. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.22** gives each banner building three light patterns that rotate when you switch away and return. The lights stay still between switches, with no animation or timed changes. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -104,7 +104,7 @@ The decorative header has four buildings with fixed sizes and positions for the 
 | All history | All four in their fixed positions, even with limited recorded history |
 | Custom dates | None |
 
-These buildings identify the selected filter and stay in place regardless of usage volume. Their semi-random window patterns are consistent between individual presets and All history. A small subset of lights can change once a minute on the dashboard's existing refresh cycle; most lights stay steady. The sky palette follows local time, and the scene adapts to narrow canvases so buildings remain within the banner.
+These buildings identify the selected filter and stay in place regardless of usage volume. Each building has three semi-random light patterns. Switching to a filter that hides a building and then showing it again advances to its next pattern, repeating after three. All history keeps the current pattern of any building already visible; newly appearing buildings advance independently. Refreshes and other dashboard controls leave the lights unchanged, with no animation or timed light changes. Reopening the dashboard resets the cycle. The sky palette follows local time, and the scene adapts to narrow canvases so buildings remain within the banner.
 
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 
