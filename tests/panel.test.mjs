@@ -326,6 +326,62 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
   assert.doesNotMatch(html(), /id="project-sessions"/);
 });
 
+test('Efficiency shows evidence safely, persists across refresh, and drills into the correct filtered breakdown', async () => {
+  const { get, report, records, now, requests } = await requestPanel();
+  const model = '<Model "A">';
+  const history = Array.from({ length: 12 }, (_, i) => ({ ...records[0], key: `eff-${i}`, model: i < 7 ? model : 'Model B',
+    ms: now.getTime() - (100 - i) * 1000, initiator: 'user', project: '<Project>', sessionId: 's1', sessionName: '<Session>',
+    inputTotal: i < 3 ? 10000 : 40000, cacheRead: 1000, cacheWrite: 1000, nanoAiu: i < 7 ? 3000000000 : 1000000000 }));
+  Object.assign(report, buildReport(history, {}, now));
+  await get('refresh').onclick();
+  const before = requests.length;
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('usage-view').hidden, true);
+  assert.equal(get('breakdown-view').hidden, true);
+  assert.equal(get('efficiency-view').hidden, false);
+  assert.match(get('efficiency-summary').innerHTML, /12 of 12 requests/);
+  assert.match(get('efficiency-insights').innerHTML, /&lt;Session&gt;|&lt;Model &quot;A&quot;&gt;/);
+  assert.match(get('efficiency-insights').innerHTML, /larger input|reuse context|credits concentrate/);
+  assert.doesNotMatch(get('efficiency-insights').innerHTML, /<Session>|<Model/);
+  assert.match(get('efficiency-models').innerHTML, /Cache reuse|Credits \/ request/);
+  assert.equal(requests.length, before, 'switching tabs reads no additional files or API data');
+  await get('refresh').onclick();
+  assert.equal(get('efficiency-view').hidden, false);
+  await get('efficiency-insights').onclick({ target: { closest: () => ({ dataset: { efficiencyInsight: '0' } }) } });
+  assert.equal(get('breakdown-view').hidden, false);
+  assert.equal(get('efficiency-view').hidden, true);
+  assert.equal(get('group').value, 'models');
+  assert.deepEqual(requests.at(-1).input.models, [model]);
+  assert.equal(requests.at(-1).input.project, '<Project>');
+  assert.equal(requests.at(-1).input.session, 's1');
+  assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0, 'inspection does not read prompts');
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  await get('efficiency-models').onclick({ target: { closest: () => ({ dataset: { efficiencyModel: 'Model B' } }) } });
+  assert.deepEqual(requests.at(-1).input.models, ['Model B']);
+  assert.equal(requests.at(-1).input.project, '<Project>', 'model inspection preserves existing scope');
+  assert.equal(requests.at(-1).input.session, 's1');
+});
+
+test('Efficiency distinguishes empty data and tiny credit values and preserves focused actions on refresh', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, document } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.match(get('efficiency-models').innerHTML, /No matching model requests/);
+  assert.match(get('efficiency-insights').innerHTML, /More recorded requests/);
+  const row = { name: 'Tiny model', requests: 1, inputRequests: 0, outputRequests: 0, cacheRequests: 0, creditRequests: 1,
+    averageInput: null, averageOutput: null, cacheHitRate: null, averageCredits: .000000001 };
+  report.efficiency = { summary: row, models: [row], insights: [] };
+  const dataset = { efficiencyModel: 'Tiny model' };
+  const restored = { dataset, focus() { document.activeElement = this; } };
+  get('efficiency-view').querySelectorAll = () => [restored];
+  document.activeElement = { dataset };
+  await get('refresh').onclick();
+  assert.equal(document.activeElement, restored);
+  assert.match(get('efficiency-summary').innerHTML, /0\.000000001/);
+  assert.match(get('efficiency-summary').innerHTML, /Unavailable/);
+  assert.match(get('efficiency-models').innerHTML, /title="0\.000000001/);
+});
+
 test('header credits follow filtered totals, keep fractions, and preserve unavailable or partial coverage', async () => {
   const { get, report, records, now, server } = await requestPanel();
   const earlier = new Date(2026, 10, 13, 12);

@@ -1,5 +1,6 @@
 import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
 import { mcpHistory } from './integrations.mjs';
+import { createEfficiencyAccumulator } from './efficiency.mjs';
 
 const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
@@ -121,6 +122,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     return [id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name];
   }));
   const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map();
+  const efficiency = createEfficiencyAccumulator();
   const calendar = new Map(), rhythm = Array(168).fill(0);
   const get = (map, key) => { if (!map.has(key)) map.set(key, bucket()); return map.get(key); };
   for (const r of history) {
@@ -128,6 +130,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     add(get(calendar, day), r, q.includeCache);
     if (day === today) add(todayTotal, r, q.includeCache);
     if (day < start || day > end) continue;
+    efficiency.add(r);
     add(totals, r, q.includeCache); add(get(days, day), r, q.includeCache);
     add(get(models, r.model), r, q.includeCache); add(get(projects, r.project), r, q.includeCache); add(get(sessions, JSON.stringify([r.project, r.sessionId])), r, q.includeCache);
     rhythm[date.getDay() * 24 + date.getHours()] += knownTokens(r, q.includeCache);
@@ -146,7 +149,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       const [project, id] = JSON.parse(s.name);
       return { ...s, project, id, name: sessionLabels.get(id) };
     }),
-    skills, tools, mcp: mcpHistory(tools),
+    skills, tools, mcp: mcpHistory(tools), efficiency: efficiency.finish(sessionLabels),
     options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

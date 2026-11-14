@@ -18,6 +18,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 
 .settings-section-title{margin:20px 0 8px}
 .hero-copy .hero-credits{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin-top:12px;opacity:1}.hero-credits strong{font-size:calc(22px * var(--text-scale));line-height:1.2;font-variant-numeric:tabular-nums}.hero-credits span{font-size:calc(12px * var(--text-scale))}
+#efficiency-view{display:flex;flex-direction:column;gap:16px}.efficiency-intro p{max-width:76ch;margin-top:5px}.efficiency-intro h2{font-size:calc(18px * var(--text-scale))}#efficiency-summary{margin:0}.efficiency-insight+.efficiency-insight{border-top:1px solid var(--border);margin-top:18px;padding-top:18px}.efficiency-insight h3{font-size:calc(14px * var(--text-scale));margin:0 0 6px}.efficiency-insight p{max-width:78ch;margin-bottom:8px}.efficiency-insight button{margin-top:4px}.efficiency-method p{max-width:85ch;margin:12px 0 0;font-size:calc(12px * var(--text-scale));color:var(--muted-fg)}.efficiency-method a{color:var(--q4)}#efficiency-models th,#efficiency-models td{text-align:center}#efficiency-models th:first-child,#efficiency-models td:first-child{text-align:left}#efficiency-models th+th,#efficiency-models td+td{border-left:1px dotted var(--border)}
 
 td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{display:block;min-width:12ch;max-width:30ch;margin-inline:auto;white-space:normal;overflow-wrap:anywhere}td:first-child .cell-text{margin-inline:0}.filter-grid>label{min-width:0}.filter-grid select{max-width:100%;text-overflow:ellipsis}.tip{max-width:min(260px,calc(100vw - 16px))}.tip p>span{min-width:0}
 
@@ -32,7 +33,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 <body><main id="app">
   <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p><p class="hero-credits"><strong id="hero-credits">—</strong><span>Copilot credits</span></p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
   <nav class="controls" aria-label="Dashboard controls">
-    <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button></div>
+    <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button><button data-view="efficiency" aria-pressed="false">Efficiency</button></div>
     <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
     <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true">Tokens</button><button data-metric="credits" aria-pressed="false">AI credits</button></div>
     <button id="refresh">Refresh</button><button id="settings-open">Settings</button>
@@ -67,16 +68,23 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <article class="card" id="plugins-panel" aria-label="Plugins" hidden><header><span id="plugins-summary" class="muted"></span><label class="detail-sort">Sort by <select id="plugins-sort" aria-label="Sort plugins by"><option value="name">Name (A–Z)</option><option value="enabled">Enabled first</option><option value="marketplace">Marketplace (A–Z)</option></select></label></header><div id="plugins" class="table-wrap"></div><p class="footnote integration-note">Current inventory reported by Copilot for this account and session. Date and usage filters do not apply. Enabled does not mean used.</p></article>
       <article class="card" id="mcp-panel" aria-label="MCP servers" hidden><header><span id="mcp-summary" class="muted"></span><label class="detail-sort">Sort by <select id="mcp-sort" aria-label="Sort MCP servers by"><option value="calls">Most calls</option><option value="failures">Most failures</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option></select></label></header><div id="mcp" class="table-wrap"></div><p id="mcp-note" class="footnote integration-note"></p><p id="mcp-coverage" class="footnote" hidden></p></article>
     </section>
+    <section id="efficiency-view" hidden>
+      <div class="efficiency-intro"><h2>Make each request go further</h2><p class="muted">Find patterns in context, cache reuse, and credit spend. These measures describe resource use; they do not measure the quality or value of your work.</p></div>
+      <div id="efficiency-summary" class="tiles" aria-label="Efficiency measures"></div>
+      <article class="card"><header><h2>Where to look next</h2><span class="muted">Based on the selected filters</span></header><div id="efficiency-insights"></div></article>
+      <article class="card"><header><h2>Compare models</h2><span class="muted">Most requests first</span></header><div id="efficiency-models" class="table-wrap"></div><p class="footnote integration-note">Select a model to inspect its usage. Hover over a measurement for its coverage. Workloads differ; compare similar tasks before choosing a model.</p></article>
+      <details class="efficiency-method"><summary>How these measures work</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and 50k input tokens, with 80% coverage. Increasing input means at least 2× and 10k more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
+    </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompts are read locally when you expand an individual request; nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.28</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.29</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.28";
+const BUILD_VERSION = "0.1.29";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -151,7 +159,7 @@ function providerLabel(provider, fallback = provider) {
 // src/core/diagnostics.mjs
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
-const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|diagnostics|canvas';
+const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
 const enumFields = {
@@ -1034,6 +1042,67 @@ function renderBreakdownContent() {
   $('skills-coverage').textContent = coverage.join(' ');
   renderIntegrations(report);
 }
+const efficiencyMeasures = [
+  { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => compact(value), hint: 'Input includes cached context.' },
+  { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => compact(value), hint: 'Output includes reasoning when reported.' },
+  { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
+  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => value.toLocaleString(undefined, { maximumSignificantDigits: 4 }), hint: 'Only complete credit charges are included.' },
+];
+const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
+const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? row[metric.key].toLocaleString(undefined, { maximumSignificantDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+function efficiencyDirection(insight) {
+  if (insight.kind === 'growth') return {
+    title: 'Inspect larger input later in a session',
+    evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${compact(insight.early)} to ${compact(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
+    action: 'Review the context attached to those later requests. For a different task or phase, start a fresh conversation with a concise handoff; keep related follow-ups together.',
+  };
+  if (insight.kind === 'cache') return {
+    title: 'Check opportunities to reuse context',
+    evidence: `${insight.model} reused ${number(insight.rate)}% of ${compact(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    action: 'Keep related work in one conversation and avoid unnecessary model changes within it. A cold start or expired cache can also explain low reuse.',
+  };
+  return {
+    title: 'Start a model comparison where credits concentrate',
+    evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
+    action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
+  };
+}
+function renderEfficiency() {
+  const efficiency = state.report?.efficiency;
+  if (!efficiency) return;
+  const { summary, models, insights } = efficiency;
+  const focused = document.activeElement?.dataset;
+  $('efficiency-summary').innerHTML = efficiencyMeasures.map(metric => `<div class="tile"><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count])} of ${number(summary.requests)} requests</span></div>`).join('');
+  $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
+    const copy = efficiencyDirection(insight);
+    return `<section class="efficiency-insight"><h3>${copy.title}</h3><p class="muted">${esc(copy.evidence)}</p><p>${copy.action}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></section>`;
+  }).join('') : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
+  if (focused?.efficiencyModel !== undefined) {
+    const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
+    (button || $('view').querySelector('[data-view="efficiency"]'))?.focus({ preventScroll: true });
+  }
+}
+async function inspectEfficiency(target) {
+  if (!target) return;
+  $('model').value = target.model;
+  if (target.project !== undefined) $('project').value = target.project;
+  if (target.session !== undefined) $('session').value = target.session;
+  $('group').value = 'models';
+  state.requestView = null; state.projectView = null;
+  showView('breakdown');
+  $('group').focus({ preventScroll: true });
+  if (JSON.stringify(query()) !== state.filterKey) await load();
+}
+$('efficiency-insights').onclick = event => {
+  const index = event.target.closest('[data-efficiency-insight]')?.dataset.efficiencyInsight;
+  if (index !== undefined) return inspectEfficiency(state.report?.efficiency?.insights[Number(index)]);
+};
+$('efficiency-models').onclick = event => {
+  const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;
+  if (model !== undefined) return inspectEfficiency({ model });
+};
+
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
@@ -1103,6 +1172,7 @@ function renderContent() {
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
   renderBreakdown();
+  renderEfficiency();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
 }
 function selectDay(day) {
@@ -1119,7 +1189,14 @@ $('all-days').onclick = () => selectDay(null);
 function selectButton(container, name, value) {
   for (const button of $(container).querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset[name] === value));
 }
-$('view').onclick = e => { if (!e.target.dataset.view) return; state.view = e.target.dataset.view; selectButton('view', 'view', state.view); $('usage-view').hidden = state.view !== 'usage'; $('breakdown-view').hidden = state.view !== 'breakdown'; render(); };
+function showView(view) {
+  if (!['usage', 'breakdown', 'efficiency'].includes(view)) return;
+  state.view = view;
+  selectButton('view', 'view', view);
+  for (const name of ['usage', 'breakdown', 'efficiency']) $(`${name}-view`).hidden = name !== view;
+  render();
+}
+$('view').onclick = e => showView(e.target.dataset.view);
 $('breakdown-sections').onclick = e => {
   const section = e.target.dataset.section;
   if (!['skills', 'plugins', 'mcp'].includes(section)) return;

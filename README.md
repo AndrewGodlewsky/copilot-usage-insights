@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.28** adds a Copilot credits total beneath the header subtitle, following the active date, model, project, and session filters. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.29** adds an Efficiency tab with model resource comparisons and evidence-backed directions for investigating input growth, cache reuse, and concentrated credit spend. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -93,7 +93,7 @@ The **Usage** view includes a token overview with total tokens, input including 
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
 
-**Copilot credits** beneath the header subtitle shows recorded credits for the active date, model, project, and session filters on both tabs. It uses the same total as the AI credits card, including fractional credits, an asterisk for incomplete coverage, and Unavailable when charges are missing. Selecting an individual daily bar changes the token detail only; the header keeps the overall filtered credit total. This is usage, not an account balance, and uses the loaded report without another lookup.
+**Copilot credits** beneath the header subtitle shows recorded credits for the active date, model, project, and session filters on all three tabs. It uses the same total as the AI credits card, including fractional credits, an asterisk for incomplete coverage, and Unavailable when charges are missing. Selecting an individual daily bar changes the token detail only; the header keeps the overall filtered credit total. This is usage, not an account balance, and uses the loaded report without another lookup.
 
 The decorative header has four buildings with fixed sizes and positions for the date-range presets:
 
@@ -147,7 +147,7 @@ The first load scans the enabled Copilot homes and creates an in-memory history 
 
 Automatic refresh checks the source files and existing databases every **60 seconds** while the dashboard is visible, and when it becomes visible again. Unchanged logs reuse their parsed records. The **Refresh** button forces a full reread. The footer shows when the history was last scanned, so changing a filter does not make old data appear freshly scanned. New usage and renamed sessions appear on the next refresh.
 
-Selecting Today or Last 7 days does not skip older files during the first scan. Session logs can span dates, file modification times are not reliable usage timestamps, and the calendar, streak, and filter choices also use history. Safely skipping those files would require an additional date index. After the initial scan, filter changes do not rescan usage files; the smaller result is computed from memory. Installed skill versions and current plugin/MCP inventory are still checked when a report is requested.
+Selecting Today or Last 7 days does not skip older files during the first scan. Session logs can span dates, file modification times are not reliable usage timestamps, and the calendar, streak, and filter choices also use history. Safely skipping those files would require an additional date index. After the initial scan, filter changes do not rescan usage files; the smaller result is computed from memory. Installed skill versions and current plugin/MCP inventory are still checked when a report is requested. Efficiency calculations share the existing filtered-record pass; input-growth analysis retains only the first and last three samples per comparison group. The additional report payload contains summaries and up to three directions, not request histories.
 
 ## Support footer and diagnostic logs
 
@@ -166,6 +166,35 @@ The dashboard and local server each keep their latest **300 entries in memory**,
 Only approved diagnostic fields are retained. Copied logs omit prompts, conversation content, skill/model/session names, session IDs, local filesystem paths, raw error messages, credentials, and the private canvas URL. Source files are identified by safe code filenames and line numbers, and data sources by an ordinal number. This limits sensitive information in an issue while preserving the operation and timing needed to investigate it.
 
 Opening or reloading logs does not rescan usage history. Dashboard logs are immediately copyable while server logs load; if that request fails or takes more than three seconds, the dialog keeps the dashboard logs available. If clipboard permission is blocked, it selects the text for manual copying. **Reload logs** updates the snapshot while the dialog stays open.
+
+## Efficiency
+
+The **Efficiency** tab helps you investigate model resource use. It measures context, cache reuse, and recorded charges; it cannot determine task success, output quality, or the value of your work. There is no overall score or projected savings figure.
+
+Four measures appear for the selected date, model, project, and session filters, followed by the same comparison per model:
+
+| Measure | Calculation |
+| --- | --- |
+| Input / request | Total input, including cached context, divided by requests with a recorded input count |
+| Output / request | Recorded output divided by requests with an output count; reasoning remains part of output |
+| Cache reuse | Cache-read tokens divided by input tokens from the same requests with a complete, valid cache split; cache writes are not reads |
+| Credits / request | Complete recorded credit charges divided by requests with complete charges; zero charges count, missing and partial charges do not |
+
+Every measure has its own coverage count. Summary counts are visible beneath the values; hover over a model measurement for its count and fuller value. Missing measurements show **Unavailable**. Different workloads make direct model rankings unreliable: compare similar work, and check its results yourself. Rows are ordered by request count, not an efficiency score.
+
+**Where to look next** shows up to three directions when the data meets these review rules:
+
+| Pattern | Evidence required | Direction |
+| --- | --- | --- |
+| Larger later input | Same project, session, model, and initiator; at least 6 input measurements and 80% coverage. The last three requests' median input is at least twice the first three's and at least 10,000 tokens larger. The sample timestamps must not overlap. | Inspect the later requests' context. Start fresh with a concise handoff for a different task or phase, keeping related follow-ups together. |
+| Low cache reuse | A model has at least 5 requests with complete cache counts, 50,000 measured input tokens, 80% coverage, and less than 50% cache reuse. | Keep related work together and avoid unnecessary model changes within it. Cold starts and cache expiry can also explain this pattern. |
+| Concentrated credits | At least two models have 5 complete charges each; at least 80% of requests have complete charges; one model accounts for at least 60% of those charges. | Try a lighter model on the next routine, well-scoped task, then compare similar work and check the result. |
+
+These thresholds identify places to investigate, not ideal targets or proof of waste. The input comparison uses only known user-started or agent-continuation requests, separately; subagents and unknown initiators are excluded because their ordering may mix separate work. Comparisons cover the selected range, not necessarily a session's full lifetime. At most one direction of each kind is shown, prioritizing the largest absolute input increase or volume of input not read from cache where multiple candidates qualify. If no direction qualifies, the model comparison remains available.
+
+**Inspect usage** opens Breakdown with the relevant model selected, and also selects the project and session for a growth direction. Other active filters stay in place. Expand the model there to inspect its requests. Tab switching performs no extra API requests; inspecting a different scope uses the existing in-memory report path. No prompt text is read to generate directions, and no model call, background recorder, new database, or extra filesystem scan is added.
+
+Input and output measures keep their physical meaning regardless of **Include cache tokens**; that checkbox continues to control token totals elsewhere. Selecting an individual daily bar does not narrow Efficiency. **How these measures work** in the tab explains the definitions and rules. Guidance follows GitHub's [AI usage optimization](https://docs.github.com/en/copilot/tutorials/optimize-ai-usage) and [conversation context guidance](https://docs.github.com/en/copilot/tutorials/optimize-chat-usage).
 
 ## Skills
 

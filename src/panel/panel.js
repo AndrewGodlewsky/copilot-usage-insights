@@ -1,4 +1,4 @@
-import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
+import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, compact, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
@@ -310,6 +310,67 @@ function renderBreakdownContent() {
   $('skills-coverage').textContent = coverage.join(' ');
   renderIntegrations(report);
 }
+const efficiencyMeasures = [
+  { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => compact(value), hint: 'Input includes cached context.' },
+  { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => compact(value), hint: 'Output includes reasoning when reported.' },
+  { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
+  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => value.toLocaleString(undefined, { maximumSignificantDigits: 4 }), hint: 'Only complete credit charges are included.' },
+];
+const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
+const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? row[metric.key].toLocaleString(undefined, { maximumSignificantDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+function efficiencyDirection(insight) {
+  if (insight.kind === 'growth') return {
+    title: 'Inspect larger input later in a session',
+    evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${compact(insight.early)} to ${compact(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
+    action: 'Review the context attached to those later requests. For a different task or phase, start a fresh conversation with a concise handoff; keep related follow-ups together.',
+  };
+  if (insight.kind === 'cache') return {
+    title: 'Check opportunities to reuse context',
+    evidence: `${insight.model} reused ${number(insight.rate)}% of ${compact(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    action: 'Keep related work in one conversation and avoid unnecessary model changes within it. A cold start or expired cache can also explain low reuse.',
+  };
+  return {
+    title: 'Start a model comparison where credits concentrate',
+    evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
+    action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
+  };
+}
+function renderEfficiency() {
+  const efficiency = state.report?.efficiency;
+  if (!efficiency) return;
+  const { summary, models, insights } = efficiency;
+  const focused = document.activeElement?.dataset;
+  $('efficiency-summary').innerHTML = efficiencyMeasures.map(metric => `<div class="tile"><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count])} of ${number(summary.requests)} requests</span></div>`).join('');
+  $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
+    const copy = efficiencyDirection(insight);
+    return `<section class="efficiency-insight"><h3>${copy.title}</h3><p class="muted">${esc(copy.evidence)}</p><p>${copy.action}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></section>`;
+  }).join('') : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
+  if (focused?.efficiencyModel !== undefined) {
+    const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
+    (button || $('view').querySelector('[data-view="efficiency"]'))?.focus({ preventScroll: true });
+  }
+}
+async function inspectEfficiency(target) {
+  if (!target) return;
+  $('model').value = target.model;
+  if (target.project !== undefined) $('project').value = target.project;
+  if (target.session !== undefined) $('session').value = target.session;
+  $('group').value = 'models';
+  state.requestView = null; state.projectView = null;
+  showView('breakdown');
+  $('group').focus({ preventScroll: true });
+  if (JSON.stringify(query()) !== state.filterKey) await load();
+}
+$('efficiency-insights').onclick = event => {
+  const index = event.target.closest('[data-efficiency-insight]')?.dataset.efficiencyInsight;
+  if (index !== undefined) return inspectEfficiency(state.report?.efficiency?.insights[Number(index)]);
+};
+$('efficiency-models').onclick = event => {
+  const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;
+  if (model !== undefined) return inspectEfficiency({ model });
+};
+
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
@@ -379,6 +440,7 @@ function renderContent() {
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
   renderBreakdown();
+  renderEfficiency();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
 }
 function selectDay(day) {
@@ -395,7 +457,14 @@ $('all-days').onclick = () => selectDay(null);
 function selectButton(container, name, value) {
   for (const button of $(container).querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset[name] === value));
 }
-$('view').onclick = e => { if (!e.target.dataset.view) return; state.view = e.target.dataset.view; selectButton('view', 'view', state.view); $('usage-view').hidden = state.view !== 'usage'; $('breakdown-view').hidden = state.view !== 'breakdown'; render(); };
+function showView(view) {
+  if (!['usage', 'breakdown', 'efficiency'].includes(view)) return;
+  state.view = view;
+  selectButton('view', 'view', view);
+  for (const name of ['usage', 'breakdown', 'efficiency']) $(`${name}-view`).hidden = name !== view;
+  render();
+}
+$('view').onclick = e => showView(e.target.dataset.view);
 $('breakdown-sections').onclick = e => {
   const section = e.target.dataset.section;
   if (!['skills', 'plugins', 'mcp'].includes(section)) return;
