@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.60",
+    "summary": "Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."
+  },
+  {
     "version": "0.1.59",
     "summary": "Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."
   },

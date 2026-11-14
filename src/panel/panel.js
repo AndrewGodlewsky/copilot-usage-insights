@@ -184,12 +184,15 @@ function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
 }
 function sortActivity(rows, key) {
+  const value = row => {
+    if (key === 'lastUsed') return Date.parse(row.lastUsed) || 0;
+    if (key === 'total' && row.requests > 0 && row.knownTokenRequests === 0) return -1;
+    return row[key] ?? -1;
+  };
   return [...rows].sort((a, b) => {
     const byName = (a.displayName || a.name).localeCompare(b.displayName || b.name) || a.name.localeCompare(b.name);
     if (key === 'name') return byName;
-    const av = key === 'lastUsed' ? Date.parse(a.lastUsed) || 0 : a[key] ?? -1;
-    const bv = key === 'lastUsed' ? Date.parse(b.lastUsed) || 0 : b[key] ?? -1;
-    return bv - av || byName;
+    return value(b) - value(a) || byName;
   });
 }
 const pluginMarketplace = plugin => plugin.marketplace || (plugin.source === 'builtin' ? 'Built-in' : 'Direct / local');
@@ -674,8 +677,8 @@ $('efficiency-models').onclick = event => {
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
-function visibleChoices(rows, selected, limit) {
-  const visible = rows.slice(0, limit);
+function visibleChoices(rows, selected, limit, sort) {
+  const visible = sortActivity(rows, sort).slice(0, limit);
   if (selected && !visible.some(r => r.name === selected)) visible.push(rows.find(r => r.name === selected) || { name: selected, requests: 0, total: 0, userPrompts: null, uncertainPrompts: 0 });
   return visible;
 }
@@ -754,9 +757,9 @@ function renderContent() {
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
   $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
-  $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10), 'Project', false, 'projectFilter');
-  $('models-selection').textContent = $('model').value ? 'Model filter on · select again to clear' : 'Top 8 · select to filter';
+  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+  $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10, $('projects-sort').value), 'Project', false, 'projectFilter');
+  $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
   $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
@@ -868,6 +871,7 @@ for (const id of ['group', 'sort']) $(id).onchange = () => {
   if (id === 'sort' && state.modelView) { state.requestView = null; return loadModelSessionPage(0); }
 };
 for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
+for (const id of ['models-sort', 'projects-sort']) $(id).onchange = render;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
   if (!button || state.skillActionPending) return;

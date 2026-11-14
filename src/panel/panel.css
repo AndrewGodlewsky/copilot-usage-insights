@@ -9,7 +9,6 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .chart .column-hit{fill:transparent}.chart .column-outline{fill:none;stroke:transparent;stroke-width:1;pointer-events:none}
 .chart [data-day]>.daily-column{transform-box:view-box;transition:transform 120ms ease-out}
 .chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:scale(1.06,1.03)}
-.chart [data-day]:hover .column-outline{stroke:var(--muted-fg)}
 #daily .chart:has([aria-pressed=true]) [data-day][aria-pressed=false]>.daily-column{filter:saturate(.45);opacity:.7}
 .chart [data-day]:focus-visible .column-outline{stroke:var(--fg);stroke-width:2}
 @media(prefers-reduced-motion:reduce){.chart [data-day]>.daily-column{transition:none}.chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:none}}

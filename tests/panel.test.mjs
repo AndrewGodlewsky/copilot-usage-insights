@@ -121,6 +121,55 @@ test('Usage selections cross-filter metrics, preserve gray alternatives, and cle
   assert.equal(get('token-total').textContent, original);
 });
 
+test('Usage sorts rank all choices before limits, keep selections, and do not fetch', async () => {
+  const report = { ...buildReport([], { range: '7d' }), sources: [], coverage: {} };
+  const rows = Array.from({ length: 12 }, (_, i) => ({ name: String.fromCharCode(65 + i), total: (12 - i) * 100,
+    credits: i === 0 ? null : i === 1 ? 0 : i, requests: i === 2 ? 100 : 1, userPrompts: i === 3 ? 100 : i === 0 ? null : 0, uncertainPrompts: 0 }));
+  report.usageChoices = { models: rows, projects: rows };
+  report.options.models = report.options.projects = rows.map(r => r.name);
+  const { get, requests } = await mountPanel(report);
+  const names = type => [...get(`${type}s-summary`).innerHTML.matchAll(new RegExp(`data-usage-${type}="([^"]+)"`, 'g'))].map(m => m[1]).join('');
+  const sort = (type, value) => { get(`${type}s-sort`).value = value; get(`${type}s-sort`).onchange(); };
+  const before = requests.length;
+  assert.equal(names('model'), 'ABCDEFGH');
+  assert.equal(names('project'), 'ABCDEFGHIJ');
+  sort('model', 'credits'); assert.equal(names('model'), 'LKJIHGFE');
+  sort('project', 'credits'); assert.equal(names('project'), 'LKJIHGFEDC');
+  report.usageChoices.models = rows.slice(0, 3);
+  sort('model', 'credits'); assert.equal(names('model'), 'CBA', 'known zero credits sort ahead of unavailable');
+  report.usageChoices.models = rows;
+  sort('model', 'requests'); assert.equal(names('model'), 'CABDEFGH');
+  sort('project', 'requests'); assert.equal(names('project'), 'CABDEFGHIJ');
+  sort('project', 'userPrompts'); assert.equal(names('project'), 'DBCEFGHIJK', 'known zero prompts sort ahead of unavailable');
+  sort('model', 'name'); assert.equal(names('model'), 'ABCDEFGH');
+  sort('project', 'name'); assert.equal(names('project'), 'ABCDEFGHIJ');
+  sort('model', 'total'); sort('project', 'total');
+  assert.equal(names('model'), 'ABCDEFGH'); assert.equal(names('project'), 'ABCDEFGHIJ');
+  assert.equal(requests.length, before, 'sorting only renders loaded data');
+  assert.equal(rows.map(r => r.name).join(''), 'ABCDEFGHIJKL', 'source report order stays intact');
+  get('model').value = get('project').value = 'L';
+  sort('model', 'name'); sort('project', 'name');
+  assert.equal(names('model'), 'ABCDEFGHL'); assert.equal(names('project'), 'ABCDEFGHIJL');
+  assert.match(get('models-summary').innerHTML, /data-usage-model="L"[^>]*aria-pressed="true"/);
+  assert.match(get('projects-summary').innerHTML, /data-usage-project="L"[^>]*aria-pressed="true"/);
+  await get('refresh').onclick();
+  assert.equal(get('models-sort').value, 'name'); assert.equal(get('projects-sort').value, 'name');
+  assert.equal(names('model'), 'ABCDEFGHL'); assert.equal(names('project'), 'ABCDEFGHIJL');
+});
+
+test('Usage token sorting keeps recorded zero totals ahead of unavailable totals at the cutoff', async () => {
+  const { records, now } = await requestPanel();
+  const data = Array.from({ length: 12 }, (_, i) => ({ ...records[0], key: `sort-${i}`, model: String.fromCharCode(65 + i), project: String.fromCharCode(65 + i),
+    input: i ? 0 : null, inputTotal: i ? 0 : null, output: i ? 0 : null, cacheRead: 0, cacheWrite: 0 }));
+  const report = { ...buildReport(data, { range: '7d' }, now), sources: [], coverage: {} };
+  assert.equal(report.usageChoices.models.find(r => r.name === 'A').knownTokenRequests, 0);
+  assert.equal(report.usageChoices.models.find(r => r.name === 'A').total, 0);
+  const { get } = await mountPanel(report);
+  const names = type => [...get(`${type}s-summary`).innerHTML.matchAll(new RegExp(`data-usage-${type}="([^"]+)"`, 'g'))].map(m => m[1]).join('');
+  assert.equal(names('model'), 'BCDEFGHI');
+  assert.equal(names('project'), 'BCDEFGHIJK');
+});
+
 test('shared chart tooltips keep their width and flip away from viewport edges', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, listeners, document, viewport, requests } = await mountPanel(report);
