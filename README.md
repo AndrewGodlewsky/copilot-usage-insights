@@ -48,7 +48,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.45** adds **Project → Session → Model** in Usage breakdown, with the same metric columns at every level. It also spaces the card titles as **AI credits / prompt** and **AI credit / 1M tokens**. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.46** orders **Tokens by type** as uncached input, cache read, cache write, then output, with percentage callouts alternating above and below the bar. Labels stay separated even for tiny segments and follow your text-size setting. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -92,6 +92,10 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 ## What is counted
 
 The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible. The token total card shows **Tokens** above the value and the selected date range underneath, including custom dates, and respects the model, project, session, and cache filters.
+
+**Tokens by type** and its legend read **Uncached input → Cache read → Cache write → Output**. Input with an unknown cache split appears before Output when present; reasoning remains part of Output and is not counted again. Percentage labels alternate above and below the bar, with brackets pointing to their segments and extra spacing for clustered small shares. Shares use recorded token counts for the current filters or selected daily bar, not the minimum visual width used to keep tiny segments visible. Positive shares below 0.1% show **<0.1%**; rounded percentages can differ slightly from 100% in total. Missing tokens cannot contribute to these percentages. Turning off **Include cache tokens** leaves only uncached input and output in the bar.
+
+This is an input-to-output reading order, not a strict timeline. Cache reads reuse input processing from a matching prefix; cache writes save a newly processed prefix for later reuse. The model generates output after processing its input. Reads and writes are input accounting categories, not additional copies of the same input tokens. See [Anthropic's prompt caching explanation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
 
 The **AI credits / prompt** summary card divides the sum of complete recorded charges for eligible user prompts by the number of distinct eligible prompts. A prompt's cost includes its initial model call, agent continuations, and subagent work with reliable parent links. Tool calls and continuations do not add prompts to the denominator. Charges come only from Copilot's `totalNanoAiu / 1e9`; no token-price estimate is used. Complete zero-credit prompts count. Coverage beneath the value shows how many observed prompt candidates qualify; an asterisk marks excluded candidates. Hover over the value for exclusion counts. With no eligible prompts, the card shows **Unavailable**.
 

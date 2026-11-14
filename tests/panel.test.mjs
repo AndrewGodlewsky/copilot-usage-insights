@@ -641,6 +641,33 @@ test('token total card follows the loaded date range and filters instead of toda
   assert.ok(tile().includes('>1.4K</strong>'), 'daily chart selection does not narrow the filter total');
 });
 
+test('token type order and shares follow the selected day, filters, and cache inclusion', async () => {
+  const { get, report, records, now } = await requestPanel();
+  const earlier = new Date(2026, 10, 13, 12);
+  const history = [records[0], { ...records[0], key: 'yesterday', ms: earlier.getTime(), ts: earlier.toISOString(),
+    input: 80, inputTotal: 100, cacheRead: 10, cacheWrite: 10, output: 80 }];
+  Object.assign(report, buildReport(history, { range: '7d' }, now));
+  await get('refresh').onclick();
+  const order = () => [...get('token-legend').innerHTML.matchAll(/<i[^>]*><\/i>(.*?) <b>/g)].map(m => m[1]);
+  assert.deepEqual(order(), ['Uncached input', 'Cache read', 'Cache write', 'Output']);
+  assert.match(get('token-bar').innerHTML, /Uncached input 36\.7%; Cache read 23\.3%; Cache write 6\.7%; Output 33\.3%/);
+  assert.doesNotMatch(get('token-bar').innerHTML, /Reasoning/);
+  get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
+  assert.match(get('token-bar').innerHTML, /Uncached input 25%; Cache read 50%; Cache write 8\.3%; Output 16\.7%/);
+  get('all-days').onclick();
+  assert.match(get('token-bar').innerHTML, /Uncached input 36\.7%/);
+  Object.assign(report, buildReport(history, { range: '1d', includeCache: false }, now));
+  await get('refresh').onclick();
+  assert.deepEqual(order(), ['Uncached input', 'Output']);
+  assert.match(get('token-bar').innerHTML, /Uncached input 60%; Output 40%/);
+  const unknown = { ...records[0], input: null, inputTotal: 100, cacheRead: null, cacheWrite: null, output: 100 };
+  Object.assign(report, buildReport([unknown], {}, now));
+  await get('refresh').onclick();
+  assert.deepEqual(order(), ['Uncached input', 'Cache read', 'Cache write', 'Input (cache split unknown)', 'Output']);
+  assert.match(get('token-bar').innerHTML, /Input \(cache split unknown\) 50%; Output 50%/);
+  assert.match(get('token-note').textContent, /Percentages show shares of recorded tokens/);
+});
+
 test('credit rate cards replace streak and models, preserve coverage, and follow number settings', async () => {
   const { get, report, records, now } = await requestPanel();
   const card = index => get('tiles').innerHTML.split('<div class="tile">')[index + 1].split('</div>')[0];

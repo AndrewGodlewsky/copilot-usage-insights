@@ -183,6 +183,48 @@ test('segmentBar gives tiny segments a visible minimum width and skips zeros', (
   wellFormed(segmentBar([]))
 })
 
+test('segment shares use token counts, preserve tiny shares, and expose categories accessibly', () => {
+  const s = segmentBar([{ label: '<Input>', value: 25, color: 'blue' }, { label: 'Cache read', value: 75, color: 'green' }, { label: 'Zero', value: 0, color: 'red' }])
+  assert.match(s, /aria-label="Tokens by type, shares of recorded tokens: &lt;Input&gt; 25%; Cache read 75%"/)
+  assert.match(s, />25%<\/text>/)
+  assert.match(s, />75%<\/text>/)
+  assert.doesNotMatch(s, /<Input>|Zero|0%<\/text>/)
+  const tiny = segmentBar([{ label: 'Tiny', value: 1, color: 'blue' }, { label: 'Large', value: 1e9, color: 'green' }])
+  assert.match(tiny, /width="4\.0"/)
+  assert.match(tiny, />&lt;0\.1%<\/text>/)
+  assert.match(tiny, />&gt;99\.9%<\/text>/)
+  assert.match(segmentBar([{ label: 'Only', value: 1, color: 'blue' }]), />100%<\/text>/)
+  for (const empty of [[], [{ label: 'Zero', value: 0 }]]) {
+    const chart = segmentBar(empty)
+    wellFormed(chart)
+    assert.doesNotMatch(chart, /segment-share|NaN|Infinity/)
+  }
+})
+
+test('alternating segment share labels stay apart and inside narrow charts at every text size', () => {
+  for (const values of [[1, 1, 1, 1e9], [1e9, 1, 1, 1], [1, 1, 1, 1, 1e9], [1e9, 1, 1, 1, 1], [1, 2, 3, 4, 5]]) {
+    for (const width of [280, 360, 1100]) for (const textScale of [1, 1.15, 1.3]) {
+      const chart = segmentBar(values.map((value, i) => ({ label: `Type ${i}`, value, color: 'blue' })), { width, textScale })
+      wellFormed(chart)
+      const labels = [...chart.matchAll(/<text class="segment-share" x="([\d.]+)" y="([\d.]+)" text-anchor="middle">(.*?)<\/text>/g)]
+      assert.equal(labels.length, values.length)
+      const height = Number(chart.match(/viewBox="0 0 \S+ (\S+)"/)[1])
+      const rows = [[], []]
+      labels.forEach(([, x, y, text], i) => {
+        const plain = text.replace(/&lt;|&gt;/g, '<'), half = plain.length * 7 * textScale / 2
+        const left = Number(x) - half, right = Number(x) + half
+        assert.ok(left >= 0 && right <= width, 'label remains inside chart')
+        assert.ok(Number(y) >= 11 * textScale && Number(y) + 3 * textScale <= height, 'vertical text has room')
+        assert.equal(Number(y) < height / 2, i % 2 === 0, 'labels alternate above and below')
+        const row = rows[i % 2]
+        if (row.length) assert.ok(left - row.at(-1) >= 4 * textScale, 'same-side labels do not collide')
+        row.push(right)
+      })
+      assert.equal((chart.match(/class="segment-bracket"/g) || []).length, values.length)
+    }
+  }
+})
+
 test('dayTicks labels every day when there is room and always keeps the latest', () => {
   assert.deepEqual(dayTicks(7, 120), [0, 1, 2, 3, 4, 5, 6])
   assert.deepEqual(dayTicks(30, 10), [4, 9, 14, 19, 24, 29])

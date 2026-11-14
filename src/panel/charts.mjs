@@ -349,29 +349,47 @@ export function areaTrend(series, { metric = 'total', width = 420, height = 200,
   return svg(width, height, `<defs>${defs}</defs>${body}`, label)
 }
 
-// One thin rounded bar split into segments with 2px gaps. segments: [{ label, value, color }]
-export function segmentBar(segments, { width = 360, height = 10, id = 'sbar' } = {}) {
+// Thin segments with alternating share callouts. Shares use counts, not minimum visual widths.
+export function segmentBar(segments, { width = 360, height = 10, id = 'sbar', textScale = 1 } = {}) {
   const label = 'Tokens by type'
   const live = (segments || []).filter((s) => s.value > 0)
   const total = live.reduce((a, s) => a + s.value, 0)
-  let body = `<rect x="0" y="0" width="${width}" height="${height}" rx="${height / 2}" class="track-fill"/>`
-  if (total > 0) {
-    const gap = 2
-    const minW = 4
-    const avail = width - gap * (live.length - 1)
-    // Small segments get a visible minimum; the rest share what is left proportionally.
-    const small = live.filter((s) => (s.value / total) * avail < minW)
-    const bigTotal = total - small.reduce((a, s) => a + s.value, 0)
-    const bigAvail = avail - small.length * minW
-    let xpos = 0
-    body = `<clipPath id="${id}-clip"><rect x="0" y="0" width="${width}" height="${height}" rx="${height / 2}"/></clipPath><g clip-path="url(#${id}-clip)">`
-    for (const s of live) {
-      const w = small.includes(s) ? minW : (s.value / bigTotal) * bigAvail
-      const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.value], ['Share', `${((s.value / total) * 100).toFixed(1)}%`]] }))
-      body += `<rect class="mark" data-tip="${tip}" x="${xpos.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="${height}" fill="${s.color}"/>`
-      xpos += w + gap
-    }
-    body += `</g>`
+  if (!total) return svg(width, height, `<rect x="0" y="0" width="${width}" height="${height}" rx="${height / 2}" class="track-fill"/>`, label)
+  const barY = 28 * textScale, callouts = []
+  let body = ''
+  const gap = 2
+  const minW = 4
+  const avail = width - gap * (live.length - 1)
+  // Small segments get a visible minimum; the rest share what is left proportionally.
+  const small = live.filter((s) => (s.value / total) * avail < minW)
+  const bigTotal = total - small.reduce((a, s) => a + s.value, 0)
+  const bigAvail = avail - small.length * minW
+  let xpos = 0
+  body = `<clipPath id="${id}-clip"><rect x="0" y="${barY}" width="${width}" height="${height}" rx="${height / 2}"/></clipPath><g clip-path="url(#${id}-clip)">`
+  for (const [i, s] of live.entries()) {
+    const w = small.includes(s) ? minW : (s.value / bigTotal) * bigAvail
+    const percent = s.value / total * 100
+    const share = percent < .1 ? '<0.1%' : percent > 99.9 && percent < 100 ? '>99.9%' : `${percent.toFixed(1).replace(/\.0$/, '')}%`
+    const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.value], ['Share of recorded tokens', share]] }))
+    body += `<rect class="mark" data-tip="${tip}" x="${xpos.toFixed(1)}" y="${barY}" width="${w.toFixed(1)}" height="${height}" fill="${esc(s.color)}"/>`
+    const half = (share.length * 7 + 8) * textScale / 2, center = xpos + w / 2
+    callouts.push({ ...s, share, tip, half, center, start: xpos, end: xpos + w, above: i % 2 === 0, x: Math.max(half, Math.min(width - half, center)) })
+    xpos += w + gap
   }
-  return svg(width, height, body, label)
+  body += `</g>`
+  // Alternation alone cannot separate three tiny adjacent segments on the same side.
+  for (const above of [true, false]) {
+    const row = callouts.filter(s => s.above === above), gap = 8 * textScale
+    for (let i = 1; i < row.length; i++) row[i].x = Math.max(row[i].x, row[i - 1].x + row[i - 1].half + row[i].half + gap)
+    if (row.length) row.at(-1).x = Math.min(row.at(-1).x, width - row.at(-1).half)
+    for (let i = row.length - 2; i >= 0; i--) row[i].x = Math.min(row[i].x, row[i + 1].x - row[i + 1].half - row[i].half - gap)
+  }
+  for (const s of callouts) {
+    const edge = s.above ? barY : barY + height, direction = s.above ? -1 : 1
+    const tick = edge + direction * 2 * textScale, bracket = edge + direction * 6 * textScale
+    const textY = s.above ? 12 * textScale : edge + 22 * textScale
+    const leader = s.above ? textY + 3 * textScale : textY - 11 * textScale
+    body += `<g class="mark segment-callout" data-tip="${s.tip}"><path class="segment-bracket" d="M${s.start.toFixed(1)},${tick}V${bracket}H${s.end.toFixed(1)}V${tick}M${s.center.toFixed(1)},${bracket}L${s.x.toFixed(1)},${leader}" fill="none" stroke="${esc(s.color)}" stroke-width="1"/><text class="segment-share" x="${s.x.toFixed(1)}" y="${textY}" text-anchor="middle">${esc(s.share)}</text></g>`
+  }
+  return svg(width, height + 56 * textScale, body, `${label}, shares of recorded tokens: ${callouts.map(s => `${s.label} ${s.share}`).join('; ')}`)
 }
