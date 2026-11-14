@@ -158,6 +158,7 @@ async function load(force = false, refresh = false) {
         $('status').hidden = false;
         $('status').textContent = `Could not update usage: ${e.message}`;
         $('content').hidden = true;
+        $('status').before($('filters'));
       }
     } while (version !== state.version);
   } finally { state.pending = false; $('refresh').disabled = $('footer-refresh').disabled = false; }
@@ -699,6 +700,8 @@ function renderContent() {
   const keys = r.query.includeCache ? [...TOKEN_KEYS, 'unclassifiedInput'] : ['input', 'output'];
   options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); options('session', r.options.sessions, 'All sessions');
   $('content').hidden = false;
+  const filterPosition = state.view === 'efficiency' ? $('efficiency-tokens-panel') : $('status');
+  if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
   $('status').hidden = !!t.requests;
   $('status').textContent = 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
   const warnings = [];

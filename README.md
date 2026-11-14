@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.60** adds Sort by controls to the Usage tab's Models and Projects sections and removes the daily bars' mouse-hover outline, keeping their gentle enlargement. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.61** places Filter usage directly beneath the Efficiency section buttons. The same filters keep their selections and expanded state when you switch tabs; Usage and Breakdown keep their original placement. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 

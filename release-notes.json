@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.61",
+    "summary": "Moved Filter usage beneath the Efficiency section buttons. Your filter selections and expanded state stay intact when switching tabs, and Usage and Breakdown keep their original layout."
+  },
+  {
     "version": "0.1.60",
     "summary": "Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."
   },
