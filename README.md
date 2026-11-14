@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.23** adds expandable model requests in Usage breakdown, with session names, prompt previews, token details, and recorded AI credits. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.24** gives model names neutral text with a subtle hover highlight and removes the misleading busy cursor from unavailable Previous/Next buttons. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -118,6 +118,8 @@ These buildings identify the selected filter and stay in place regardless of usa
 **Usage breakdown** uses faint dotted column dividers and centers metric headers and values; model, project, and session names stay left-aligned. It includes **Reasoning** and **Avg. tokens / request** for each model, project, or session. Reasoning is reported separately but remains part of output, so it is not added to totals again. The average uses only requests whose input and output counts are both known, follows **Include cache tokens**, and shows an asterisk when some requests are excluded for incomplete counts. Hover over an average to see how many requests contributed; if none have complete counts, it shows **Unavailable**. These are request metrics, not token charges assigned to individual skills.
 
 **Expand a model to investigate its requests.** In **Breakdown → Group by → Model**, click the arrow or model name. The expanded list shows **Time**, **Session** (with project), **Prompt**, **Tokens**, and **AI credits**, newest first, with 25 requests per page. It follows the date, model, project, session, and cache filters used by the totals. One model opens at a time; changing a filter or grouping closes the list, while refreshing preserves the page and selected request when still available.
+
+Model names use normal text with a subtle gray highlight on hover or keyboard focus. Unavailable **Previous**/**Next** buttons use a normal cursor. Hovering does not load data: requests load when you expand a model or request, change pages, or refresh an open request list (including the dashboard's 30-second refresh).
 
 Click a request's **time** to expand its input, output, cache-read, cache-write, reasoning, and total tokens, recorded AI credits, duration, model IDs, automatic model selection indicator, and original prompt. Missing measurements show **Unavailable** or **Not recorded**. Asterisks retain the same incomplete-coverage meaning as the main table. Reasoning remains part of output. One submitted prompt can lead to multiple model requests as the agent runs tools and continues. **User prompt**, **Agent continuation**, and **Subagent** reflect Copilot's recorded initiator; “User prompt” does not establish that a person manually selected that model or typed the prompt in the desktop app.
 
