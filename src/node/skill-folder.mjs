@@ -11,7 +11,8 @@ export function folderCommand(folder, platform = process.platform) {
 
 export function launchFolder(file, args, platform = process.platform) {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { shell: false, stdio: 'ignore', windowsHide: true });
+    // Explorer is the requested GUI; windowsHide can hide the folder window itself.
+    const child = spawn(file, args, { shell: false, stdio: 'ignore', windowsHide: platform !== 'win32' });
     child.once('error', reject);
     // Explorer can exit nonzero after successfully handing the folder to an existing window.
     if (platform === 'win32') child.once('spawn', () => { child.unref(); resolve(); });

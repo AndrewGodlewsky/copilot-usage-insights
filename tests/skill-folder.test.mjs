@@ -3,7 +3,28 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import childProcess from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { syncBuiltinESMExports } from 'node:module';
 import { folderCommand, launchFolder, openSkillFolder } from '../src/node/skill-folder.mjs';
+
+test('Windows folder launches request a visible Explorer window without a shell', async t => {
+  let launched;
+  const child = new EventEmitter();
+  child.unref = () => {};
+  const spawnMock = t.mock.method(childProcess, 'spawn', (file, args, options) => {
+    launched = { file, args, options };
+    process.nextTick(() => child.emit('spawn'));
+    return child;
+  });
+  syncBuiltinESMExports();
+  t.after(() => { spawnMock.mock.restore(); syncBuiltinESMExports(); });
+  const command = folderCommand('C:\\skills\\goodbye-test', 'win32');
+  await launchFolder(command.file, command.args, 'win32');
+  assert.equal(launched.options.windowsHide, false, 'Explorer is the requested UI and must remain visible');
+  assert.equal(launched.options.shell, false);
+  assert.deepEqual(launched.args, command.args);
+});
 
 test('folder commands pass a literal path to a file manager on each supported OS', () => {
   const folder = 'a folder & $(not-a-command)';
