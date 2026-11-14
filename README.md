@@ -48,7 +48,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.50** restores column headings within expanded Usage Breakdown sections while preserving aligned columns, indented names, and alternating background colors. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.51** adds a section picker inside Where did the tokens go?, with all 15 efficiency topics and one visible section at a time. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -213,7 +213,7 @@ The **Efficiency** tab explains where tokens go and turns measured patterns into
 
 Use the three buttons at the top: **Where did the tokens go?** (default), **Worth a closer look**, and **AI review**. Only the selected dashboard is shown. Switching sections makes no API requests, and the selected section stays open across refreshes and main-tab changes.
 
-**Where did the tokens go?** shows the input/output split using requests with both counts recorded. The large percentage is the share of measured token volume that was input, including cached input; it is not a share of credits. A separate cache explanation shows how much measured input was reused. Current context inspection and **Calls and recovery** sit in this dashboard.
+The **Overview** section in **Where did the tokens go?** shows the input/output split using requests with both counts recorded. The large percentage is the share of measured token volume that was input, including cached input; it is not a share of credits. Select **Cache reuse** for the cache explanation, **Always-loaded context** for the current inspector, or **Calls and recovery** for recorded tool outcomes.
 
 **Calls and recovery** separates MCP tools from other recorded tools, showing calls, successes, failures, unknown outcomes, and success percentages using only known outcomes. A disclosure lists up to five tools with recorded failures. Root-session error events are separate incidents; they are not failed-model-request counts. Model-call failures and retries are not reliably retained. No wasted-call or wasted-token total is inferred: a failed tool can produce a useful recovery.
 
@@ -226,6 +226,10 @@ Use the three buttons at the top: **Where did the tokens go?** (default), **Wort
 | Credits / request | Complete recorded charges divided by requests with complete charges; includes zero charges and excludes partial/missing charges |
 
 Coverage is visible under summary values and in model-value tooltips. Missing data shows **Unavailable**, not zero. Explicit `cacheDetailsReported: false` is treated as missing cache detail even if placeholder zero counts exist. Older records may lack tool-definition counts. Definitions describe available tools; they are already part of input and do not measure tool-result size or per-skill cost.
+
+**Where did the tokens go?** has a grouped **Section** dropdown, starting with **Overview**. Choose among all 15 topics without stacking their panels: context growth; always-loaded context; tool and MCP footprint; files, searches, and tool results; cache reuse; work behind each prompt; delegated work; reasoning and generated output; calls and recovery; biggest spend drivers; prompt size versus processing; context reduction; model changes and fresh starts; repeated exploration; and skills and instruction footprint. Switching sections makes no requests, scans no logs, and invokes no AI. The selected section survives refreshes, filter changes, and tab changes within the open dashboard. Reopening starts at Overview.
+
+This first increment reuses available report measurements and the explicit context inspector. Delegated-work splits, compaction effects, model-transition analysis, and repeated-exploration detection are labeled **Not measured yet**. Files/results and skill footprint link to current source attribution without inventing historical costs. The [section roadmap](docs/research/2026-11-14-token-sections.md) records what each section shows now and what remains to develop. These views overlap; their token counts are not added together.
 
 **Worth a closer look** includes conversation habits, current instruction-presence context, observations, and an always-visible **Model averages** table with recorded credits per request. Conversation habits show user messages, messages per session, characters per prompt, and root-agent turns per session. Length counts displayed-text UTF-16 units, not tokens, prompt detail, or quality; attachments and transformed content are excluded. Averages use only sessions with observed relevant events within the selected dates, not full lifetime session lengths. One user message can cause several turns and model requests.
 

@@ -1251,6 +1251,63 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(report.totals.credits, 12.345678901);
 });
 
+test('all token-efficiency topics switch one panel at a time without requests and retain selection', async () => {
+  const { get, requests } = await requestPanel();
+  const panels = ['overview', 'context', 'cache', 'recovery', 'detail'];
+  const topics = ['overview', 'growth', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'recovery', 'drivers', 'prompt-size', 'compaction', 'transitions', 'repetition', 'skills'];
+  const choose = id => { get('efficiency-topic').value = id; get('efficiency-topic').onchange(); };
+  const visible = () => panels.filter(id => !get(`token-${id}-panel`).hidden);
+  assert.equal((get('efficiency-topic').innerHTML.match(/<option /g) || []).length, 16);
+  assert.equal((get('efficiency-topic').innerHTML.match(/<optgroup /g) || []).length, 3);
+  assert.deepEqual(visible(), ['overview']);
+  const before = requests.length;
+  for (const topic of topics) {
+    choose(topic);
+    assert.deepEqual(visible(), [panels.includes(topic) ? topic : 'detail']);
+    assert.equal(get('efficiency-topic').value, topic);
+    if (!panels.includes(topic)) assert.ok(get('token-topic-body').innerHTML.length > 0);
+  }
+  assert.equal(requests.length, before, 'topic navigation does not load logs, inspect context, or invoke AI');
+  choose('invalid');
+  assert.equal(get('efficiency-topic').value, 'skills');
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'patterns' } } });
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'tokens' } } });
+  await get('refresh').onclick();
+  assert.equal(get('efficiency-topic').value, 'skills');
+  assert.deepEqual(visible(), ['detail']);
+  const contextBefore = requests.length;
+  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
+  assert.equal(get('efficiency-topic').value, 'context');
+  assert.deepEqual(visible(), ['context']);
+  assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
+  choose('recovery');
+  get('efficiency-inspect-instructions').onclick();
+  assert.equal(get('efficiency-topic').value, 'context');
+  assert.deepEqual(visible(), ['context']);
+});
+
+test('token topic inspector links retain keyboard focus through refresh and section changes', async () => {
+  const { get, document } = await requestPanel();
+  const body = get('token-topic-body');
+  let markup = '', button;
+  Object.defineProperty(body, 'innerHTML', { get: () => markup, set(value) {
+    if (document.activeElement === button) document.activeElement = null;
+    markup = value;
+    button = value.includes('data-token-context') ? { dataset: { tokenContext: 'true' }, focus() { document.activeElement = this; } } : null;
+  } });
+  body.querySelector = () => button;
+  for (const topic of ['tools', 'results', 'skills']) {
+    get('efficiency-topic').value = topic; get('efficiency-topic').onchange();
+    button.focus();
+    const previous = button;
+    await get('refresh').onclick();
+    assert.notEqual(button, previous);
+    assert.equal(document.activeElement, button, topic + ' restores its recreated action');
+  }
+  get('efficiency-topic').value = 'output'; get('efficiency-topic').onchange();
+  assert.equal(document.activeElement, get('efficiency-topic'), 'removed action returns focus to the section selector');
+});
+
 test('Efficiency subviews switch locally, retain selection on refresh, and expose scoped habits and outcomes', async () => {
   const { get, requests, report, server } = await requestPanel();
   const buttons = ['tokens', 'patterns', 'review'].map(efficiencySection => ({ dataset: { efficiencySection }, setAttribute(key, value) { this[key] = value; } }));

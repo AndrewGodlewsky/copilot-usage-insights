@@ -46,6 +46,8 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 
 #breakdown .usage-table{table-layout:fixed;min-width:calc(220px * var(--text-scale) + 9 * (var(--usage-metric-width) + 16px))}.usage-name-column{width:calc(220px * var(--text-scale))}#breakdown .usage-table th{white-space:normal;overflow-wrap:anywhere}#breakdown .usage-row td{white-space:normal;overflow-wrap:anywhere}#breakdown .usage-row .cell-text{min-width:0;max-width:none}#breakdown .usage-row[data-depth="1"] td:first-child,#breakdown .usage-header[data-depth="1"] th:first-child{padding-inline-start:calc(7px + 16px * var(--text-scale))}#breakdown .usage-row[data-depth="2"] td:first-child,#breakdown .usage-header[data-depth="2"] th:first-child{padding-inline-start:calc(7px + 32px * var(--text-scale))}
 #breakdown [data-depth="1"]{background:var(--bg)}#breakdown [data-depth="2"]{background:var(--card)}#breakdown [data-depth="3"]{background:var(--bg)}#breakdown .usage-context>td{padding:0;max-width:none;text-align:left;white-space:normal;overflow:visible}#breakdown .request-list,#breakdown .request-detail{background:transparent}#breakdown .request-list{padding:12px 7px;border:0}#breakdown .request-list>header{margin-bottom:0}#breakdown .usage-context[data-depth="1"] .request-list{padding-inline-start:calc(7px + 16px * var(--text-scale))}#breakdown .usage-context[data-depth="2"] .request-list{padding-inline-start:calc(7px + 32px * var(--text-scale))}
+
+.token-topic-navigation{display:flex;align-items:center;gap:12px 24px;flex-wrap:wrap}.token-topic-navigation label{width:min(100%,360px);flex-shrink:0}.token-topic-navigation select{max-width:100%;text-overflow:ellipsis}.token-topic-navigation>p{flex:1;min-width:min(100%,220px);max-width:60ch}.token-topic-detail p{max-width:88ch}.token-topic-detail .efficiency-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));margin-bottom:16px}.token-topic-detail .table-wrap{margin-top:16px}#token-topic-body>p+ p,#token-topic-body>button{margin-top:12px}.token-topic-status{font-weight:600;margin-block:18px 8px}
 </style></head>
 <body><main id="app">
   <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p><p class="hero-credits"><strong id="hero-credits">—</strong><span>Copilot credits</span></p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
@@ -90,9 +92,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <div class="efficiency-intro"><div><span class="efficiency-kicker">YOUR USAGE, EXPLAINED</span><h2>Explore your AI usage</h2><p class="muted">Understand context, examine your workflow, and prepare a personal review.</p><p id="efficiency-scope" class="footnote"></p></div></div>
       <div class="controls efficiency-navigation"><div class="seg" id="efficiency-sections" role="group" aria-label="Efficiency dashboards"><button data-efficiency-section="tokens" aria-pressed="true" aria-controls="efficiency-tokens-panel">Where did the tokens go?</button><button data-efficiency-section="patterns" aria-pressed="false" aria-controls="efficiency-patterns-panel">Worth a closer look</button><button data-efficiency-section="review" aria-pressed="false" aria-controls="efficiency-review-panel">AI review</button></div></div>
       <section id="efficiency-tokens-panel" aria-label="Where did the tokens go?">
-      <article class="card efficiency-flow"><header><h2>Where did the tokens go?</h2><span class="muted">Selected filters · input includes cache</span></header><div id="efficiency-flow"></div><div id="efficiency-summary" class="efficiency-metrics" aria-label="Average request measurements"></div><div id="efficiency-cache" class="efficiency-cache"></div></article>
-      <article class="card efficiency-context"><header><div><h2>What is in your context right now?</h2><p class="footnote">Current conversation · separate from the selected history</p></div><button id="efficiency-context-read">Inspect context</button></header><p class="muted">Instructions, tool definitions, and conversation history can occupy context before your next request. Inspect the conversation hosting this dashboard to see its largest recorded contributors.</p><div id="efficiency-context-result" aria-live="polite"><p class="footnote integration-note">Loaded only when you ask. An installed skill or plugin is not proof that it is consuming context.</p></div></article>
-        <article class="card"><header><div><h2>Calls and recovery</h2><p class="footnote">Recorded tool outcomes in the selected range</p></div></header><div id="efficiency-reliability"></div><p class="footnote integration-note">A failed tool call can lead to a useful recovery. These counts do not measure wasted tokens, task quality, or server uptime. Model API failures and retries are not reliably retained in this history.</p></article>
+      <div class="token-topic-navigation"><label for="efficiency-topic">Section<select id="efficiency-topic" aria-controls="token-topic-content" aria-describedby="token-topic-hint"><option value="overview">Overview</option></select></label><p id="token-topic-hint" class="footnote">Explore one section at a time. These views can overlap; their token counts are not added together.</p></div>
+      <div id="token-topic-content">
+      <article id="token-overview-panel" class="card efficiency-flow" aria-labelledby="token-overview-heading"><header><h2 id="token-overview-heading">Overview</h2><span class="muted">Selected filters · input includes cache</span></header><div id="efficiency-flow"></div><div id="efficiency-summary" class="efficiency-metrics" aria-label="Average request measurements"></div></article>
+      <article id="token-context-panel" class="card efficiency-context" aria-labelledby="token-context-heading" hidden><header><div><h2 id="token-context-heading">Always-loaded context</h2><p class="footnote">Current conversation · separate from the selected history</p></div><button id="efficiency-context-read">Inspect context</button></header><p class="muted">Instructions, tool definitions, and conversation history can occupy context before your next request. Inspect the conversation hosting this dashboard to see its largest recorded contributors.</p><div id="efficiency-context-result" aria-live="polite"><p class="footnote integration-note">Loaded only when you ask. An installed skill or plugin is not proof that it is consuming context.</p></div></article>
+      <article id="token-cache-panel" class="card" aria-labelledby="token-cache-heading" hidden><header><div><h2 id="token-cache-heading">Cache reuse</h2><p class="footnote">Selected history · calls with complete cache counts</p></div></header><div id="efficiency-cache" class="efficiency-cache"></div><p class="footnote integration-note">Cache reuse does not identify why other input was processed fresh. A new conversation, model change, or expired cache can affect reuse; these measurements do not establish the cause.</p></article>
+      <article id="token-recovery-panel" class="card" aria-labelledby="token-recovery-heading" hidden><header><div><h2 id="token-recovery-heading">Calls and recovery</h2><p class="footnote">Recorded tool outcomes in the selected range</p></div></header><div id="efficiency-reliability"></div><p class="footnote integration-note">A failed tool call can lead to a useful recovery. These counts do not measure wasted tokens, task quality, or server uptime. Model API failures and retries are not reliably retained in this history.</p></article>
+      <article id="token-detail-panel" class="card token-topic-detail" aria-labelledby="token-topic-title" hidden><header><div><h2 id="token-topic-title"></h2><p id="token-topic-scope" class="footnote"></p></div></header><p id="token-topic-question" class="muted"></p><div id="token-topic-body"></div></article>
+      </div>
       </section>
       <section id="efficiency-patterns-panel" aria-label="Worth a closer look" hidden>
         <article class="card"><header><div><h2>Your conversation habits</h2><p class="footnote">Recorded messages and root-agent turns</p></div></header><div id="efficiency-habits"></div><div id="efficiency-instructions" class="efficiency-cache"></div><button id="efficiency-inspect-instructions">Inspect current instructions</button></article>
@@ -107,14 +114,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.50</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.51</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.50";
+const BUILD_VERSION = "0.1.51";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -848,6 +855,82 @@ function buildEfficiencyReview(report, context, scope = {}) {
   return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations, including a pattern working well when the evidence supports it. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + JSON.stringify(data, null, 2);
 }
 
+// src/panel/token-topics.mjs
+
+const TOKEN_TOPICS = [
+  { id: 'overview', label: 'Overview', group: '', question: 'See the overall balance of input and output.' },
+  { id: 'growth', label: 'Context growth', group: 'Context', question: 'Why do later calls in a conversation process more input?' },
+  { id: 'context', label: 'Always-loaded context', group: 'Context', question: 'What occupies context before your next request?' },
+  { id: 'tools', label: 'Tool and MCP footprint', group: 'Context', question: 'How much input describes the tools available to the agent?' },
+  { id: 'results', label: 'Files, searches, and tool results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
+  { id: 'cache', label: 'Cache reuse', group: 'Context', question: 'How much input is reused from cache rather than processed fresh?' },
+  { id: 'prompts', label: 'Work behind each prompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
+  { id: 'delegation', label: 'Delegated work', group: 'Agent work', question: 'How much usage happens in subagents?' },
+  { id: 'output', label: 'Reasoning and generated output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
+  { id: 'recovery', label: 'Calls and recovery', group: 'Agent work', question: 'Which operations have recorded failures that deserve attention?' },
+  { id: 'drivers', label: 'Biggest spend drivers', group: 'Usage patterns', question: 'Which sessions account for the largest recorded charges?' },
+  { id: 'prompt-size', label: 'Prompt size versus processing', group: 'Usage patterns', question: 'How much do you type, and how much input does the model process?' },
+  { id: 'compaction', label: 'Context reduction', group: 'Usage patterns', question: 'What changes when a conversation is compacted?' },
+  { id: 'transitions', label: 'Model changes and fresh starts', group: 'Usage patterns', question: 'What happens to input and cache reuse around a model change or resumed session?' },
+  { id: 'repetition', label: 'Repeated exploration', group: 'Usage patterns', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'skills', label: 'Skills and instruction footprint', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+];
+
+function renderTokenTopic(id, report, { number, credits }) {
+  const summary = report.efficiency?.summary || {};
+  const metric = (label, value, detail, format = number) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(format(value))}</strong><span class="sub">${esc(detail)}</span></div>`;
+  const metrics = (...items) => `<div class="efficiency-metrics">${items.join('')}</div>`;
+  const note = text => `<p class="footnote">${esc(text)}</p>`;
+  const coverage = count => `${number(count ?? 0)} of ${number(summary.requests ?? 0)} model calls`;
+  const inspect = '<button data-token-context="true">Open context inspector</button>';
+  const unmeasured = text => `<p class="token-topic-status">Not measured yet</p><p>${esc(text)}</p>`;
+
+  if (id === 'growth') {
+    const growth = report.efficiency?.insights?.find(i => i.kind === 'growth');
+    if (!growth) return '<p class="muted">No comparable context-growth finding is available for these filters. This does not establish that context stayed small.</p>' + note(`The current comparison needs at least six input measurements, 80% coverage, and a rise of at least 2x and ${number(10000)} tokens within one project, session, model, and call initiator.`);
+    return `<p><strong>${esc(growth.sessionName)}</strong> · ${esc(growth.model)}</p>` + metrics(
+      metric('Earlier input / call', growth.early, 'Median of the first three measured calls'),
+      metric('Later input / call', growth.late, 'Median of the last three measured calls'),
+    ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
+  }
+  if (id === 'tools') return metrics(
+    metric('Tool definitions / call', summary.averageToolTokens, coverage(summary.toolRequests)),
+    metric('Share of measured input', summary.toolShare, 'Definitions and input measured on the same calls', value => value == null ? 'Unavailable' : `${number(value)}%`),
+  ) + note('These describe available tools, not their results or execution costs. Definitions are already included in input. Inspect current context to see built-in and MCP definitions separately, when the host reports them.') + inspect;
+  if (id === 'results') return '<p>The current context inspector groups conversation and tool-result messages together and lists individual sources when Copilot attributes them.</p>' + note('A separate historical token breakdown for files, searches, and tool results is not measured yet. Their combined context category should not be presented as tool-result tokens alone.') + inspect;
+  if (id === 'skills') return '<p>Inspect the largest attributed sources in current context to look for loaded skills and instructions. Source detail depends on what Copilot reports.</p>' + note('Installed skills and invocation counts do not establish context cost. Historical tokens per skill are not measured. Parent and child sources may overlap and should not be added together.') + inspect;
+  if (id === 'prompts') {
+    const prompts = report.promptCredits || {};
+    return (prompts.modelFiltered ? '<p class="token-topic-status">Selected-model contribution only</p>' : '') + metrics(
+      metric('AI credits / prompt', prompts.averageCredits, `${number(prompts.eligiblePrompts ?? 0)} of ${number(prompts.prompts ?? 0)} prompts eligible`, credits),
+      metric('Recorded AI credits', prompts.credits, 'Charges attributable to eligible prompts', credits),
+    ) + note('Includes initial calls, agent continuations, and subagent work with reliable parent links. Prompts need complete accounting and finished linked work. They are dated by submission, with all linked work grouped before filtering. A model filter shows only that model’s contribution to eligible prompts; local logs may be incomplete.') + note('A per-prompt call-count and initial-versus-follow-up breakdown is not displayed here yet.');
+  }
+  if (id === 'delegation') return unmeasured('A separate subagent usage breakdown is not available here yet. Complete prompt charges already include delegated work when parent links and accounting are reliable. Missing links must remain unattributed, rather than being assigned by timing or agent name.');
+  if (id === 'output') return metrics(
+    metric('Generated output', summary.outputRequests ? summary.outputTokens : null, coverage(summary.outputRequests)),
+    metric('Reported reasoning', summary.reasoningRequests ? summary.reasoningTokens : null, coverage(summary.reasoningRequests)),
+  ) + note('Reasoning is part of output, not an extra token category to add. Reporting coverage can differ, so these totals are not subtracted to invent a non-reasoning total. Output can include tool-call arguments and does not measure the usefulness of the answer.');
+  if (id === 'drivers') {
+    const rows = (report.sessions || []).filter(row => Number.isFinite(row.credits))
+      .slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name)).slice(0, 5);
+    if (!rows.length) return '<p class="muted">No session charges are recorded for these filters. Unavailable charges are not zero.</p>';
+    return '<p>Up to five session/project groups with the largest recorded AI credit totals.</p><div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Session</th><th>Project</th><th>AI credits</th></tr></thead><tbody>' + rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td><td class="text-cell"><span class="cell-text">${esc(row.project)}</span></td><td>${esc(usageValue(row, 'credits', credits))}</td></tr>`).join('') + '</tbody></table></div>' + note('An asterisk marks incomplete charges, which can affect the ranking. A session spanning projects can appear more than once. These are recorded charges, not a judgment of task value.');
+  }
+  if (id === 'prompt-size') {
+    const habits = report.efficiency?.interactions || {};
+    if (habits.reason === 'model-filter') return '<p class="muted">Clear the model filter to see recorded prompt lengths. These session-wide measurements cannot reliably be assigned to one model.</p>';
+    return metrics(
+      metric('Characters / prompt', habits.averagePromptChars, `${number(habits.promptSamples ?? 0)} recorded prompt lengths`),
+      metric('Input tokens / call', summary.averageInput, coverage(summary.inputRequests)),
+    ) + note('These are separate averages, not a matched prompt-to-call ratio. One prompt can cause several model calls. Characters are not tokens, and prompt text lengths exclude attachments and injected context. Short or long prompts do not establish quality.');
+  }
+  if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
+  if (id === 'transitions') return unmeasured('Changes in input and cache reuse around model switches and resumed sessions are not measured here yet. Those comparisons need reliable transition events and must distinguish manual choices, automatic routing, and subagent work.');
+  if (id === 'repetition') return unmeasured('Repeated searches or file reads are not identified here yet. Calling the same tool several times is not proof of repeating the same work. A useful comparison also needs evidence about what was requested and whether the underlying material changed.');
+  return '';
+}
+
 // src/panel/panel.js
 
 const $ = id => document.getElementById(id);
@@ -1272,7 +1355,7 @@ $('efficiency-context-read').onclick = async () => {
   } catch (error) {
     efficiencyContextSnapshot = undefined;
     clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
-    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical measures above are still available.</p>';
+    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical sections are still available.</p>';
   } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); }
 };
 function renderEfficiencyContext() {
@@ -1281,7 +1364,7 @@ function renderEfficiencyContext() {
     const message = c?.reason === 'empty' ? 'This conversation has no context snapshot yet. Make a request in Copilot, then inspect again.'
       : c?.reason === 'timeout' ? 'Copilot did not return a context snapshot in time. Try again later, or use /context in Copilot.'
         : 'Context attribution is not available in this host session. Try /context in Copilot to inspect it there.';
-    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical measures above are still available.</p>`;
+    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical sections are still available.</p>`;
     return;
   }
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
@@ -1372,7 +1455,37 @@ function showEfficiencySection(section) {
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
-$('efficiency-inspect-instructions').onclick = () => { showEfficiencySection('tokens'); $('efficiency-context-read').focus({ preventScroll: false }); };
+let tokenTopic = 'overview';
+const tokenPanelNames = ['overview', 'context', 'cache', 'recovery', 'detail'];
+const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
+$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Usage patterns'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
+$('efficiency-topic').value = tokenTopic;
+function showTokenTopic(id) {
+  const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
+  if (TOKEN_TOPICS.some(topic => topic.id === id)) tokenTopic = id;
+  $('efficiency-topic').value = tokenTopic;
+  const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
+  for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
+  if (panel !== 'detail') {
+    if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
+    return;
+  }
+  const topic = TOKEN_TOPICS.find(item => item.id === tokenTopic);
+  $('token-topic-title').textContent = topic.label;
+  $('token-topic-question').textContent = topic.question;
+  $('token-topic-scope').textContent = ['results', 'skills'].includes(tokenTopic) ? 'Current conversation · separate from the selected history'
+    : ['delegation', 'compaction', 'transitions', 'repetition'].includes(tokenTopic) ? 'Measurement not available yet' : 'Selected history · current filters';
+  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
+  if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
+}
+$('efficiency-topic').onchange = () => showTokenTopic($('efficiency-topic').value);
+function openTokenContext() {
+  showEfficiencySection('tokens');
+  showTokenTopic('context');
+  $('efficiency-context-read').focus({ preventScroll: false });
+}
+$('token-detail-panel').onclick = event => { if (event.target.closest('[data-token-context]')) openTokenContext(); };
+$('efficiency-inspect-instructions').onclick = openTokenContext;
 function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
@@ -1385,6 +1498,7 @@ function renderEfficiency() {
   renderEfficiencyFlow(summary);
   renderEfficiencyHabits();
   renderEfficiencyReliability();
+  showTokenTopic(tokenTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);

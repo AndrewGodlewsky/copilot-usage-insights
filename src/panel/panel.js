@@ -3,6 +3,7 @@ import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
+import { TOKEN_TOPICS, renderTokenTopic } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 
 const $ = id => document.getElementById(id);
@@ -427,7 +428,7 @@ $('efficiency-context-read').onclick = async () => {
   } catch (error) {
     efficiencyContextSnapshot = undefined;
     clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
-    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical measures above are still available.</p>';
+    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical sections are still available.</p>';
   } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); }
 };
 function renderEfficiencyContext() {
@@ -436,7 +437,7 @@ function renderEfficiencyContext() {
     const message = c?.reason === 'empty' ? 'This conversation has no context snapshot yet. Make a request in Copilot, then inspect again.'
       : c?.reason === 'timeout' ? 'Copilot did not return a context snapshot in time. Try again later, or use /context in Copilot.'
         : 'Context attribution is not available in this host session. Try /context in Copilot to inspect it there.';
-    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical measures above are still available.</p>`;
+    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical sections are still available.</p>`;
     return;
   }
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
@@ -527,7 +528,37 @@ function showEfficiencySection(section) {
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
-$('efficiency-inspect-instructions').onclick = () => { showEfficiencySection('tokens'); $('efficiency-context-read').focus({ preventScroll: false }); };
+let tokenTopic = 'overview';
+const tokenPanelNames = ['overview', 'context', 'cache', 'recovery', 'detail'];
+const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
+$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Usage patterns'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
+$('efficiency-topic').value = tokenTopic;
+function showTokenTopic(id) {
+  const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
+  if (TOKEN_TOPICS.some(topic => topic.id === id)) tokenTopic = id;
+  $('efficiency-topic').value = tokenTopic;
+  const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
+  for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
+  if (panel !== 'detail') {
+    if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
+    return;
+  }
+  const topic = TOKEN_TOPICS.find(item => item.id === tokenTopic);
+  $('token-topic-title').textContent = topic.label;
+  $('token-topic-question').textContent = topic.question;
+  $('token-topic-scope').textContent = ['results', 'skills'].includes(tokenTopic) ? 'Current conversation · separate from the selected history'
+    : ['delegation', 'compaction', 'transitions', 'repetition'].includes(tokenTopic) ? 'Measurement not available yet' : 'Selected history · current filters';
+  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
+  if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
+}
+$('efficiency-topic').onchange = () => showTokenTopic($('efficiency-topic').value);
+function openTokenContext() {
+  showEfficiencySection('tokens');
+  showTokenTopic('context');
+  $('efficiency-context-read').focus({ preventScroll: false });
+}
+$('token-detail-panel').onclick = event => { if (event.target.closest('[data-token-context]')) openTokenContext(); };
+$('efficiency-inspect-instructions').onclick = openTokenContext;
 function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
@@ -540,6 +571,7 @@ function renderEfficiency() {
   renderEfficiencyFlow(summary);
   renderEfficiencyHabits();
   renderEfficiencyReliability();
+  showTokenTopic(tokenTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);

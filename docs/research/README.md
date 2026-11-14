@@ -1,11 +1,12 @@
 # Efficiency research
 
-This directory is the persistent research base for Usage Insights. Last reviewed **November 14, 2026**, against product **0.1.29**. The documents below describe evidence and proposals; they do not add shipped features.
+This directory is the persistent research base for Usage Insights. The original research was reviewed **November 14, 2026**, against product **0.1.29**. Newer implementation notes identify their own versions; see the root README for shipped behavior.
 
 ## Start here
 
 | Document | What it answers |
 | --- | --- |
+| [Token-efficiency section roadmap](2026-11-14-token-sections.md) | All 15 approved sections, navigation and existing measurements in 0.1.51, and the remaining work for each dashboard |
 | [Statistics and Analyze My Usage proposal](2026-11-14-efficiency-analysis-proposal.md) | A practical tab direction: context overhead, MCP reliability, and optional bounded AI interpretation; SDK feasibility and remaining checks |
 | [Techniques by difficulty](2026-11-14-efficiency-techniques.md) | 24 simple, intermediate and advanced practices, their anti-patterns, counterexamples, evidence strength, required data and experiments |
 | [Copilot data inventory](2026-11-14-copilot-data-inventory.md) | What the plugin reads today, extra observed receipt/event fields, existing database schemas, cloud reporting, privacy and performance limits |
