@@ -59,7 +59,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
     </section>
     <section id="breakdown-view" hidden>
-      <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
+      <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
       <p class="footnote">Expand a model to see its requests, then expand a request for token details and its original prompt. File-level and command-level charges are not available.</p>
       <div class="controls"><div class="seg" id="breakdown-sections" role="group" aria-label="Breakdown details"><button data-section="skills" aria-pressed="true" aria-controls="skills-panel">Skills</button><button data-section="plugins" aria-pressed="false" aria-controls="plugins-panel">Plugins</button><button data-section="mcp" aria-pressed="false" aria-controls="mcp-panel">MCP</button></div></div>
       <article class="card" id="skills-panel" aria-label="Skills"><header><span id="skills-summary" class="muted"></span><label class="detail-sort">Sort by <select id="skills-sort" aria-label="Sort skills by"><option value="invocations">Most uses</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option><option value="sessions">Most sessions</option></select></label></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p id="skills-coverage" class="footnote"></p></article>
@@ -69,13 +69,13 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompts are read locally when you expand an individual request; nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.26</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.27</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.26";
+const BUILD_VERSION = "0.1.27";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -735,7 +735,7 @@ $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VER
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, sessionOffset: 0 };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -818,7 +818,7 @@ async function load(force = false, refresh = false) {
         const input = query(), filterKey = JSON.stringify(input);
         const report = await request(method, input, rescan);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.sessionOffset = 0; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
         state.report = report;
         render();
@@ -865,12 +865,27 @@ function table(rows, heading, details = false) {
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  const expandable = details && heading === 'Model';
+  const modelExpansion = details && heading === 'Model', projectExpansion = details && heading === 'Project';
+  const expandable = modelExpansion || projectExpansion, attribute = modelExpansion ? 'data-request-model' : 'data-project-name';
   return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
-    const open = expandable && state.requestView?.model === r.name;
-    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" data-request-model="${esc(r.name)}" aria-expanded="${open}"${open ? ' aria-controls="model-requests"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="model-requests" class="request-list" aria-label="Requests for ${esc(r.name)}">${requestList()}</div></td></tr>` : '');
+    const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
+    const region = modelExpansion ? 'model-requests' : 'project-sessions';
+    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
+    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
   }).join('')}</tbody></table>`;
+}
+
+function sortedUsage(rows) {
+  const sort = $('sort').value;
+  return [...rows].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name) || (a.id || '').localeCompare(b.id || ''));
+}
+function projectSessionList(project) {
+  const rows = sortedUsage(state.report.sessions.filter(s => s.project === project));
+  const total = rows.length, limit = 25, view = state.projectView;
+  view.offset = Math.min(view.offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
+  const offset = view.offset, end = Math.min(offset + limit, total);
+  const paging = total > limit ? `<div class="request-paging"><span>${offset + 1}–${end}</span><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div>` : '';
+  return `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>${table(rows.slice(offset, end), 'Session', true)}`;
 }
 
 const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
@@ -983,26 +998,19 @@ function renderBreakdown() {
 function renderBreakdownContent() {
   const report = state.report;
   if (!report) return;
-  const group = $('group').value, sort = $('sort').value;
+  const group = $('group').value;
   if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
+  if (group !== 'projects' || state.projectView && !report.projects.some(r => r.name === state.projectView.project)) state.projectView = null;
   const focusedRequest = document.activeElement?.dataset;
-  let rows = [...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), paging = '';
-  if (group === 'sessions') {
-    const total = rows.length, limit = 25;
-    state.sessionOffset = Math.min(state.sessionOffset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-    const offset = state.sessionOffset, end = Math.min(offset + limit, total);
-    if (total > limit) paging = `<header class="session-paging"><span>${offset + 1}–${end} of ${number(total)} sessions</span><div class="request-paging"><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div></header>`;
-    rows = rows.slice(offset, end);
-  }
-  $('breakdown').innerHTML = paging + table(rows, { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
+  $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true);
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
     if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection) {
       const key = focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
       const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
-      (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || $('group'))?.focus({ preventScroll: true });
-    } else for (const key of ['requestModel', 'requestId', 'requestPage']) {
-      if (focusedRequest[key] !== undefined) buttons.find(b => b.dataset[key] === focusedRequest[key])?.focus({ preventScroll: true });
+      (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || buttons.find(b => b.dataset.projectName === state.projectView?.project && b.dataset.projectName !== undefined) || $('group'))?.focus({ preventScroll: true });
+    } else for (const key of ['requestModel', 'requestId', 'requestPage', 'projectName']) {
+      if (focusedRequest[key] !== undefined) (buttons.find(b => b.dataset[key] === focusedRequest[key]) || $('group'))?.focus({ preventScroll: true });
     }
   }
   const skills = report.skills;
@@ -1113,11 +1121,15 @@ $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestPage, requestId, requestRetry, sessionPage } = button.dataset;
-  if (sessionPage !== undefined && $('group').value === 'sessions') {
-    state.sessionOffset = Math.max(0, Number(sessionPage) || 0);
+  const { requestModel, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
+  if (projectName !== undefined && $('group').value === 'projects') {
+    state.projectView = state.projectView?.project === projectName ? null : { project: projectName, offset: 0 };
     renderBreakdown();
-    $('live').textContent = `Showing sessions ${state.sessionOffset + 1}–${Math.min(state.sessionOffset + 25, state.report.sessions.length)}`;
+  } else if (sessionPage !== undefined && state.projectView) {
+    state.projectView.offset = Math.max(0, Number(sessionPage) || 0);
+    renderBreakdown();
+    const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
+    $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
   } else if (requestModel !== undefined) {
     if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
     state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
@@ -1134,7 +1146,7 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort']) $(id).onchange = () => { state.sessionOffset = 0; renderBreakdown(); };
+for (const id of ['group', 'sort']) $(id).onchange = () => { if (state.projectView) state.projectView.offset = 0; renderBreakdown(); };
 for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');

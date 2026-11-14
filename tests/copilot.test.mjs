@@ -126,6 +126,35 @@ test('reasoning stays within output and token averages use only complete request
   assert.equal(buildReport([], { range: '1d' }, now).totals.averageTokens, null);
 });
 
+test('project session totals stay scoped to their project and follow every usage filter', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const base = parse([receipt(), receipt({ inputTokens: 200, outputTokens: 40 }, 'second'),
+    receipt({ model: 'second', outputTokens: undefined, copilotUsage: undefined }, 'partial')]).records;
+  const records = base.map((r, i) => ({ ...r, project: i === 1 ? 'B' : 'A', sessionId: i === 2 ? 'other' : 'shared', sessionName: i === 2 ? 'Other session' : 'Shared session' }));
+  records.push({ ...records[0], key: 'yesterday', ms: new Date(2026, 10, 12, 10).getTime() });
+  for (const query of [{ range: '1d' }, { range: '7d', includeCache: false }, { range: '1d', models: ['second'] },
+    { range: '1d', project: 'B' }, { range: '1d', session: 'shared' }]) {
+    const report = buildReport(records, query, now);
+    for (const project of report.projects) {
+      const children = report.sessions.filter(s => s.project === project.name);
+      assert.equal(children.length, project.sessions);
+      for (const key of ['requests', 'total', 'input', 'output', 'cacheRead', 'cacheWrite', 'reasoning', 'missingCredits', 'missingTokens']) {
+        assert.equal(children.reduce((sum, row) => sum + row[key], 0), project[key], `${project.name}: ${key}`);
+      }
+    }
+  }
+  const sessions = buildReport(records, { range: '1d' }, now).sessions;
+  assert.equal(sessions.length, 3);
+  const shared = sessions.filter(s => s.id === 'shared');
+  assert.equal(shared.length, 2, 'a session spanning projects has separate accounting in each');
+  assert.equal(shared.find(s => s.project === 'A').total, 120);
+  assert.equal(shared.find(s => s.project === 'B').total, 240);
+  assert.ok(shared.every(s => s.name === 'Shared session'));
+  const missing = sessions.find(s => s.id === 'other');
+  assert.equal(missing.averageTokens, null);
+  assert.equal(missing.credits, null);
+});
+
 async function fixture(t) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-insights-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));

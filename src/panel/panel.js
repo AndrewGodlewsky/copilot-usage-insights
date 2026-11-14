@@ -12,7 +12,7 @@ $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VER
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, sessionOffset: 0 };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -95,7 +95,7 @@ async function load(force = false, refresh = false) {
         const input = query(), filterKey = JSON.stringify(input);
         const report = await request(method, input, rescan);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.sessionOffset = 0; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
         state.report = report;
         render();
@@ -142,12 +142,27 @@ function table(rows, heading, details = false) {
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  const expandable = details && heading === 'Model';
+  const modelExpansion = details && heading === 'Model', projectExpansion = details && heading === 'Project';
+  const expandable = modelExpansion || projectExpansion, attribute = modelExpansion ? 'data-request-model' : 'data-project-name';
   return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
-    const open = expandable && state.requestView?.model === r.name;
-    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" data-request-model="${esc(r.name)}" aria-expanded="${open}"${open ? ' aria-controls="model-requests"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="model-requests" class="request-list" aria-label="Requests for ${esc(r.name)}">${requestList()}</div></td></tr>` : '');
+    const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
+    const region = modelExpansion ? 'model-requests' : 'project-sessions';
+    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
+    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
   }).join('')}</tbody></table>`;
+}
+
+function sortedUsage(rows) {
+  const sort = $('sort').value;
+  return [...rows].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name) || (a.id || '').localeCompare(b.id || ''));
+}
+function projectSessionList(project) {
+  const rows = sortedUsage(state.report.sessions.filter(s => s.project === project));
+  const total = rows.length, limit = 25, view = state.projectView;
+  view.offset = Math.min(view.offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
+  const offset = view.offset, end = Math.min(offset + limit, total);
+  const paging = total > limit ? `<div class="request-paging"><span>${offset + 1}–${end}</span><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div>` : '';
+  return `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>${table(rows.slice(offset, end), 'Session', true)}`;
 }
 
 const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
@@ -260,26 +275,19 @@ function renderBreakdown() {
 function renderBreakdownContent() {
   const report = state.report;
   if (!report) return;
-  const group = $('group').value, sort = $('sort').value;
+  const group = $('group').value;
   if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
+  if (group !== 'projects' || state.projectView && !report.projects.some(r => r.name === state.projectView.project)) state.projectView = null;
   const focusedRequest = document.activeElement?.dataset;
-  let rows = [...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), paging = '';
-  if (group === 'sessions') {
-    const total = rows.length, limit = 25;
-    state.sessionOffset = Math.min(state.sessionOffset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
-    const offset = state.sessionOffset, end = Math.min(offset + limit, total);
-    if (total > limit) paging = `<header class="session-paging"><span>${offset + 1}–${end} of ${number(total)} sessions</span><div class="request-paging"><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div></header>`;
-    rows = rows.slice(offset, end);
-  }
-  $('breakdown').innerHTML = paging + table(rows, { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
+  $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true);
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
     if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection) {
       const key = focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
       const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
-      (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || $('group'))?.focus({ preventScroll: true });
-    } else for (const key of ['requestModel', 'requestId', 'requestPage']) {
-      if (focusedRequest[key] !== undefined) buttons.find(b => b.dataset[key] === focusedRequest[key])?.focus({ preventScroll: true });
+      (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || buttons.find(b => b.dataset.projectName === state.projectView?.project && b.dataset.projectName !== undefined) || $('group'))?.focus({ preventScroll: true });
+    } else for (const key of ['requestModel', 'requestId', 'requestPage', 'projectName']) {
+      if (focusedRequest[key] !== undefined) (buttons.find(b => b.dataset[key] === focusedRequest[key]) || $('group'))?.focus({ preventScroll: true });
     }
   }
   const skills = report.skills;
@@ -390,11 +398,15 @@ $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestPage, requestId, requestRetry, sessionPage } = button.dataset;
-  if (sessionPage !== undefined && $('group').value === 'sessions') {
-    state.sessionOffset = Math.max(0, Number(sessionPage) || 0);
+  const { requestModel, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
+  if (projectName !== undefined && $('group').value === 'projects') {
+    state.projectView = state.projectView?.project === projectName ? null : { project: projectName, offset: 0 };
     renderBreakdown();
-    $('live').textContent = `Showing sessions ${state.sessionOffset + 1}–${Math.min(state.sessionOffset + 25, state.report.sessions.length)}`;
+  } else if (sessionPage !== undefined && state.projectView) {
+    state.projectView.offset = Math.max(0, Number(sessionPage) || 0);
+    renderBreakdown();
+    const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
+    $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
   } else if (requestModel !== undefined) {
     if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
     state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
@@ -411,7 +423,7 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort']) $(id).onchange = () => { state.sessionOffset = 0; renderBreakdown(); };
+for (const id of ['group', 'sort']) $(id).onchange = () => { if (state.projectView) state.projectView.offset = 0; renderBreakdown(); };
 for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');

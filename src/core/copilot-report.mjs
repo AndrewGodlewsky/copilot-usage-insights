@@ -129,7 +129,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     if (day === today) add(todayTotal, r, q.includeCache);
     if (day < start || day > end) continue;
     add(totals, r, q.includeCache); add(get(days, day), r, q.includeCache);
-    add(get(models, r.model), r, q.includeCache); add(get(projects, r.project), r, q.includeCache); add(get(sessions, r.sessionId), r, q.includeCache);
+    add(get(models, r.model), r, q.includeCache); add(get(projects, r.project), r, q.includeCache); add(get(sessions, JSON.stringify([r.project, r.sessionId])), r, q.includeCache);
     rhythm[date.getDay() * 24 + date.getHours()] += knownTokens(r, q.includeCache);
   }
   const ranked = map => [...map].map(([name, b]) => ({ name, ...finish(b) })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
@@ -142,7 +142,10 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
-    rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions).map(s => ({ ...s, id: s.name, name: sessionLabels.get(s.name) })),
+    rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions).map(s => {
+      const [project, id] = JSON.parse(s.name);
+      return { ...s, project, id, name: sessionLabels.get(id) };
+    }),
     skills, tools, mcp: mcpHistory(tools),
     options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };

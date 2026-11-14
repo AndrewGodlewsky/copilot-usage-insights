@@ -10,7 +10,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-    return [id, { value: '', href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
+    return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       focus() { document.activeElement = this; },
       select() { this.selected = true; },
@@ -200,7 +200,7 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
   const { get, server, click, document } = await requestPanel();
   const node = get('breakdown');
   let markup = node.innerHTML, buttons = [];
-  document.body = {};
+  document.body = { dataset: {} };
   Object.defineProperty(node, 'innerHTML', { get: () => markup, set(value) {
     if (buttons.includes(document.activeElement)) document.activeElement = document.body;
     markup = value;
@@ -226,16 +226,16 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
   }
 });
 
-test('session breakdown pages locally, sorts the full set, and resets or clamps pages as needed', async () => {
+test('project sessions expand and page locally, sort the full set, and reset or clamp pages as needed', async () => {
   const { get, report, records, now, requests, click, document } = await requestPanel();
   const sessions = Array.from({ length: 52 }, (_, i) => ({ ...records[0], key: `request-${i}`, sessionId: `session-${i}`,
     sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, inputTotal: 100, input: 30 }));
   Object.assign(report, buildReport(sessions, {}, now));
   await get('refresh').onclick();
-  get('group').value = 'sessions'; get('group').onchange();
+  get('group').value = 'projects'; get('group').onchange();
   const node = get('breakdown');
   let markup = node.innerHTML, buttons = [];
-  document.body = {};
+  document.body = { dataset: {} };
   Object.defineProperty(node, 'innerHTML', { get: () => markup, set(value) {
     if (buttons.includes(document.activeElement)) document.activeElement = document.body;
     markup = value;
@@ -246,37 +246,84 @@ test('session breakdown pages locally, sorts the full set, and resets or clamps 
   } });
   node.querySelectorAll = selector => selector === 'button' ? buttons : [];
   get('sort').value = 'total'; get('sort').onchange();
-  const html = () => node.innerHTML, rowCount = () => [...html().matchAll(/<tr>/g)].length - 1;
-  assert.match(html(), /1–25 of 52 sessions/);
+  const html = () => node.innerHTML, sessionTable = () => html().match(/<table><thead><tr><th>Session<\/th>[\s\S]*?<\/table>/)?.[0] || '';
+  const rowCount = () => [...sessionTable().matchAll(/<tr>/g)].length - 1;
+  const before = requests.length;
+  assert.doesNotMatch(html(), /<th>Session<\/th>/);
+  const project = sessions[0].project;
+  buttons.find(b => b.dataset.projectName === project).focus();
+  await click({ projectName: project });
+  assert.equal(document.activeElement.dataset.projectName, project, 'expanding keeps the project toggle focused');
+  assert.match(html(), /52 sessions/);
+  assert.match(html(), /1–25/);
   assert.equal(rowCount(), 25);
   assert.match(html(), /Session 51/);
   assert.doesNotMatch(html(), /Session 00/);
-  const before = requests.length;
   await click({ sessionPage: '25' });
-  assert.match(html(), /26–50 of 52 sessions/);
+  assert.match(html(), /26–50/);
   buttons.find(b => b.dataset.sessionPageDirection === 'next').focus();
   await click({ sessionPage: '50' });
-  assert.match(html(), /51–52 of 52 sessions/);
+  assert.match(html(), /51–52/);
   assert.equal(rowCount(), 2);
   assert.equal(document.activeElement.dataset.sessionPageDirection, 'previous');
-  assert.equal(requests.length, before, 'session paging makes no API requests');
+  assert.equal(requests.length, before, 'project expansion and session paging make no API requests');
   get('sort').value = 'output'; get('sort').onchange();
-  assert.match(html(), /1–25 of 52 sessions/);
+  assert.match(html(), /1–25/);
   await click({ sessionPage: '50' });
   Object.assign(report, buildReport(sessions.slice(0, 30), {}, now));
   await get('refresh').onclick();
-  assert.match(html(), /26–30 of 30 sessions/);
+  assert.match(html(), /26–30/);
   assert.equal(rowCount(), 5);
   get('range').value = '1d'; get('range').onchange();
   await new Promise(setImmediate);
-  assert.match(html(), /1–25 of 30 sessions/);
+  assert.doesNotMatch(html(), /id="project-sessions"/);
+  await click({ projectName: project });
+  assert.match(html(), /1–25/);
   await click({ sessionPage: '25' });
   buttons.find(b => b.dataset.sessionPageDirection === 'previous').focus();
   Object.assign(report, buildReport(sessions.slice(0, 2), {}, now));
   await get('refresh').onclick();
   assert.equal(rowCount(), 2);
   assert.doesNotMatch(html(), /data-session-page/);
-  assert.equal(document.activeElement, get('group'), 'focus survives removal of paging controls');
+  assert.equal(document.activeElement.dataset.projectName, project, 'focus returns to the project when paging controls disappear');
+  await click({ projectName: project });
+  assert.doesNotMatch(html(), /id="project-sessions"/);
+  assert.equal(document.activeElement.dataset.projectName, project, 'collapse preserves focus');
+});
+
+test('project expansion isolates sessions, escapes names, and shares metric columns and shading', async () => {
+  const { get, report, records, now, click, requests } = await requestPanel();
+  const projects = [
+    { ...records[0], key: 'a1', project: '<Project "A">', sessionId: 'a1', sessionName: '<Session A>' },
+    { ...records[0], key: 'b1', project: 'Project B', sessionId: 'b1', sessionName: 'Session B' },
+  ];
+  Object.assign(report, buildReport(projects, {}, now));
+  await get('refresh').onclick();
+  get('group').value = 'projects'; get('group').onchange();
+  const before = requests.length, html = () => get('breakdown').innerHTML;
+  await click({ projectName: projects[0].project });
+  assert.match(html(), /data-project-name="&lt;Project &quot;A&quot;&gt;" aria-expanded="true" aria-controls="project-sessions"/);
+  assert.match(html(), /id="project-sessions" class="request-list"/);
+  assert.match(html(), /&lt;Session A&gt;/);
+  assert.doesNotMatch(html(), /Session B|<Session A>|<Project/);
+  const headers = [...html().matchAll(/<thead>([\s\S]*?)<\/thead>/g)].map(([, value]) => value.replace(/<th>[^<]+<\/th>/, ''));
+  assert.equal(headers[0], headers[1], 'project and session tables have the same metric columns');
+  await click({ projectName: 'Project B' });
+  assert.match(html(), /Session B/);
+  assert.doesNotMatch(html(), /&lt;Session A&gt;/);
+  report.sessions.find(s => s.id === 'b1').name = 'Renamed session';
+  await get('refresh').onclick();
+  assert.match(html(), /Renamed session/);
+  assert.equal(requests.length, before + 1, 'only explicit refresh fetched data');
+  Object.assign(report, buildReport(projects.slice(0, 1), {}, now));
+  await get('refresh').onclick();
+  assert.doesNotMatch(html(), /id="project-sessions"/);
+  await click({ projectName: projects[0].project });
+  get('group').value = 'models'; get('group').onchange();
+  assert.doesNotMatch(html(), /id="project-sessions"/);
+  assert.match(html(), /data-request-model=/);
+  get('group').value = 'projects'; get('group').onchange();
+  assert.doesNotMatch(html(), /id="project-sessions"/);
 });
 
 test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
@@ -397,8 +444,9 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   assert.ok(!nodes.has('tools'));
   assert.doesNotMatch(get('mcp').innerHTML, /&lt;view&gt;/);
   assert.match(get('session').innerHTML, /value="s1"[^>]*>&lt;Planning &quot;work&quot;&gt;<\/option>/);
-  get('group').value = 'sessions';
+  get('group').value = 'projects';
   get('group').onchange();
+  await get('breakdown').onclick({ target: { closest: () => ({ dataset: { projectName: report.projects[0].name } }) } });
   assert.match(get('breakdown').innerHTML, />&lt;Planning &quot;work&quot;&gt;<\//);
   assert.match(get('breakdown').innerHTML, /title="[^"]*s1[^"]*"/);
   get('session').value = 's1';
