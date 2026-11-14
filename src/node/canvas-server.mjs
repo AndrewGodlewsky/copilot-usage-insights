@@ -5,6 +5,7 @@ import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome } from './settings.mjs';
 import { buildReport } from '../core/copilot-report.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
+import { addInstalledSkillVersions } from './skill-version.mjs';
 
 const MAX_BODY = 64 * 1024;
 export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder } = {}) {
@@ -53,6 +54,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
         const config = await settings.get();
         const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes, force: message.method === 'usage.refresh' });
         result = { ...buildReport(scan.records, input, now(), scan), sources: scan.sources, coverage: scan.coverage };
+        await addInstalledSkillVersions(result.skills.rows);
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();

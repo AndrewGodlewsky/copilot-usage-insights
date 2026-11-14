@@ -20,9 +20,13 @@ export function launchFolder(file, args, platform = process.platform) {
   });
 }
 
-export async function openSkillFolder(file, { launch = launchFolder } = {}) {
+export function isLocalSkillFilePath(file) {
   const local = typeof file === 'string' && (process.platform === 'win32' ? /^[A-Za-z]:[\\/]/.test(file) : /^\/(?!\/)/.test(file));
-  if (!local || /[\x00-\x1f]/.test(file) || !path.isAbsolute(file) || path.basename(file).toLowerCase() !== 'skill.md') {
+  return !!local && !/[\x00-\x1f]/.test(file) && path.isAbsolute(file) && path.basename(file).toLowerCase() === 'skill.md';
+}
+
+export async function openSkillFolder(file, { launch = launchFolder } = {}) {
+  if (!isLocalSkillFilePath(file)) {
     throw new TypeError('The recorded skill path is not a local SKILL.md file on this computer.');
   }
   const folder = path.dirname(file);

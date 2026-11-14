@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { installLocal } from '../scripts/install-local.mjs';
 
 test('local installation is portable, repeatable, and refuses unrelated extensions', async t => {
@@ -13,6 +14,8 @@ test('local installation is portable, repeatable, and refuses unrelated extensio
   assert.match(await fs.readFile(path.join(destination, 'extension.mjs'), 'utf8'), /\.\/src\/extension\.mjs/);
   assert.match(await fs.readFile(path.join(destination, 'panel', 'index.html'), 'utf8'), /Copilot Usage Insights/);
   assert.equal(JSON.parse(await fs.readFile(path.join(destination, 'package.json'), 'utf8')).type, 'module');
+  const installed = await import(pathToFileURL(path.join(destination, 'src/node/skill-version.mjs')));
+  assert.equal(installed.parseSkillVersion('---\nmetadata: {version: "1.2.3"}\n---\n').value, '1.2.3');
   await fs.writeFile(path.join(destination, 'obsolete.txt'), 'old installed file');
   await installLocal({ destination });
   await assert.rejects(fs.access(path.join(destination, 'obsolete.txt')));

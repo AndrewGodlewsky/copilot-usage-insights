@@ -133,6 +133,38 @@ test('dashboard API includes skill summaries without exposing skill payloads', a
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));
 });
 
+test('dashboard reads current installed skill versions without rewriting recorded plugin history', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-skill-version-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'SKILL.md');
+  const write = version => fs.writeFile(file, `---\nname: code-review\nmetadata:\n  version: "${version}"\n---\nPRIVATE INSTALLED SKILL BODY\n`);
+  await write('2.3.4');
+  const snapshot = parse([usage(), skill('k1', { path: file }), skill('k2', { path: file, pluginVersion: '0.9.0' })]);
+  const server = await startServer({ html: '', now: () => now, defaultHome: 'fixture',
+    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
+    scanner: { scan: async () => ({ ...snapshot, sources: [], coverage: {} }) },
+  });
+  t.after(() => server.close());
+  const request = async method => {
+    const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method }) });
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  let result = await request('usage.report');
+  assert.deepEqual(result.skills.rows.map(row => row.installedVersion), [{ value: '2.3.4', status: 'available' }, { value: '2.3.4', status: 'available' }]);
+  const recorded = result.skills.rows.map(({ id, version, invocations }) => ({ id, version, invocations }));
+  assert.deepEqual(recorded.map(row => row.version).sort(), ['0.9.0', '1.2.3']);
+  assert.ok(!JSON.stringify(result).includes('PRIVATE'));
+  await write('2.4.0');
+  result = await request('usage.refresh');
+  assert.ok(result.skills.rows.every(row => row.installedVersion.value === '2.4.0'));
+  assert.deepEqual(result.skills.rows.map(({ id, version, invocations }) => ({ id, version, invocations })), recorded);
+  await fs.unlink(file);
+  result = await request('usage.report');
+  assert.ok(result.skills.rows.every(row => row.installedVersion.status === 'unavailable'));
+  assert.deepEqual(result.skills.rows.map(({ id, version, invocations }) => ({ id, version, invocations })), recorded);
+});
+
 test('SQLite fallback does not attribute skills from a mixed or unclassified session', async t => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-skill-db-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
