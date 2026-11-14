@@ -157,8 +157,8 @@ function sortActivity(rows, key) {
   });
 }
 const pluginMarketplace = plugin => plugin.marketplace || (plugin.source === 'builtin' ? 'Built-in' : 'Direct / local');
-function table(rows, heading, details = false, expansion = '') {
-  if (!rows.length) return '<p class="muted">No matching usage.</p>';
+function table(rows, heading, details = false, expansion = '', depth = 0) {
+  if (!rows.length) return depth ? '' : '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', ...(details ? ['averageTokens'] : []), 'total', 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
@@ -168,17 +168,25 @@ function table(rows, heading, details = false, expansion = '') {
   const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion || sessionModelsExpansion;
   const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : sessionModelsExpansion ? 'data-project-session' : 'data-request-id';
   const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : sessionModelsExpansion ? 'session-models' : 'request-detail';
-  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th>Requests</th>'}${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+  const body = rows.map((r, index) => {
     const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : sessionModelsExpansion ? state.projectView?.models?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
     const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
-    const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
+    const title = requestExpansion ? `${initiatorLabel(r.initiator)} \u00b7 Recorded model call` : r.id ? `${label} \u2014 ${r.id}` : label;
+    const child = !open ? null : modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : sessionModelsExpansion ? sessionModelList() : { header: requestDetail(state.requestView) };
+    const childRows = child?.rows || '';
+    const controlled = child ? [region, ...[...childRows.matchAll(/\sid="([^"]+)"/g)].map(m => m[1])].join(' ') : '';
     const choice = projectFilter ? `<td class="text-cell"><button class="model-toggle cell-text" data-usage-project="${esc(r.name)}" aria-pressed="${$('project').value === r.name}" title="${esc(r.name)}: ${$('project').value === r.name ? 'clear project filter' : 'filter dashboard'}">${esc(r.name)}</button></td>` : '';
-    const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
-    const cells = `<tr${projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? 'Unavailable' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${controlled}"` : ''} aria-label="${esc(heading)}: ${esc(label)}" title="${esc(title)}"><span aria-hidden="true">${open ? '\u25be' : '\u25b8'}</span> ${esc(label)}</button></td>` : textCell(label, title);
+    const cells = `<tr${details ? ` class="usage-row" data-depth="${depth}" id="usage-row-${depth}-${index}"` : projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? 'Unavailable' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
-    const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : sessionModelsExpansion ? sessionModelList() : requestDetail(state.requestView);
-    return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
-  }).join('')}</tbody></table>`;
+    return cells + `<tr class="usage-context" data-depth="${depth + 1}"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${child.header}</div></td></tr>${childRows}`;
+  }).join('');
+  if (depth) return body;
+  // Reserve column space from the whole report before any child rows are loaded.
+  const totals = state.report.totals;
+  const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => usageValue(totals, key, key === 'credits' ? creditNumber : number).length));
+  const layout = details ? ` class="usage-table" style="--usage-metric-width:${metricWidth}ch"` : '';
+  return `<table${layout}>${details ? '<colgroup><col class="usage-name-column"><col span="9"></colgroup>' : ''}<thead><tr><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function sortedUsage(rows) {
@@ -192,15 +200,15 @@ function projectSessionList(project) {
   const offset = view.offset, end = Math.min(offset + limit, total);
   if (view.models && !rows.slice(offset, end).some(r => r.id === view.models.session)) view.models = null;
   const paging = total > limit ? `<div class="request-paging"><span>${offset + 1}–${end}</span><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div>` : '';
-  return `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>${table(rows.slice(offset, end), 'Session', true, 'sessionModels')}`;
+  return { header: `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>`, rows: table(rows.slice(offset, end), 'Session', true, 'sessionModels', 1) };
 }
 
 function sessionModelList() {
   const view = state.projectView.models;
-  if (view.pending && !view.rows) return '<p class="muted" role="status">Loading session models…</p>';
-  if (view.error) return `<p role="status">${esc(view.error)} <button data-project-session="${esc(view.session)}" data-session-model-retry="true">Retry</button></p>`;
-  if (!view.rows?.length) return '<p class="muted">No matching models remain. Refresh to update the session totals.</p>';
-  return `<header><strong>${number(view.rows.length)} model${view.rows.length === 1 ? '' : 's'}</strong>${view.pending ? '<span class="footnote" role="status">Updating…</span>' : ''}</header>${table(sortedUsage(view.rows), 'Model', true)}`;
+  if (view.pending && !view.rows) return { header: '<p class="muted" role="status">Loading session models…</p>' };
+  if (view.error) return { header: `<p role="status">${esc(view.error)} <button data-project-session="${esc(view.session)}" data-session-model-retry="true">Retry</button></p>` };
+  if (!view.rows?.length) return { header: '<p class="muted">No matching models remain. Refresh to update the session totals.</p>' };
+  return { header: `<header><strong>${number(view.rows.length)} model${view.rows.length === 1 ? '' : 's'}</strong>${view.pending ? '<span class="footnote" role="status">Updating…</span>' : ''}</header>`, rows: table(sortedUsage(view.rows), 'Model', true, '', 2) };
 }
 async function loadSessionModels() {
   const project = state.projectView, view = project?.models;
@@ -231,21 +239,21 @@ function requestDetail(view) {
 }
 function modelSessionList() {
   const view = state.modelView;
-  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model sessions…</p>';
-  if (view.error) return `<p role="status">${esc(view.error)} <button data-model-session-page="${view.offset}">Retry</button></p>`;
+  if (view.pending && !view.page) return { header: '<p class="muted" role="status">Loading model sessions…</p>' };
+  if (view.error) return { header: `<p role="status">${esc(view.error)} <button data-model-session-page="${view.offset}">Retry</button></p>` };
   const page = view.page;
-  if (!page?.rows.length) return '<p class="muted">No matching sessions remain. Refresh to update the model totals.</p>';
+  if (!page?.rows.length) return { header: '<p class="muted">No matching sessions remain. Refresh to update the model totals.</p>' };
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Session', true, 'session')}`;
+  return { header: `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>`, rows: table(page.rows, 'Session', true, 'session', 1) };
 }
 function requestList() {
   const view = state.requestView;
-  if (view.pending && !view.page) return '<p class="muted" role="status">Loading session requests…</p>';
-  if (view.error) return `<p role="status">${esc(view.error)} <button data-request-page="${view.offset}">Retry</button></p>`;
+  if (view.pending && !view.page) return { header: '<p class="muted" role="status">Loading session requests…</p>' };
+  if (view.error) return { header: `<p role="status">${esc(view.error)} <button data-request-page="${view.offset}">Retry</button></p>` };
   const page = view.page;
-  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the session totals.</p>';
+  if (!page?.rows.length) return { header: '<p class="muted">No matching requests remain. Refresh to update the session totals.</p>' };
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Time', true, 'request')}`;
+  return { header: `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>`, rows: table(page.rows, 'Time', true, 'request', 2) };
 }
 async function loadModelSessionPage(offset = 0) {
   const view = state.modelView;

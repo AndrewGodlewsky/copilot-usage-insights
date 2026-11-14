@@ -249,6 +249,47 @@ async function requestPanel() {
   return { ...panel, click, report, records, now };
 }
 
+test('both Breakdown hierarchies keep one aligned table with alternating level backgrounds', async () => {
+  const { get, click, records, requests } = await requestPanel();
+  const html = () => get('breakdown').innerHTML;
+  const layout = () => html().match(/<table[^>]*>/)[0] + html().match(/<colgroup>[\s\S]*?<\/colgroup>/)?.[0];
+  const initialLayout = layout();
+  const check = () => {
+    assert.equal((html().match(/<table\b/g) || []).length, 1, 'expanded metrics share the original table');
+    assert.equal((html().match(/<thead>/g) || []).length, 1, 'one shared metric header');
+    assert.equal(layout(), initialLayout, 'expansion does not recalculate column widths');
+    const rows = [...html().matchAll(/<tr class="usage-row" data-depth="(\d)"[^>]*>([\s\S]*?)<\/tr>/g)];
+    assert.deepEqual([...new Set(rows.map(m => m[1]))].sort(), ['0', '1', '2']);
+    for (const [, , cells] of rows) assert.equal((cells.match(/<td\b/g) || []).length, 10);
+    const ids = [...html().matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
+    assert.equal(new Set(ids).size, ids.length, 'row IDs remain unique across hierarchy levels');
+    for (const [, controlled] of html().matchAll(/aria-controls="([^"]+)"/g)) {
+      for (const id of controlled.split(' ')) assert.ok(ids.includes(id), `expanded control references an existing element: ${id}`);
+    }
+  };
+  await click({ requestModel: '<Sonnet>' });
+  await click({ requestSession: 's1' });
+  check();
+  await click({ requestId: records[0].key });
+  check();
+  assert.match(html(), /<tr class="usage-context" data-depth="3"[^>]*><td colspan="10"><div id="request-detail" class="request-detail"/);
+  assert.match(html(), /Full original prompt/);
+  get('group').value = 'projects'; get('group').onchange();
+  await click({ projectName: records[0].project });
+  await click({ projectSession: 's1' });
+  check();
+  assert.doesNotMatch(html(), /id="request-detail"/);
+  const before = requests.length;
+  await click({ projectSession: 's1' });
+  assert.equal(layout(), initialLayout);
+  assert.equal(requests.length, before, 'collapse remains local');
+  const built = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  assert.match(built, /\.usage-table\{[^}]*table-layout:fixed/);
+  assert.match(built, /\[data-depth="1"\][^}]*background:var\(--bg\)/);
+  assert.match(built, /\[data-depth="2"\][^}]*background:var\(--card\)/);
+  assert.match(built, /\[data-depth="3"\][^}]*background:var\(--bg\)/);
+});
+
 test('model sessions expand into matching request columns and on-demand original prompts', async () => {
   const { get, requests, click, server } = await requestPanel();
   const html = () => get('breakdown').innerHTML;
@@ -262,7 +303,7 @@ test('model sessions expand into matching request columns and on-demand original
   assert.match(html(), /28 model requests/);
   assert.match(html(), /1–25/);
   const headers = [...html().matchAll(/<thead>(.*?)<\/thead>/g)].map(([, h]) => [...h.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(([, text]) => text));
-  assert.deepEqual(headers.map(h => h[0]), ['Model', 'Session', 'Time']);
+  assert.deepEqual(headers.map(h => h[0]), ['Model']);
   for (const h of headers) assert.deepEqual(h.slice(1), ['Requests', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / request', 'Tokens', 'AI credits']);
   assert.doesNotMatch(html(), /<th>Started by<\/th>|Full original prompt|<script/);
   assert.equal(requests.at(-1).input.session, 's1');
@@ -403,8 +444,8 @@ test('project sessions expand and page locally, sort the full set, and reset or 
   } });
   node.querySelectorAll = selector => selector === 'button' ? buttons : [];
   get('sort').value = 'total'; get('sort').onchange();
-  const html = () => node.innerHTML, sessionTable = () => html().match(/<table><thead><tr><th>Session<\/th>[\s\S]*?<\/table>/)?.[0] || '';
-  const rowCount = () => [...sessionTable().matchAll(/<tr>/g)].length - 1;
+  const html = () => node.innerHTML;
+  const rowCount = () => [...html().matchAll(/<tr class="usage-row" data-depth="1"/g)].length;
   const before = requests.length;
   assert.doesNotMatch(html(), /<th>Session<\/th>/);
   const project = sessions[0].project;
@@ -465,12 +506,12 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
   get('group').value = 'projects'; get('group').onchange();
   const before = requests.length, html = () => get('breakdown').innerHTML;
   await click({ projectName: projects[0].project });
-  assert.match(html(), /data-project-name="&lt;Project &quot;A&quot;&gt;" aria-expanded="true" aria-controls="project-sessions"/);
+  assert.match(html(), /data-project-name="&lt;Project &quot;A&quot;&gt;" aria-expanded="true" aria-controls="project-sessions [^"]+"/);
   assert.match(html(), /id="project-sessions" class="request-list"/);
   assert.match(html(), /&lt;Session A&gt;/);
   assert.doesNotMatch(html(), /Session B|<Session A>|<Project/);
   const headers = [...html().matchAll(/<thead>([\s\S]*?)<\/thead>/g)].map(([, value]) => value.replace(/<th>[^<]+<\/th>/, ''));
-  assert.equal(headers[0], headers[1], 'project and session tables have the same metric columns');
+  assert.equal(headers.length, 1, 'projects and sessions share the same header');
   await click({ projectName: 'Project B' });
   assert.match(html(), /Session B/);
   assert.doesNotMatch(html(), /&lt;Session A&gt;/);
@@ -509,16 +550,16 @@ test('project sessions expand into filtered model metrics, sort locally, and ref
   assert.equal(requests.at(-1).method, 'usage.sessionModels');
   assert.equal(requests.at(-1).input.project, '<Project>');
   assert.equal(requests.at(-1).input.session, 's1');
-  assert.match(html(), /data-project-session="s1" aria-expanded="true" aria-controls="session-models"/);
+  assert.match(html(), /data-project-session="s1" aria-expanded="true" aria-controls="session-models [^"]+"/);
   assert.match(html(), /id="session-models" class="request-list" aria-label="Models for &lt;Session&gt;"/);
   assert.match(html(), /2 models/);
   assert.match(html(), /&lt;Model A&gt;/);
   assert.match(html(), /&lt;Model B&gt;/);
   assert.doesNotMatch(html(), /Excluded project|Excluded session|<Model|data-request-model|data-request-session|data-request-id/);
-  const headers = [...html().matchAll(/<thead><tr><th>[^<]*<\/th>([\s\S]*?)<\/tr><\/thead>/g)].map(m => m[1]);
-  assert.equal(headers.length, 3);
+  const headers = [...html().matchAll(/<thead><tr><th[^>]*>[^<]*<\/th>([\s\S]*?)<\/tr><\/thead>/g)].map(m => m[1]);
+  assert.equal(headers.length, 1);
   assert.ok(headers.every(h => h === headers[0]));
-  const modelNames = () => [...html().slice(html().indexOf('id="session-models"')).matchAll(/<tr><td class="text-cell"[^>]*><span[^>]*>(.*?)<\/span>/g)].map(m => m[1]);
+  const modelNames = () => [...html().slice(html().indexOf('id="session-models"')).matchAll(/<tr class="usage-row" data-depth="2"[^>]*><td class="text-cell"[^>]*><span[^>]*>(.*?)<\/span>/g)].map(m => m[1]);
   assert.deepEqual(modelNames(), ['&lt;Model A&gt;', '&lt;Model B&gt;']);
   const beforeSort = requests.length;
   get('sort').value = 'credits'; get('sort').onchange();
@@ -1146,7 +1187,7 @@ test('simplified numbers apply across views and context, persist, and only chang
   await click({ requestModel: '<Sonnet>' });
   await click({ requestSession: 's1' });
   await click({ requestId: large[0].key });
-  assert.match(get('breakdown').innerHTML.split('class="request-table"')[1], /<td data-measure="tokens">2\.1K<\/td>/);
+  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="2"')[1], /<td data-measure="tokens">2\.1K<\/td>/);
   await get('settings-open').onclick();
   assert.equal(get('simplify-numbers').checked, true);
   get('simplify-numbers').checked = false;
@@ -1193,7 +1234,7 @@ test('simplified numbers apply across views and context, persist, and only chang
     assert.match(get(id).innerHTML, /12\.3/, id);
     assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
   }
-  assert.match(get('breakdown').innerHTML.split('class="request-table"')[1], /<td data-measure="credits">12\.3<\/td>/);
+  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="2"')[1], /<td data-measure="credits">12\.3<\/td>/);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();
