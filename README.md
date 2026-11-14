@@ -198,6 +198,8 @@ Input and output measures keep their physical meaning regardless of **Include ca
 
 The [Efficiency research index](docs/research/README.md) preserves the findings and proposed next steps: **24 techniques** organized into simple, intermediate, and advanced practices; a **38-scenario catalogue**; a review of **Copilot's stored data and SDK capabilities**; and a design for turning observations into useful directions. Each technique includes counterexamples, evidence limits, required data, and an experiment. These are research proposals, not additional shipped features. Low cache reuse does not prove excessive chat switching, and few skill uses do not prove inefficiency. The next priorities are measured tool-definition overhead, repeated execution failures, comparable interaction trends, and a separately scoped view of current context attribution.
 
+The [optional analysis proposal](docs/research/2026-11-14-efficiency-analysis-proposal.md) explores context-overhead statistics, MCP reliability findings, and an **Analyze My Usage** action that would review a bounded report on request. It distinguishes current context contributions from historical averages and records the host capabilities that still need live verification. This action is not implemented yet.
+
 ## Skills
 
 Open **Breakdown → Skills** to see recorded skill uses below the token table. Use the **Skills**, **Plugins**, and **MCP** buttons to switch detail panels. Skills is selected when the dashboard opens; your choice stays selected during refreshes, filter changes, and visits to the Usage view. The usage breakdown table stays visible above these buttons.

@@ -6,6 +6,7 @@ This directory is the persistent research base for Usage Insights. Last reviewed
 
 | Document | What it answers |
 | --- | --- |
+| [Statistics and Analyze My Usage proposal](2026-11-14-efficiency-analysis-proposal.md) | A practical tab direction: context overhead, MCP reliability, and optional bounded AI interpretation; SDK feasibility and remaining checks |
 | [Techniques by difficulty](2026-11-14-efficiency-techniques.md) | 24 simple, intermediate and advanced practices, their anti-patterns, counterexamples, evidence strength, required data and experiments |
 | [Copilot data inventory](2026-11-14-copilot-data-inventory.md) | What the plugin reads today, extra observed receipt/event fields, existing database schemas, cloud reporting, privacy and performance limits |
 | [SDK and live-session surfaces](2026-11-14-copilot-sdk-surfaces.md) | Current context attribution, skills/plugins/MCP, agents, memory, compaction, permissions and the distinction between passive reads and actions |
