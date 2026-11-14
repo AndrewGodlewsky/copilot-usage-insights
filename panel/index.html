@@ -33,7 +33,15 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 @media(max-width:650px){main{padding:10px;gap:12px}.grid-2,.overview-grid{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.filter-grid{grid-template-columns:1fr}.hero{min-height:130px}.hero-copy{padding:20px}.card{padding:12px}.controls{gap:6px}button,select{padding:7px 8px}.mix{justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 .chart .track{stroke:var(--muted)}.chart .bar{fill:var(--s1)}.chart .t-strong{font-size:calc(20px * var(--text-scale));font-weight:600}
-.chart [data-day]{cursor:pointer;outline:none}.chart [data-day]:hover>.hit{fill:var(--s1);fill-opacity:.08}.chart [data-day][aria-pressed=true]>.hit{fill:var(--s1);fill-opacity:.15;stroke:var(--s1);stroke-width:1}.chart [data-day]:focus-visible>.hit{stroke:var(--fg);stroke-width:2}.selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
+.chart [data-day]{cursor:pointer;outline:none}
+.chart .column-hit{fill:transparent}.chart .column-outline{fill:none;stroke:transparent;stroke-width:1;pointer-events:none}
+.chart [data-day]>.daily-column{transform-box:view-box;transition:transform 120ms ease-out}
+.chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:scale(1.06,1.03)}
+.chart [data-day]:hover .column-outline{stroke:var(--muted-fg)}
+.chart [data-day][aria-pressed=true] .column-outline{stroke:var(--q4);stroke-width:2}
+.chart [data-day]:focus-visible .column-outline{stroke:var(--fg);stroke-width:2}
+@media(prefers-reduced-motion:reduce){.chart [data-day]>.daily-column{transition:none}.chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:none}}
+.selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
 .card header label{white-space:nowrap}
 .card header .detail-sort{margin-left:auto}
 .skill-actions{display:inline-flex;align-items:center;gap:6px;max-width:100%}.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}.skill-link:hover{background:transparent;color:var(--fg)}.skill-copy{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--muted-fg)}.skill-copy:hover{color:var(--fg);border-color:var(--border)}#skills th,#skills td,#breakdown th,#breakdown td{text-align:center;padding-inline:7px}#skills th+th,#skills td+td,#breakdown th+th,#breakdown td+td{border-left:1px dotted var(--border)}#breakdown th:first-child,#breakdown td:first-child{text-align:left}#skills th:first-child,#skills td:first-child{width:14%;min-width:calc(120px * var(--text-scale));text-align:left;white-space:normal;overflow:visible;overflow-wrap:anywhere}
@@ -117,8 +125,6 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
  #release-versions{display:flex;gap:6px;min-width:0}
  #release-versions button{flex-shrink:0;flex-wrap:nowrap;width:auto;white-space:nowrap;margin:0}
 }
-
-#daily{overflow-x:auto;scrollbar-width:thin}.chart .daily-total{font-size:calc(10px * var(--text-scale));font-weight:600;font-variant-numeric:tabular-nums}
 </style></head>
 <body><main id="app">
   <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p><p class="hero-credits"><strong id="hero-credits">—</strong><span>Copilot credits</span></p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
@@ -189,7 +195,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.57" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.57</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.58" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.58</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="release-notes-dialog" aria-labelledby="release-notes-title">
     <header><h2 id="release-notes-title">Release notes</h2><button id="release-notes-close" aria-label="Close release notes">Close</button></header>
     <div class="release-browser">
@@ -208,8 +214,8 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.57";
-const RELEASE_NOTES = [{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
+const BUILD_VERSION = "0.1.58";
+const RELEASE_NOTES = [{"version":"0.1.58","summary":"Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."},{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -398,8 +404,8 @@ function shortDay(day) {
   return `${MONTHS[Number(m) - 1]} ${Number(d)}`
 }
 
-function svg(w, h, body, label, role = 'img', minWidth = 0) {
-  return `<svg class="chart"${minWidth ? ` style="min-width:${minWidth}px"` : ''} viewBox="0 0 ${w} ${h}" role="${role}" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+function svg(w, h, body, label, role = 'img') {
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="${role}" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
 function empty(w, h, label) {
@@ -412,20 +418,15 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
-  const top = 26 * textScale
+  const top = 18 * textScale
   const bottom = (withWeekday ? 30 : 18) * textScale
   const plotH = height - top - bottom
   const totals = daily.map((d) => keys.reduce((s, k) => s + (d[k] || 0), 0))
   const max = Math.max(...totals)
   if (max <= 0 && !selectable) return empty(width, height, label)
-  const totalLabels = daily.map((d, i) => totals[i] > 0 || d.requests > 0
-    ? usageValue({ ...d, total: totals[i] }, keys.length === 1 ? keys[0] : 'total', fmt || compact) : '')
-  // Reserve a readable slot per value; the daily container scrolls when the range is crowded.
-  const minSlot = Math.max(0, ...totalLabels.map(text => text ? (text.length * 7 + 12) * textScale : 0))
-  width = Math.max(width, Math.ceil(minSlot * daily.length))
   const slot = width / daily.length
   // Bars take most of their slot so few-day ranges don't look sparse; capped so 1–2 days stay sane.
-  const barW = Math.min(slot, Math.max(2, Math.min(96, slot * (slot > 40 ? 0.62 : 0.72))))
+  const barW = Math.min(96, slot * (slot > 40 ? 0.62 : 0.72))
   const radius = Math.min(6, barW / 2)
   let defs = ''
   let body = `<line x1="0" x2="${width}" y1="${top + plotH + 0.5}" y2="${top + plotH + 0.5}" class="axis"/>`
@@ -438,10 +439,14 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
     if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
     if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
     if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
-    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined }))
-    const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown"` : ''
+    const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined
+    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: shownTotal }))
+    const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown" aria-describedby="${id}-d${i}"` : ''
     body += `<g class="mark" data-tip="${tip}"${selection}>`
-    body += `<rect x="${x - (slot - barW) / 2}" y="0" width="${slot}" height="${top + plotH}" class="hit"/>`
+    if (selectable) body += `<desc id="${id}-d${i}">${esc([...rows, ...(shownTotal === undefined ? [] : [['Total', shownTotal]])].map(([label, value]) => `${label}: ${value}`).join('; '))}</desc>`
+    const targetH = h > 0 ? h : 4, targetY = top + plotH - targetH
+    body += `<g class="daily-column" style="transform-origin:${x + barW / 2}px ${top + plotH}px">`
+    body += `<rect class="column-hit" x="${x}" y="${targetY}" width="${barW}" height="${targetH}" rx="${radius}"/>`
     if (h > 0) {
       const cid = `${id}-c${i}`
       defs += `<clipPath id="${cid}"><rect x="${x}" y="${top + plotH - h}" width="${barW}" height="${h + radius}" rx="${radius}"/></clipPath>`
@@ -458,8 +463,8 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
       }
       body += `</g>`
     }
-    if (totalLabels[i]) body += `<text x="${i * slot + slot / 2}" y="${top + plotH - h - 8 * textScale}" class="daily-total" text-anchor="middle">${esc(totalLabels[i])}</text>`
-    body += `</g>`
+    body += `<rect class="column-outline" x="${x}" y="${targetY}" width="${barW}" height="${targetH}" rx="${radius}" vector-effect="non-scaling-stroke"/>`
+    body += `</g></g>`
   })
   // Inset edge labels and keep the latest date when labels would crowd each other.
   const labelGap = 46 * textScale, dateLabels = []
@@ -471,7 +476,7 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
     nextLabelX = x
   }
   body += dateLabels.join('')
-  return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img', width)
+  return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img')
 }
 
 // Rank-quantile buckets 1..4 over non-zero values; 0 stays level 0.
@@ -1758,10 +1763,8 @@ function renderContent() {
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
-  const dailyAtEnd = $('daily').scrollWidth - $('daily').clientWidth - $('daily').scrollLeft <= 2;
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
   $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
-  if (dailyAtEnd) $('daily').scrollLeft = $('daily').scrollWidth;
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
@@ -1940,20 +1943,31 @@ $('settings-save').onclick = async () => {
 };
 try { document.documentElement.classList.toggle('light', (localStorage.getItem('usage-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'light'); } catch {}
 $('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); try { localStorage.setItem('usage-theme', light ? 'light' : 'dark'); } catch {} };
-document.addEventListener('pointermove', e => {
-  const mark = e.target.closest('.mark[data-tip]');
-  if (!mark) { $('tip').hidden = true; return; }
+function showTooltip(mark, x, y) {
   const tip = JSON.parse(mark.dataset.tip), popup = $('tip');
   popup.innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(typeof tip.total === 'number' ? number(tip.total) : tip.total)}</b></p>`);
   popup.hidden = false;
   const width = popup.offsetWidth, height = popup.offsetHeight, gap = 12, margin = 8;
   const viewportWidth = document.documentElement.clientWidth || innerWidth;
   const viewportHeight = document.documentElement.clientHeight || innerHeight;
-  const left = e.clientX + gap + width <= viewportWidth - margin ? e.clientX + gap : e.clientX - gap - width;
-  const top = e.clientY + gap + height <= viewportHeight - margin ? e.clientY + gap : e.clientY - gap - height;
+  const left = x + gap + width <= viewportWidth - margin ? x + gap : x - gap - width;
+  const top = y + gap + height <= viewportHeight - margin ? y + gap : y - gap - height;
   popup.style.left = `${Math.max(margin, Math.min(left, viewportWidth - width - margin))}px`;
   popup.style.top = `${Math.max(margin, Math.min(top, viewportHeight - height - margin))}px`;
+}
+document.addEventListener('pointermove', e => {
+  const mark = e.target.closest('.mark[data-tip]');
+  if (!mark) { $('tip').hidden = true; return; }
+  showTooltip(mark, e.clientX, e.clientY);
 });
+$('daily').addEventListener('focusin', e => {
+  const mark = e.target.closest('[data-day]');
+  if (!mark?.matches(':focus-visible')) return;
+  const bounds = mark.getBoundingClientRect();
+  showTooltip(mark, bounds.x + bounds.width / 2, bounds.y);
+});
+$('daily').addEventListener('focusout', () => { $('tip').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('tip').hidden = true; });
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });

@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.58",
+    "summary": "Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."
+  },
+  {
     "version": "0.1.57",
     "summary": "Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."
   },

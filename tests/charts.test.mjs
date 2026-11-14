@@ -23,44 +23,46 @@ test('stackedBars renders one mark per day with tooltips and handles empty', () 
   assert.match(stackedBars([]), /No usage yet/)
   assert.match(stackedBars([day('2026-10-28', 0)]), /No usage yet/)
 })
-test('daily totals sit above each nonempty bar instead of a maximum axis label', () => {
-  const chart = stackedBars([day('2026-11-12', 100), day('2026-11-13', 0), day('2026-11-14', 200)], { width: 600, selectable: true });
-  const labels = [...chart.matchAll(/<text x="([^"]+)" y="([^"]+)" class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)];
-  assert.deepEqual(labels.map(match => match[3]), ['575', '1.2K']);
-  assert.deepEqual(labels.map(match => Number(match[1])), [100, 500]);
-  const barTops = [...chart.matchAll(/<clipPath[^>]*><rect[^>]*y="([^"]+)"/g)].map(match => Number(match[1]));
-  labels.forEach((match, i) => assert.ok(Number(match[2]) < barTops[i] && Number(match[2]) >= 10));
-  assert.doesNotMatch(chart, /<text x="0"[^>]*class="t-muted"/);
-  assert.equal((chart.match(/data-day=/g) || []).length, 3, 'zero-usage days remain selectable');
+test('daily charts fit the available width without totals or a maximum label', () => {
+  for (const count of [1, 7, 90, 500]) for (const textScale of [1, 1.3]) for (const simplify of [true, false]) {
+    const days = Array.from({ length: count }, (_, i) => day(new Date(2026, 0, i + 1).toLocaleDateString('en-CA'), 10000000));
+    const chart = stackedBars(days, { width: 280, textScale, selectable: true, fmt: n => formatNumber(n, { simplify }) });
+    assert.match(chart, /viewBox="0 0 280 /);
+    assert.doesNotMatch(chart, /min-width|daily-total|<text x="0"[^>]*class="t-muted"/);
+    assert.equal((chart.match(/data-day=/g) || []).length, count);
+    assert.ok(chart.includes(formatNumber(57500000, { simplify })), 'totals remain available in the tooltip');
+  }
 });
 
-test('bar totals respect full numbers, credits, zero charges, and unavailable or partial counts', () => {
-  const labels = chart => [...chart.matchAll(/class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)].map(match => match[1]);
+test('daily hover targets follow the columns rather than the whole day slot', () => {
+  const chart = stackedBars([day('2026-11-12', 100), day('2026-11-13', 0), day('2026-11-14', 10)], { width: 600, selectable: true });
+  const hits = [...chart.matchAll(/<rect class="column-hit" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)];
+  assert.equal(hits.length, 3);
+  assert.equal((chart.match(/class="daily-column"/g) || []).length, 3);
+  assert.equal((chart.match(/class="column-outline"/g) || []).length, 3);
+  for (const hit of hits) assert.ok(Number(hit[3]) < 200, 'target does not cover the whole slot');
+  assert.ok(Number(hits[1][4]) <= 4, 'empty day has a small baseline target');
+  assert.ok(Number(hits[2][4]) < Number(hits[0][4]) / 5, 'short bar has a short hit target');
+  assert.ok(Number(hits[2][2]) > Number(hits[0][2]), 'target starts at the actual bar top');
+  assert.doesNotMatch(chart, /class="hit"/);
+  assert.match(chart, /data-day="2026-11-13"[^>]*tabindex="0"/);
+});
+
+test('column tooltips preserve full numbers and partial, unavailable, and zero charges', () => {
   const tokens = [{ ...day('2026-11-12', 1000), requests: 1, knownTokenRequests: 1 },
     { ...day('2026-11-13', 10), requests: 2, knownTokenRequests: 1, missingTokens: 1 },
     { ...day('2026-11-14', 0), requests: 1, knownTokenRequests: 0, missingTokens: 1 }];
-  assert.deepEqual(labels(stackedBars(tokens, { fmt: n => formatNumber(n, { simplify: false }) })), [formatNumber(5750, { simplify: false }), '57.5 *', 'Unavailable']);
+  const chart = stackedBars(tokens, { fmt: n => formatNumber(n, { simplify: false }) });
+  assert.ok(chart.includes(formatNumber(5750, { simplify: false })));
+  assert.match(chart, /57\.5 \*/);
+  assert.match(chart, /Unavailable/);
   const credits = [{ day: '2026-11-12', credits: 0, requests: 1 }, { day: '2026-11-13', credits: 1.234, requests: 1 },
     { day: '2026-11-14', credits: 2, requests: 1, partialCredits: 1 }, { day: '2026-11-15', credits: null, requests: 1, missingCredits: 1 }];
-  assert.deepEqual(labels(stackedBars(credits, { keys: ['credits'], fmt: formatCredits })), ['0', '1.2', '2 *', 'Unavailable']);
-  assert.deepEqual(labels(stackedBars([credits[0]], { keys: ['credits'], selectable: true })), ['0']);
-});
-
-test('daily total labels have space at every text size without shrinking or hiding days', () => {
-  const days = Array.from({ length: 90 }, (_, i) => day(new Date(2026, 7, i + 1).toLocaleDateString('en-CA'), 10000000));
-  for (const textScale of [1, 1.15, 1.3]) for (const simplify of [true, false]) {
-    const chart = stackedBars(days, { width: 280, textScale, selectable: true, fmt: n => formatNumber(n, { simplify }) });
-    const width = Number(chart.match(/viewBox="0 0 ([^ ]+)/)[1]);
-    assert.ok(width > 280);
-    assert.ok(chart.includes('min-width:' + width + 'px'), 'wide chart scrolls instead of scaling down');
-    const labels = [...chart.matchAll(/<text x="([^"]+)" y="[^"]+" class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)];
-    assert.equal(labels.length, 90);
-    for (let i = 0; i < labels.length; i++) {
-      const x = Number(labels[i][1]), half = labels[i][2].length * 3.5 * textScale;
-      assert.ok(x - half >= 0 && x + half <= width);
-      if (i) assert.ok(x - Number(labels[i - 1][1]) >= half * 2 + 6 * textScale);
-    }
-  }
+  const creditChart = stackedBars(credits, { keys: ['credits'], fmt: formatCredits });
+  assert.match(creditChart, /1\.2/);
+  assert.match(creditChart, /2 \*/);
+  assert.match(creditChart, /Unavailable/);
+  assert.match(stackedBars([credits[0]], { keys: ['credits'], selectable: true }), /&quot;credits&quot;,&quot;0&quot;/);
 });
 
 test('usage displays preserve unavailable and partial credits and token categories', () => {
@@ -80,6 +82,10 @@ test('selectable daily bars expose date buttons and selection, including zero da
   assert.equal((s.match(/role="button"/g) || []).length, 2);
   assert.equal((s.match(/tabindex="0"/g) || []).length, 2);
   assert.match(s, /data-day="2026-11-13"[^>]*aria-pressed="true"/);
+  assert.match(s, /aria-describedby="sb-d0"/);
+  assert.match(s, /<desc id="sb-d0">Input: 100; Output: 50; Cache read: 400; Cache write: 25; Total: 575<\/desc>/);
+  const credits = stackedBars([{ day: '2026-11-13', credits: 1.2 }], { keys: ['credits'], labels: { credits: 'AI credits' }, selectable: true });
+  assert.match(credits, /<desc id="sb-d0">AI credits: 1.2<\/desc>/);
   assert.match(stackedBars([day('2026-11-13', 0)], { selectable: true }), /data-day="2026-11-13"/);
 });
 

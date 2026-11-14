@@ -13,6 +13,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
     return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
+      addEventListener(name, callback) { this[`on${name}`] = callback; },
       focus() { document.activeElement = this; },
       select() { this.selected = true; },
       showModal() { this.open = true; }, close() { this.open = false; },
@@ -172,6 +173,34 @@ test('shared chart tooltips keep their width and flip away from viewport edges',
   listeners.get('pointerleave')();
   assert.equal(popup.hidden, true);
   assert.equal(requests.length, before, 'hover and repositioning never fetch data');
+});
+
+test('daily keyboard focus shows values without fetching and hides them on blur or Escape', async () => {
+  const { get, listeners, requests } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  const popup = get('tip');
+  Object.assign(popup, { style: {}, offsetWidth: 240, offsetHeight: 110 });
+  let keyboard = true;
+  const mark = {
+    dataset: { tip: JSON.stringify({ title: 'Nov 14', rows: [['AI credits', '1.2']] }) },
+    matches: selector => selector === ':focus-visible' && keyboard,
+    getBoundingClientRect: () => ({ x: 1100, y: 100, width: 40 }),
+  };
+  const before = requests.length;
+  const focus = () => get('daily').onfocusin({ target: { closest: () => mark } });
+  focus();
+  assert.equal(popup.hidden, false);
+  assert.match(popup.innerHTML, /AI credits/);
+  assert.match(popup.innerHTML, /1\.2/);
+  assert.equal(popup.style.left, '868px', 'keyboard popup flips at the viewport edge too');
+  listeners.get('keydown')({ key: 'Escape' });
+  assert.equal(popup.hidden, true);
+  focus();
+  get('daily').onfocusout();
+  assert.equal(popup.hidden, true);
+  keyboard = false;
+  focus();
+  assert.equal(popup.hidden, true, 'pointer focus does not reopen a dismissed tooltip');
+  assert.equal(requests.length, before);
 });
 
 test('footer actions share controls and logs copy safely with offline and clipboard fallbacks', async () => {

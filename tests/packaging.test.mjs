@@ -18,6 +18,7 @@ test('marketplace package has a runnable desktop entry and self-contained dashbo
   assert.match(license, /Copyright \(c\) 2026 Etherll/);
   assert.ok(html.includes(license), 'standalone dashboard retains the full upstream MIT notice');
   assert.ok(html.includes('https://github.com/Etherll/orca-usage-insights'));
+  assert.match(html, /<a id="repository-link" href="https:\/\/github\.com\/AndrewGodlewsky\/copilot-usage-insights" target="_blank" rel="noopener noreferrer"[^>]*>Usage Insights<\/a>/);
   assert.match(html, /<button id="plugin-version"[^>]*aria-haspopup="dialog"[^>]*>/);
   assert.ok(html.includes(`>v${plugin.version}</button>`));
   assert.ok(html.includes(`const BUILD_VERSION = ${JSON.stringify(plugin.version)};`));

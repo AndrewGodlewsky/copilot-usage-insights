@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.57** shows daily totals above the chart bars in place of the maximum scale label. Crowded ranges scroll horizontally to keep the values readable. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.58** links the footer product name to GitHub and simplifies the daily chart: values stay in tooltips, ranges fit without scrolling, and hovering gently enlarges just the stacked column. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -134,7 +134,7 @@ These buildings identify the selected filter and stay in place regardless of usa
 
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 
-The daily chart shows each day's recorded total above its bar, using tokens or AI credits according to the selected unit. Labels follow **Simplify numbers** and **Text size**, including partial/unavailable indicators. Days without requests have no total label; recorded zero-credit days show **0**. Crowded ranges scroll horizontally so labels stay readable, starting at the latest days and preserving your scroll position while browsing. Click a bar or its total to inspect that day's token types.
+The daily chart fits the selected date range without horizontal scrolling or value labels above the bars. Hover over a stacked column to see its token or credit details in the tooltip. The column gently enlarges and gets a thin outline to show that it is clickable; click it to inspect that day's token types. Selection and keyboard focus outline the column itself. Keyboard focus also shows the tooltip; Escape dismisses it. Empty days retain a small baseline target and keyboard access. Reduced-motion preferences disable enlargement while preserving outlines. Tooltip values follow **Simplify numbers**, including partial/unavailable indicators.
 
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
 - Both desktop and CLI usage can appear when they share the same Copilot home. This is local recorded activity, not an account-wide billing report.
@@ -195,7 +195,7 @@ Selecting Today or Last 7 days does not skip older files during the first scan. 
 
 ## Support footer and diagnostic logs
 
-Every tab has a centered footer: **Usage Insights**, the packaged **version**, **Refresh**, **Settings**, **Show logs**, and **Feedback**. Refresh and Settings use the same actions as the top controls. Click the version to open **Release notes**. Choose a release family on the left (such as **0.1.x**), then click an individual version to read its summary in the larger notes pane. On narrow screens, families appear above the version list; at phone widths both lists become scrollable rows above the notes. The panel starts on the installed version. Use Close or Escape to return to the dashboard. Notes are bundled with the installation, so browsing them works offline and does not scan usage data or fetch newer releases.
+Every tab has a centered footer: **Usage Insights** (opens the GitHub repository), the packaged **version**, **Refresh**, **Settings**, **Show logs**, and **Feedback**. Refresh and Settings use the same actions as the top controls. Click the version to open **Release notes**. Choose a release family on the left (such as **0.1.x**), then click an individual version to read its summary in the larger notes pane. On narrow screens, families appear above the version list; at phone widths both lists become scrollable rows above the notes. The panel starts on the installed version. Use Close or Escape to return to the dashboard. Notes are bundled with the installation, so browsing them works offline and does not scan usage data or fetch newer releases.
 
 To report a problem:
 

@@ -741,10 +741,8 @@ function renderContent() {
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
-  const dailyAtEnd = $('daily').scrollWidth - $('daily').clientWidth - $('daily').scrollLeft <= 2;
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
   $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
-  if (dailyAtEnd) $('daily').scrollLeft = $('daily').scrollWidth;
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
@@ -923,20 +921,31 @@ $('settings-save').onclick = async () => {
 };
 try { document.documentElement.classList.toggle('light', (localStorage.getItem('usage-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'light'); } catch {}
 $('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); try { localStorage.setItem('usage-theme', light ? 'light' : 'dark'); } catch {} };
-document.addEventListener('pointermove', e => {
-  const mark = e.target.closest('.mark[data-tip]');
-  if (!mark) { $('tip').hidden = true; return; }
+function showTooltip(mark, x, y) {
   const tip = JSON.parse(mark.dataset.tip), popup = $('tip');
   popup.innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(typeof tip.total === 'number' ? number(tip.total) : tip.total)}</b></p>`);
   popup.hidden = false;
   const width = popup.offsetWidth, height = popup.offsetHeight, gap = 12, margin = 8;
   const viewportWidth = document.documentElement.clientWidth || innerWidth;
   const viewportHeight = document.documentElement.clientHeight || innerHeight;
-  const left = e.clientX + gap + width <= viewportWidth - margin ? e.clientX + gap : e.clientX - gap - width;
-  const top = e.clientY + gap + height <= viewportHeight - margin ? e.clientY + gap : e.clientY - gap - height;
+  const left = x + gap + width <= viewportWidth - margin ? x + gap : x - gap - width;
+  const top = y + gap + height <= viewportHeight - margin ? y + gap : y - gap - height;
   popup.style.left = `${Math.max(margin, Math.min(left, viewportWidth - width - margin))}px`;
   popup.style.top = `${Math.max(margin, Math.min(top, viewportHeight - height - margin))}px`;
+}
+document.addEventListener('pointermove', e => {
+  const mark = e.target.closest('.mark[data-tip]');
+  if (!mark) { $('tip').hidden = true; return; }
+  showTooltip(mark, e.clientX, e.clientY);
 });
+$('daily').addEventListener('focusin', e => {
+  const mark = e.target.closest('[data-day]');
+  if (!mark?.matches(':focus-visible')) return;
+  const bounds = mark.getBoundingClientRect();
+  showTooltip(mark, bounds.x + bounds.width / 2, bounds.y);
+});
+$('daily').addEventListener('focusout', () => { $('tip').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('tip').hidden = true; });
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
