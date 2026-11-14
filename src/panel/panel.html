@@ -16,9 +16,19 @@
   <div id="content" hidden>
     <section id="tiles" class="tiles" aria-label="Usage totals"></section>
     <section id="usage-view">
-      <article class="card"><header><h2 id="daily-title">Daily tokens</h2><span class="muted" id="daily-caption"></span></header><div id="daily"></div><div id="legend" class="legend"></div></article>
+      <article class="card token-overview" aria-labelledby="token-title">
+        <div class="overview-grid">
+          <section class="token-summary">
+            <h2 id="token-title">Total tokens</h2><strong id="token-total" class="token-total"></strong><p id="token-context" class="muted"></p>
+            <dl id="token-stats" class="token-stats"></dl>
+          </section>
+          <section class="daily-chart" aria-labelledby="daily-title"><header><h2 id="daily-title">Daily tokens</h2><span class="muted" id="daily-caption"></span></header><div id="daily"></div><div id="legend" class="legend"></div></section>
+        </div>
+        <section class="token-types" aria-labelledby="token-types-title"><h2 id="token-types-title">Tokens by type</h2><div id="token-bar"></div><div id="token-legend" class="legend"></div></section>
+        <p id="token-note" class="footnote"></p>
+      </article>
       <div class="grid-2"><article class="card"><header><h2>Activity</h2><span class="muted">26 weeks · filtered history</span></header><div id="calendar"></div></article><article class="card"><header><h2>When you work</h2><span class="muted">Local time · selected dates</span></header><div id="rhythm"></div></article></div>
-      <div class="grid-2"><article class="card"><header><h2>Token mix</h2></header><div class="mix"><div id="donut"></div><div id="mix-legend" class="legend vertical"></div></div></article><article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article></div>
+      <article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article>
       <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
     </section>
     <section id="breakdown-view" hidden><article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article><p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p></section>

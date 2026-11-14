@@ -44,6 +44,10 @@ Start a **new session** in Copilot desktop and send:
 
 Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
 
+### Update an existing installation
+
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.2** adds the token overview below and includes the plugin icon. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+
 ### If it does not appear
 
 - **Marketplace added, plugin missing:** check that the URL is the repository URL above and that the marketplace is included in the Browse filter. Adding the marketplace does not install the plugin automatically.
@@ -85,6 +89,10 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 
 ## What is counted
 
+The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible.
+
+**Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks a known subtotal with incomplete coverage. Missing counts show **Unavailable**.
+
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
 - Both desktop and CLI usage can appear when they share the same Copilot home. This is local recorded activity, not an account-wide billing report.
 - Durable `session.usage_record` receipts from `session-state/*/events.jsonl` take precedence. The read-only `session-store.db` usage table is a fallback for sessions with no receipts. Checkpoints and session summary totals are not added again.
@@ -95,6 +103,21 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources are scanned incrementally while the canvas is visible. **Refresh** forces a complete reread. Source diagnostics explain missing homes, unsupported schemas, and skipped records. Copilot's local event format and canvas APIs are experimental; app updates can require a reader update.
 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
+
+## Possible next additions
+
+These are supported by Copilot event metadata but are **not implemented in this release**:
+
+| Capability | What could be shown |
+| --- | --- |
+| Skills | Recorded activations by skill, originating plugin, and session |
+| MCP servers | Servers and tools actually called, call counts, and last use |
+| Tool reliability | Successful and failed calls; elapsed time when start and completion events can be paired |
+| Subagents | Agent names, selected models, durations, and reported tool counts |
+| Response performance | Request duration and time to first token where recorded |
+| Reasoning | Recorded reasoning tokens as a subset of output, never added to the total again |
+
+GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events). Historical coverage depends on which events the app persisted. A skill activation does not prove how closely its instructions were followed; a configured MCP server is not evidence it was used. Session token totals cannot reliably be assigned to an individual skill or MCP call without explicit accounting links. Any activity view should retain names and counts, without retaining skill bodies, tool arguments, or tool output.
 
 ## Privacy and runtime
 

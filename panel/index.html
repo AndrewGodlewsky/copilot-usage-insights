@@ -3,7 +3,8 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Copilot Usage Insights</title><style>:root{--bg:#111111;--fg:#ececec;--card:#181818;--muted-fg:#a0a0a0;--muted:#262626;--border:#303030;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#9b72d9;--s6:#d4609c;--q1:#184f95;--q2:#256abf;--q3:#3987e5;--q4:#86b6ef;color-scheme:dark}
 html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eeeeec;--border:#d8d8d8;--q1:#b7d3f6;--q2:#6da7ec;--q3:#2a78d6;--q4:#184f95;color-scheme:light}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:1100px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}h1,h2,p{margin:0}h1{font-size:25px;letter-spacing:-.7px}h2{font-size:14px;font-weight:600}button,select,input,textarea{font:inherit}button,select,input[type=date]{border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--fg);padding:7px 10px}button{cursor:pointer}button:hover{background:var(--muted)}button:disabled{opacity:.55;cursor:wait}button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--s1);outline-offset:3px}input[type=checkbox]{accent-color:var(--s1)}[hidden]{display:none!important}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.muted,.footnote{color:var(--muted-fg)}.footnote{font-size:11px;line-height:1.7}.hero{position:relative;min-height:155px;border-radius:12px;overflow:hidden;background:#18243e;color:#fff}.hero::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.7),transparent 90%)}#banner,#banner svg{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}.hero-copy{position:relative;z-index:1;padding:24px}.hero-copy p{opacity:.85;margin-top:2px}.eyebrow{font-size:9px;letter-spacing:2px;font-weight:700}.hero-button{position:absolute;z-index:2;right:12px;top:12px;background:#151d2b99;color:white;border-color:#ffffff55}.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:7px 0 0 7px}.seg button:last-child{border-radius:0 7px 7px 0;border-left:0}.seg button[aria-pressed=true]{background:var(--fg);color:var(--bg);border-color:var(--fg)}details{border:1px solid var(--border);border-radius:9px;padding:10px 12px}summary{cursor:pointer;color:var(--muted-fg);font-size:12px}.filter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}label{display:flex;flex-direction:column;gap:5px;color:var(--muted-fg);font-size:12px}label select{width:100%;min-width:0}.check{flex-direction:row;align-items:center}.notice{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--card)}.warning{border-color:var(--s4)}.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px;display:flex;flex-direction:column;gap:3px}.tile .label{color:var(--muted-fg);font-size:11px}.tile .value{font-size:25px;font-weight:600;letter-spacing:-.7px;line-height:1.35;overflow-wrap:anywhere}.tile .sub{font-size:10px;color:var(--muted-fg)}#usage-view,#breakdown-view{display:flex;flex-direction:column;gap:16px}.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0;overflow:hidden}.card header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:15px;flex-wrap:wrap}.card header .muted{font-size:10px}.card header label{flex-direction:row;align-items:center}.grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}.chart{display:block;width:100%;height:auto;overflow:visible}.chart text{font:9px system-ui;fill:var(--fg)}.chart .t-muted{fill:var(--muted-fg)}.chart .t-faint{fill:var(--muted-fg);opacity:.6}.axis{stroke:var(--border);stroke-width:1}.hit{fill:transparent}.dot{fill:var(--s1)}.dot-empty,.q0{fill:var(--muted)}.q1{fill:var(--q1)}.q2{fill:var(--q2)}.q3{fill:var(--q3)}.q4{fill:var(--q4)}.ring-bg{stroke:var(--muted)}.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted-fg);margin-top:12px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend i{width:8px;height:8px;border-radius:2px;flex-shrink:0}.legend.vertical{flex-direction:column;margin:0}.mix{display:flex;align-items:center;justify-content:space-around;gap:15px}.mix #donut{width:145px;flex-shrink:0}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}th,td{padding:9px 8px;text-align:right;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}th{color:var(--muted-fg);font-weight:500}th:first-child,td:first-child{text-align:left;max-width:270px;overflow:hidden;text-overflow:ellipsis}tbody tr:last-child td{border-bottom:0}.source{padding:9px 0;border-bottom:1px solid var(--border)}.source:last-child{border:0}.source code{display:block;font-size:11px;overflow-wrap:anywhere}.source p{font-size:11px;color:var(--muted-fg)}.source.error p,.source.warning p{color:var(--s4)}dialog{width:min(600px,calc(100% - 32px));background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;padding:20px;max-height:90vh;overflow:auto}dialog::backdrop{background:#0009}dialog header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}dialog p,dialog label,dialog code{margin-bottom:14px}dialog code{display:block;overflow-wrap:anywhere;font-size:11px}textarea{width:100%;resize:vertical;border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--fg);background:var(--bg)}dialog footer{text-align:right}.tip{position:fixed;z-index:10;pointer-events:none;max-width:260px;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:10px;box-shadow:0 8px 30px #0004;font-size:11px}.tip p{display:flex;gap:20px;justify-content:space-between}
-@media(max-width:650px){main{padding:10px;gap:12px}.grid-2{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.filter-grid{grid-template-columns:1fr}.hero{min-height:130px}.hero-copy{padding:20px}.card{padding:12px}.controls{gap:6px}button,select{padding:7px 8px}.mix{justify-content:flex-start}}
+.overview-grid{display:grid;grid-template-columns:minmax(230px,1fr) minmax(0,2.4fr);gap:28px}.token-summary h2{color:var(--muted-fg);font-size:12px}.token-total{display:block;font-size:32px;font-weight:650;letter-spacing:-1px;line-height:1.4;overflow-wrap:anywhere}.token-summary>p{font-size:11px}.token-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 12px;margin:20px 0 0;padding-top:16px;border-top:1px solid var(--border)}.token-stats dt{font-size:11px;color:var(--muted-fg)}.token-stats dd{margin:3px 0 0;font-size:16px;font-weight:600;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.daily-chart{min-width:0}.token-types{margin-top:24px}.token-types h2{font-size:12px;margin-bottom:10px}.token-types b{font-weight:500;color:var(--fg)}.token-overview>.footnote{margin-top:14px}.track-fill{fill:var(--muted)}
+@media(max-width:650px){main{padding:10px;gap:12px}.grid-2,.overview-grid{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.filter-grid{grid-template-columns:1fr}.hero{min-height:130px}.hero-copy{padding:20px}.card{padding:12px}.controls{gap:6px}button,select{padding:7px 8px}.mix{justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 .chart .track{stroke:var(--muted)}.chart .bar{fill:var(--s1)}.chart .t-strong{font-size:20px;font-weight:600}
 </style></head>
@@ -22,9 +23,19 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
   <div id="content" hidden>
     <section id="tiles" class="tiles" aria-label="Usage totals"></section>
     <section id="usage-view">
-      <article class="card"><header><h2 id="daily-title">Daily tokens</h2><span class="muted" id="daily-caption"></span></header><div id="daily"></div><div id="legend" class="legend"></div></article>
+      <article class="card token-overview" aria-labelledby="token-title">
+        <div class="overview-grid">
+          <section class="token-summary">
+            <h2 id="token-title">Total tokens</h2><strong id="token-total" class="token-total"></strong><p id="token-context" class="muted"></p>
+            <dl id="token-stats" class="token-stats"></dl>
+          </section>
+          <section class="daily-chart" aria-labelledby="daily-title"><header><h2 id="daily-title">Daily tokens</h2><span class="muted" id="daily-caption"></span></header><div id="daily"></div><div id="legend" class="legend"></div></section>
+        </div>
+        <section class="token-types" aria-labelledby="token-types-title"><h2 id="token-types-title">Tokens by type</h2><div id="token-bar"></div><div id="token-legend" class="legend"></div></section>
+        <p id="token-note" class="footnote"></p>
+      </article>
       <div class="grid-2"><article class="card"><header><h2>Activity</h2><span class="muted">26 weeks · filtered history</span></header><div id="calendar"></div></article><article class="card"><header><h2>When you work</h2><span class="muted">Local time · selected dates</span></header><div id="rhythm"></div></article></div>
-      <div class="grid-2"><article class="card"><header><h2>Token mix</h2></header><div class="mix"><div id="donut"></div><div id="mix-legend" class="legend vertical"></div></div></article><article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article></div>
+      <article class="card"><header><h2>Models</h2><span class="muted">Top 8</span></header><div id="models-summary"></div></article>
       <article class="card"><header><h2>Projects</h2></header><div id="projects-summary" class="table-wrap"></div></article>
     </section>
     <section id="breakdown-view" hidden><article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article><p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p></section>
@@ -632,7 +643,7 @@ const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
-const labels = { ...TOKEN_LABELS, unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
+const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
 async function request(method, input = {}) {
   const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
@@ -711,28 +722,33 @@ function render() {
   $('coverage').hidden = !warnings.length;
   $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   const tiles = [
-    ['Tokens', usageValue(t, 'total'), r.query.includeCache ? 'Input + output, including cache' : 'Input + output, excluding cache'],
     ['AI credits', creditLabel(t), 'Recorded Copilot charges'],
-    ['Requests', number(t.requests), 'Selected dates and filters'],
-    ['Sessions', number(t.sessions), 'With matching requests'],
     ['Today', usageValue(r.today, 'total'), 'Tokens · current filters'],
-    ['Cache read', t.inputTotal && !t.missingCache ? `${Math.round(t.cacheRead / t.inputTotal * 100)}%` : '—', 'Share of all input tokens'],
     ['Current streak', `${r.streak.current} days`, 'Days with recorded requests'],
     ['Models', number(r.models.length), 'Used through GitHub Copilot'],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
+  $('token-title').textContent = r.query.includeCache ? 'Total tokens' : 'Total tokens excluding cache';
+  $('token-total').textContent = usageValue(t, 'total');
+  $('token-total').title = usageValue(t, 'total', number);
+  $('token-context').textContent = `${number(t.sessions)} sessions · ${number(t.requests)} requests through GitHub Copilot`;
+  const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
+  const cacheRate = t.missingCache ? 'Unavailable' : t.inputTotal ? `${number(t.cacheRead / t.inputTotal * 100)}%` : '—';
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(t, key, number))}">${esc(usageValue(t, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   $('banner').innerHTML = pixelBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
-  $('daily').innerHTML = credits && t.requests && t.credits === null ? '<p class="muted">Credit charges are unavailable for these requests.</p>' : stackedBars(r.daily, { width, height: 190, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null });
+  const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const segments = keys.filter(k => t[k] > 0).map(k => ({ label: labels[k], value: t[k], color: colors[k] }));
-  $('donut').innerHTML = donut(segments);
-  $('mix-legend').innerHTML = segments.map(s => `<span><i style="background:${s.color}"></i>${s.label} · ${compact(s.value)}</span>`).join('');
+  $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth) });
+  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || t[k] > 0).map(k => `<span title="${esc(usageValue(t, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(t, k))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
   $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth) });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');

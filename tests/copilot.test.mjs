@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
+import { usageValue } from '../src/panel/charts.mjs';
 
 const timestamp = new Date(2026, 10, 13, 10).toISOString();
 const start = { type: 'session.start', data: { sessionId: 's1', context: { cwd: '/work/project', repository: 'example/project' } } };
@@ -80,6 +81,23 @@ test('incomplete token records use the same known subtotal across every report v
   assert.equal(missingOutput.totals.missing.output, 1);
   assert.equal(missingOutput.rhythm.reduce((sum, n) => sum + n, 0), 100);
 });
+test('inclusive input shows missing coverage without counting cached tokens twice', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const known = parse([receipt()]).records;
+  const unknown = parse([receipt({ inputTokens: undefined }, 'unknown')]).records;
+  const partial = buildReport([...known, ...unknown], { range: '1d' }, now).totals;
+  assert.equal(partial.missing.inputTotal, 1);
+  assert.equal(usageValue(partial, 'inputTotal'), '100 *');
+  assert.equal(usageValue(buildReport(unknown, { range: '1d' }, now).totals, 'inputTotal'), 'Unavailable');
+  assert.equal(usageValue(buildReport([], { range: '1d' }, now).totals, 'inputTotal'), '0');
+  const complete = buildReport(known, { range: '1d' }, now).totals;
+  assert.equal(complete.inputTotal, complete.input + complete.cacheRead + complete.cacheWrite);
+  assert.equal(complete.total, complete.inputTotal + complete.output);
+  const excluding = buildReport(known, { range: '1d', includeCache: false }, now).totals;
+  assert.equal(excluding.total, complete.input + complete.output);
+  assert.equal(excluding.inputTotal, complete.inputTotal);
+});
+
 async function fixture(t) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-insights-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));

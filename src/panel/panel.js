@@ -1,4 +1,4 @@
-import { stackedBars, calendarHeatmap, punchCard, donut, hBars, esc, compact, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
+import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 
@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
-const labels = { ...TOKEN_LABELS, unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
+const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
 async function request(method, input = {}) {
   const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
@@ -85,28 +85,33 @@ function render() {
   $('coverage').hidden = !warnings.length;
   $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   const tiles = [
-    ['Tokens', usageValue(t, 'total'), r.query.includeCache ? 'Input + output, including cache' : 'Input + output, excluding cache'],
     ['AI credits', creditLabel(t), 'Recorded Copilot charges'],
-    ['Requests', number(t.requests), 'Selected dates and filters'],
-    ['Sessions', number(t.sessions), 'With matching requests'],
     ['Today', usageValue(r.today, 'total'), 'Tokens · current filters'],
-    ['Cache read', t.inputTotal && !t.missingCache ? `${Math.round(t.cacheRead / t.inputTotal * 100)}%` : '—', 'Share of all input tokens'],
     ['Current streak', `${r.streak.current} days`, 'Days with recorded requests'],
     ['Models', number(r.models.length), 'Used through GitHub Copilot'],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
+  $('token-title').textContent = r.query.includeCache ? 'Total tokens' : 'Total tokens excluding cache';
+  $('token-total').textContent = usageValue(t, 'total');
+  $('token-total').title = usageValue(t, 'total', number);
+  $('token-context').textContent = `${number(t.sessions)} sessions · ${number(t.requests)} requests through GitHub Copilot`;
+  const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
+  const cacheRate = t.missingCache ? 'Unavailable' : t.inputTotal ? `${number(t.cacheRead / t.inputTotal * 100)}%` : '—';
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(t, key, number))}">${esc(usageValue(t, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   $('banner').innerHTML = pixelBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
-  $('daily').innerHTML = credits && t.requests && t.credits === null ? '<p class="muted">Credit charges are unavailable for these requests.</p>' : stackedBars(r.daily, { width, height: 190, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null });
+  const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const segments = keys.filter(k => t[k] > 0).map(k => ({ label: labels[k], value: t[k], color: colors[k] }));
-  $('donut').innerHTML = donut(segments);
-  $('mix-legend').innerHTML = segments.map(s => `<span><i style="background:${s.color}"></i>${s.label} · ${compact(s.value)}</span>`).join('');
+  $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth) });
+  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || t[k] > 0).map(k => `<span title="${esc(usageValue(t, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(t, k))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
   $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth) });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');

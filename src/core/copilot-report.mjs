@@ -1,12 +1,11 @@
 import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
 
-const tokenFields = ['input', 'output', 'cacheRead', 'cacheWrite'];
+const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite'];
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
 const knownTokens = (r, includeCache) => ((includeCache ? r.inputTotal : r.input) ?? 0) + (r.output ?? 0);
 function add(b, r, includeCache) {
   b.requests++; b.sessions.add(r.sessionId);
   for (const k of tokenFields) { b[k] += r[k] ?? 0; if (r[k] === null) b.missing[k]++; }
-  b.inputTotal += r.inputTotal ?? 0;
   if (r.input === null) { b.missingCache++; b.unclassifiedInput += r.inputTotal ?? 0; }
   const input = includeCache ? r.inputTotal : r.input;
   if (input === null || r.output === null) b.missingTokens++;
