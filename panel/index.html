@@ -510,11 +510,16 @@ function segmentBar(segments, { width = 360, height = 10, id = 'sbar' } = {}) {
 }
 
 // src/panel/art.mjs
-// Generative pixel-art banner. The scene is deterministic for a given report:
-// the skyline follows the daily series, lit windows follow output share, stars count the
-// current streak, and the sky follows the local hour the report was generated.
+// Pixel-art banner: fixed landmarks identify the selected date-range preset.
+// Seeded window patterns vary gently each minute; the sky follows local time.
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+const BUILDINGS = [
+  { range: '1d', center: .26, height: .68, seed: 11 },
+  { range: '7d', center: .43, height: .70, seed: 23 },
+  { range: '30d', center: .60, height: .72, seed: 37 },
+  { range: '90d', center: .93, height: .74, seed: 53 },
+]
 
 const SKIES = {
   night: { top: '#0b1026', bottom: '#2a2f5c', far: '#1c2142', near: '#12152c', window: '#ffd27a', glow: '#f4f1de' },
@@ -552,21 +557,11 @@ function mix(a, b, t) {
   return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('')
 }
 
-// Resample by each day's right edge so the newest day stays in the final bucket.
-function resample(values, n) {
-  if (!values.length) return Array(n).fill(0)
-  const out = Array(n).fill(0)
-  values.forEach((v, i) => {
-    out[Math.ceil(((i + 1) * n) / values.length) - 1] += v
-  })
-  return out
-}
-
 // Builds the pixel grid (array of rows of hex colors). Exported for tests.
 function paintScene(report, { w = 120, h = 34 } = {}) {
   const generated = report?.generatedAt ? new Date(report.generatedAt) : new Date()
   const sky = SKIES[skyFor(generated.getHours())]
-  const daily = (report?.daily || []).map((d) => d.total || 0)
+  const range = report?.query?.range || '7d'
   // Changing the date range should not reshuffle the background.
   const rand = rng(1)
   const grid = Array.from({ length: h }, () => Array(w).fill(null))
@@ -613,27 +608,24 @@ function paintScene(report, { w = 120, h = 34 } = {}) {
     for (let y = Math.floor(ridge); y < h; y++) grid[y][x] = sky.far
   }
 
-  // Skyline: one building per bucket, height from usage.
-  const count = Math.max(8, Math.min(24, daily.length || 12))
-  const buckets = resample(daily, count)
-  const max = Math.max(...buckets, 0)
-  const outShare = report?.totals?.total ? Math.min(1, (report.totals.output * 20) / report.totals.total + 0.2) : 0.3
-  buckets.forEach((v, i) => {
-    const bh = Math.max(3, Math.round((max > 0 ? v / max : 0.1) * (h * 0.62)) + 2)
-    const x0 = Math.floor(i * w / count) + (i % 2)
-    const width = Math.max(2, Math.floor((i + 1) * w / count) - x0 - 1)
+  // All history shows every landmark; custom dates match no preset.
+  for (const building of BUILDINGS.filter(b => range === 'all' || b.range === range)) {
+    const bh = Math.max(5, Math.round(h * building.height))
+    const width = Math.max(3, Math.round(w * .12))
+    const x0 = Math.max(0, Math.min(w - width, Math.round(w * building.center - width / 2)))
     for (let y = h - bh; y < h; y++) {
       for (let x = x0; x < x0 + width && x < w; x++) grid[y][x] = sky.near
     }
-    // antenna on the tallest
-    if (v === max && max > 0) for (let y = h - bh - 3; y < h - bh; y++) if (y >= 0) grid[y][x0 + (width >> 1)] = sky.near
-    // windows
+    for (let y = Math.max(0, h - bh - 3); y < h - bh; y++) grid[y][x0 + (width >> 1)] = sky.near
+    const windows = rng(building.seed)
+    const changingLights = rng(building.seed + Math.floor(generated.getTime() / 60000))
     for (let y = h - bh + 2; y < h - 1; y += 2) {
       for (let x = x0 + 1; x < x0 + width - 1; x += 2) {
-        if (rand() < outShare) grid[y][x] = sky.window
+        const light = windows()
+        if (light < .45 || (light < .65 && changingLights() < .5)) grid[y][x] = sky.window
       }
     }
-  })
+  }
   return grid
 }
 
@@ -653,7 +645,7 @@ function pixelBanner(report, opts = {}) {
       x += run
     }
   }
-  return `<svg class="banner" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMaxYMid slice" shape-rendering="crispEdges" role="img" aria-label="Pixel skyline drawn from your usage" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+  return `<svg class="banner" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" role="img" aria-label="Pixel skyline for the selected date range" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
 // src/panel/panel.js
@@ -848,7 +840,8 @@ function render() {
   const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
   $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
-  $('banner').innerHTML = pixelBanner(r);
+  const banner = $('banner');
+  banner.innerHTML = pixelBanner(r, { h: Math.max(34, Math.ceil(120 * banner.clientHeight / Math.max(1, banner.clientWidth))) });
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);

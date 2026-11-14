@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.20** gives Skills, Plugins, and MCP matching headers with the summary on the left and **Sort by** on the right. Repeated panel titles are removed, and skill **Activations** are now labeled **Uses**. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.21** gives each date-range preset a fixed building position. All history shows all four buildings; Custom dates shows none. A few window lights vary on the regular refresh. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -93,7 +93,18 @@ The **Usage** view includes a token overview with total tokens, input including 
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
 
-The decorative header skyline follows the selected date range, from oldest activity on the left to newest on the right. Expanding the range keeps its recent edge anchored and distributes older activity proportionally across the full width. The sky and ridge no longer reshuffle just because the date range changes. Building heights still reflect relative token usage, and the sky palette follows the local time of day.
+The decorative header has four buildings with fixed sizes and positions for the date-range presets:
+
+| Filter | Buildings shown |
+| --- | --- |
+| Today | One, around 26% across the banner |
+| Last 7 days | One, around 43% across |
+| Last 30 days | One, around 60% across |
+| Last 90 days | One, around 93% across |
+| All history | All four in their fixed positions, even with limited recorded history |
+| Custom dates | None |
+
+These buildings identify the selected filter and stay in place regardless of usage volume. Their semi-random window patterns are consistent between individual presets and All history. A small subset of lights can change once a minute on the dashboard's existing refresh cycle; most lights stay steady. The sky palette follows local time, and the scene adapts to narrow canvases so buildings remain within the banner.
 
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 

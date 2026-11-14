@@ -10,7 +10,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-    return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, hidden: /\shidden\b/.test(tag),
+    return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       showModal() { this.open = true; }, close() { this.open = false; },
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
@@ -44,6 +44,25 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   await new Promise(setImmediate);
   return { get, nodes, requests, rootStyle, server };
 }
+
+test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {
+  const now = new Date(2026, 10, 14, 22);
+  const report = { ...buildReport([], { range: '7d' }, now), sources: [], coverage: {} };
+  const { get } = await mountPanel(report);
+  for (const width of [1080, 500, 280]) {
+    get('banner').clientWidth = width;
+    for (const [range, count] of [['1d', 1], ['7d', 1], ['30d', 1], ['90d', 1], ['all', 4], ['custom', 0]]) {
+      const query = range === 'custom' ? { range, startDate: '2026-11-01', endDate: '2026-11-14' } : { range };
+      Object.assign(report, buildReport([], query, now));
+      await get('refresh').onclick();
+      const svg = get('banner').innerHTML;
+      const [, w, h] = svg.match(/viewBox="0 0 (\d+) (\d+)"/).map(Number);
+      assert.ok(w / h <= width / get('banner').clientHeight, 'the SVG must not crop buildings horizontally');
+      const buildings = [...svg.matchAll(/<rect x="\d+" y="(\d+)" width="\d+" height="1" fill="#12152c"\/>/g)].filter(([, y]) => Number(y) === h - 1);
+      assert.equal(buildings.length, count, `${range} at width ${width}`);
+    }
+  }
+});
 
 test('dashboard keeps skill and request metrics separate from MCP activity', async () => {
   const now = new Date(2026, 10, 13, 22, 49, 37), timestamp = now.toISOString();
