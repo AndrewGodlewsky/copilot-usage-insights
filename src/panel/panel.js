@@ -546,15 +546,17 @@ function renderContent() {
   if (r.sources.some(s => ['error', 'warning', 'missing'].includes(s.state))) warnings.push('Some sources could not be fully read; see Local data sources');
   $('coverage').hidden = !warnings.length;
   $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
-  const rateValue = (value, samples) => creditNumber(value) + (value != null && samples < t.requests ? ' *' : '');
+  const rateValue = (value, samples, total = t.requests) => creditNumber(value) + (value != null && samples < total ? ' *' : '');
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
+  const p = r.promptCredits;
+  const promptCoverage = `${number(p.eligiblePrompts)} of ${number(p.prompts)} prompts`;
+  const promptHint = `Complete recorded AI credits for initial calls, agent continuations and reliably linked subagents, divided by eligible user prompts. ${promptCoverage} eligible. Prompts are dated by submission; all linked work is grouped before filters. ${p.modelFiltered ? 'Selected-model contribution only, per eligible prompt using the selected models; whole-prompt accounting must still be complete. ' : ''}Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} requests could not be linked to prompts. Unlinked calls make prompt attribution uncertain for their journal session. Local logs cannot establish work they never recorded.`;
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['Credits / request', rateValue(t.averageCredits, t.completeCreditRequests), t.completeCreditRequests === t.requests && t.requests ? 'Average recorded charge' : `${creditSamples(t.completeCreditRequests)} with complete charges`, 'credits',
-      `Recorded credits divided by requests with complete charges. ${creditSamples(t.completeCreditRequests)} included.`],
-    ['Credits / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), `${t.creditTokenRequests === t.requests && t.requests ? 'Input + output' : creditSamples(t.creditTokenRequests)} · ${cacheContext}`, 'credits',
+    ['AI credits/prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${promptCoverage}${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credit/1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');

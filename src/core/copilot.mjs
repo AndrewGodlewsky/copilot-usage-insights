@@ -1,4 +1,5 @@
 // Only accounting and activity metadata leaves this parser; payload text is discarded.
+import { linkId, promptEvent } from './prompt-credits.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -20,7 +21,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
     key, ts: new Date(ms).toISOString(), ms, sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', cwd, source,
     model: textValue(usage.modelDisplayName) || textValue(usage.model) || 'Unknown model',
     modelId: textValue(usage.model),
-    apiCallId: textValue(usage.apiCallId).slice(0, 256),
+    apiCallId: linkId(usage.apiCallId),
     responseModel: textValue(usage.responseModel).slice(0, 256),
     initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? usage.initiator : '',
     isAuto: typeof usage.isAuto === 'boolean' ? usage.isAuto : null,
@@ -40,11 +41,17 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), seen = new Set();
   const toolStarts = new Map(), toolOutcomes = new Map(), interactions = new Map();
+  const promptEvents = new Map();
+  const collectPrompt = (e, accounting = {}) => {
+    const metadata = promptEvent(e, { sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', ...accounting });
+    if (metadata) promptEvents.set(JSON.stringify(metadata), metadata);
+  };
   return {
     push(line) {
       if (!line.trim()) return;
       let e;
       try { e = JSON.parse(line); } catch { invalid++; return; }
+      if (e?.type !== 'session.usage_record') collectPrompt(e);
       if (e?.type === 'session.start') {
         sessionId = textValue(e.data?.sessionId) || sessionId;
         cwd = textValue(e.data?.context?.cwd);
@@ -97,9 +104,10 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         receiptSessions.add(sourceSession);
         const id = textValue(u?.accounting?.usageId) || textValue(e.id);
         const key = id ? JSON.stringify(['receipt', sourceSession, id]) : '';
+        const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project, source });
+        collectPrompt(e, { receipt: result.record, receiptKey: key });
         if (key && seen.has(key)) return;
         if (key) seen.add(key);
-        const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project, source });
         if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
         if (result.record) records.set(key, { ...result.record, logFile });
         else if (result.reason === 'excluded') excluded++;
@@ -107,7 +115,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         else invalid++;
       }
     },
-    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()],
+    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: [...promptEvents.values()],
       tools: [...toolStarts.values()].map(tool => ({ ...tool, success: null, completedMs: null, ...toolOutcomes.get(tool.key) })),
       toolOutcomes: [...toolOutcomes].map(([key, outcome]) => ({ key, ...outcome })),
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),

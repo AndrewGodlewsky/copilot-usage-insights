@@ -106,11 +106,12 @@ export function createScanner() {
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
-    const records = new Map(), skills = new Map(), tools = new Map(), toolOutcomes = new Map(), interactions = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
+    const records = new Map(), skills = new Map(), tools = new Map(), toolOutcomes = new Map(), interactions = new Map(), promptEvents = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
     const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
     for (const s of snapshots) {
       for (const r of s.records) if (!records.has(r.key)) { records.set(r.key, r); s.source.records++; }
       for (const event of s.interactions) if (!interactions.has(event.key)) interactions.set(event.key, event);
+      for (const event of s.promptEvents) promptEvents.set(JSON.stringify(event), event);
       for (const skill of s.skills) if (!skills.has(skill.key)) skills.set(skill.key, skill);
       for (const tool of s.tools) {
         const previous = tools.get(tool.key);
@@ -149,7 +150,7 @@ export function createScanner() {
       }
     }
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    return { records: [...records.values()].map(r => ({ ...r, sessionName: sessionNames.get(JSON.stringify([r.source, r.sessionId])) || '' })), skills: [...skills.values()], interactions: [...interactions.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
+    return { records: [...records.values()].map(r => ({ ...r, sessionName: sessionNames.get(JSON.stringify([r.source, r.sessionId])) || '' })), skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: [...promptEvents.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }
