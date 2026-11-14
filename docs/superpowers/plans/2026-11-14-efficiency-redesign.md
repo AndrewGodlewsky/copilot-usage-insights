@@ -81,3 +81,6 @@ Selected-range scope
 - Task 3: preview/copy, frozen-filter scope, privacy bounds, missing data, and MCP navigation tests passed after observed failures. UI remains local and uses existing theme/text scaling.
 - Integration is committed together because the generated canvas and release version must match the runtime. Native implementation was used; a fresh whole-change review is the final gate.
 - Validation: build succeeded; full suite initially passed 115/115, then two focused regressions passed for frozen scope and MCP navigation. Final suite and review pending below.
+
+- Final review: no critical or important issues. The missing snapshot model label was retained as a required clarity fix for model changes; a regression failed before the fix and then passed. The README multiplication character was corrected. Live host/visual behavior remains for the user to test as requested.
+- Final validation: `npm run build` succeeded and `npm test` passed 116/116 after review fixes. No deferred code findings remain.

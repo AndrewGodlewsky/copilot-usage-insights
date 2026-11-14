@@ -35,3 +35,7 @@ The newer data inventory and SDK audit refine the earlier capability summaries. 
 6. Never commit personal logs, raw prompts/results, credentials, session identifiers or copied databases. A schema description and sanitized aggregate observation are sufficient for research provenance.
 
 For current product behavior, use the root [Efficiency documentation](../../README.md#efficiency). For proposed implementation order, use the [inference design](2026-11-14-efficiency-inference.md#implementation-order).
+
+## Implementation follow-up: 0.1.30
+
+The [Efficiency redesign](../superpowers/plans/2026-11-14-efficiency-redesign.md) implements tool-definition measurements, MCP failure findings, on-demand current-context inspection, and a previewable, aliased report for manual AI review. The research documents retain their original 0.1.29 baseline. Live context capability remains host-dependent; isolated automatic analysis-agent execution is still deferred. No claim about per-skill historical billing or task effectiveness has been added.

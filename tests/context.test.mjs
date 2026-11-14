@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createContextReader } from '../src/node/context.mjs';
 
-const snapshot = { totalTokens: 1000, limit: 10000, categories: { systemPrompt: 100, customInstructions: 100, systemTools: 100, mcpTools: 200, messages: 500, freeSpace: 9000, buffer: 0 },
+const snapshot = { totalTokens: 1000, limit: 10000, modelId: '<model>', modelSource: 'autoResolved', categories: { systemPrompt: 100, customInstructions: 100, systemTools: 100, mcpTools: 200, messages: 500, freeSpace: 9000, buffer: 0 },
   entries: [{ kind: 'plugin', id: 'parent', label: 'Example', tokens: 200, attributes: { private: 'SECRET' } },
     { kind: 'skill', id: 'child', parentId: 'parent', label: 'Skill', tokens: 100 }], secret: 'SECRET' };
 const session = fn => ({ rpc: { metadata: { getContextAttribution: fn } } });
@@ -15,6 +15,8 @@ test('context snapshot is on demand, bounded and allowlisted without summing nes
   assert.equal(calls, 1);
   assert.deepEqual(a, b);
   assert.equal(a.totalTokens, 1000);
+  assert.equal(a.modelId, '<model>');
+  assert.equal(a.modelSource, 'autoResolved');
   assert.equal(a.entries[1].parentId, 'parent');
   assert.doesNotMatch(JSON.stringify(a), /SECRET|attributes|freeSpace/);
   await read(); assert.equal(calls, 2, 'a new explicit inspection refreshes the snapshot');

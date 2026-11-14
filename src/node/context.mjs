@@ -10,6 +10,7 @@ function normalizeContext(value) {
       ...(typeof e.parentId === 'string' ? { parentId: contextLabel(e.parentId, 512) } : {}) }))
     .sort((a, b) => b.tokens - a.tokens || a.id.localeCompare(b.id));
   return { available: true, totalTokens: value.totalTokens, limit: tokenCount(value.limit),
+    modelId: contextLabel(value.modelId), modelSource: contextLabel(value.modelSource, 40),
     categories: Object.fromEntries(contextCategories.map(key => [key, tokenCount(value.categories[key])])),
     entries: entries.slice(0, 100), omitted: Math.max(0, entries.length - 100) };
 }

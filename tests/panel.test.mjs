@@ -389,10 +389,11 @@ test('efficiency context is explicit, escaped and independent of refresh; review
   assert.equal(requests.some(r => r.method === 'efficiency.context'), false);
   await get('efficiency-context-read').onclick();
   assert.match(get('efficiency-context-result').innerHTML, /not available|unavailable/i);
-  server.contextSnapshot = { available: true, checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, limit: 10000,
+  server.contextSnapshot = { available: true, checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, limit: 10000, modelId: '<PRIVATE-MODEL>', modelSource: 'autoResolved',
     categories: { customInstructions: 100, messages: 900 }, entries: [{ id: 's', kind: 'skill', label: '<PRIVATE>', tokens: 100 }], omitted: 0 };
   await get('efficiency-context-read').onclick();
   assert.match(get('efficiency-context-result').innerHTML, /&lt;PRIVATE&gt;/);
+  assert.match(get('efficiency-context-result').innerHTML, /Auto-resolved model: &lt;PRIVATE-MODEL&gt;/);
   assert.doesNotMatch(get('efficiency-context-result').innerHTML, /<PRIVATE>/);
   get('project').value = 'new filter not yet loaded';
   get('efficiency-review-open').onclick();
