@@ -48,7 +48,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.42** replaces the credits-per-request summary card with **AI credits/prompt**, including recorded agent continuations and reliably linked subagent work. Prompt coverage appears beneath the average. The neighboring card is labeled **AI credit/1M tokens**, with **input + output + cache** beneath its value. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.43** adds **Most failures** to the Skills sort menu under Breakdown. It also replaces the credits-per-request summary card with **AI credits/prompt**, including recorded agent continuations and reliably linked subagent work. Prompt coverage appears beneath the average. The neighboring card is labeled **AI credit/1M tokens**, with **input + output + cache** beneath its value. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -251,7 +251,7 @@ Each detail panel has its summary on the left and a **Sort by** menu on the righ
 
 | Panel | Sort options | Default |
 | --- | --- | --- |
-| Skills | Most uses, Recently used, Name (A–Z), Most sessions | Most uses |
+| Skills | Most uses, Most failures, Recently used, Name (A–Z), Most sessions | Most uses |
 | Plugins | Name (A–Z), Enabled first, Marketplace (A–Z) | Name (A–Z) |
 | MCP | Most calls, Most failures, Recently used, Name (A–Z) | Most calls |
 
