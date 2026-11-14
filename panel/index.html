@@ -81,14 +81,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompts are read locally when you expand an individual request; nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.32</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.33</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
-  <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.32";
+const BUILD_VERSION = "0.1.33";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -157,6 +157,13 @@ function formatNumber(value, { simplify = true, ...options } = {}) {
   // Small nonzero charges must not round down to a misleading zero.
   const precision = value !== 0 && Math.abs(value) < .001 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 3 };
   return value.toLocaleString(undefined, { ...precision, ...options });
+}
+
+function formatCredits(value, { simplify = true } = {}) {
+  const precision = value !== 0 && Math.abs(value) < 1
+    ? { maximumSignificantDigits: simplify ? 2 : 12 }
+    : { maximumFractionDigits: simplify ? 1 : 9 };
+  return formatNumber(value, { simplify, ...precision });
 }
 
 // src/core/provider-names.mjs
@@ -789,6 +796,7 @@ window.addEventListener('error', event => clientDiagnostics.record('error', 'ui.
 window.addEventListener('unhandledrejection', event => clientDiagnostics.record('error', 'ui.rejection', diagnosticError(event.reason)));
 $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VERSION}\n\nWhat happened?\n\nSteps to reproduce:\n\nExpected behavior:\n\nDiagnostic logs (Show logs > Copy logs):\n\n`);
 const number = (value, options = {}) => formatNumber(value, { simplify: state.simplifyNumbers, ...options });
+const creditNumber = value => formatCredits(value, { simplify: state.simplifyNumbers });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
@@ -911,7 +919,7 @@ function options(id, values, all) {
   select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
-  return usageValue(row, 'credits', value => number(value, { maximumFractionDigits: 9 }));
+  return usageValue(row, 'credits', creditNumber);
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
@@ -942,7 +950,7 @@ function table(rows, heading, details = false) {
     const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
     const region = modelExpansion ? 'model-requests' : 'project-sessions';
     const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
+    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
   }).join('')}</tbody></table>`;
 }
 
@@ -968,7 +976,7 @@ function requestDetail(view) {
   if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
   const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
   const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
-  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, key === 'credits' ? creditNumber : number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
 }
 function requestList() {
   const view = state.requestView;
@@ -1101,10 +1109,10 @@ const efficiencyMeasures = [
   { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => number(value), hint: 'Output includes reasoning when reported.' },
   { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => number(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${number(value, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
-  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => number(value, { maximumFractionDigits: 9 }), hint: 'Only complete credit charges are included.' },
+  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: creditNumber, hint: 'Only complete credit charges are included.' },
 ];
 const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
-const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? number(row[metric.key], { maximumFractionDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+const efficiencyHint = (row, metric) => `${efficiencyValue(row, metric)} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
 function renderEfficiencyFlow(s) {
   const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
   const share = total > 0 ? s.pairedInput / total * 100 : null;
@@ -1187,7 +1195,7 @@ function efficiencyDirection(insight) {
   };
   return {
     title: 'Start a model comparison where credits concentrate',
-    evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
+    evidence: `${insight.model} used ${creditNumber(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
     action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
     caveat: 'Credit concentration may reflect the volume or difficulty of work rather than the model being inefficient.',
     compare: 'Compare credits per completed task and the quality of the result, including any retries you needed.',
@@ -1301,7 +1309,7 @@ function renderContent() {
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: number, selectable: true, selectedDay: state.selectedDay, textScale });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);

@@ -24,7 +24,7 @@ export async function registerCanvas({ createCanvas, joinSession, startServer = 
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       open: ctx => enqueue(async () => {
         server ??= await startServer({ readIntegrations, readContext }); instances.add(ctx.instanceId);
-        return { title: 'Insights', status: 'GitHub Copilot', url: server.url };
+        return { title: 'Usage Insights', status: 'GitHub Copilot', url: server.url };
       }),
       onClose: ctx => enqueue(async () => {
         instances.delete(ctx.instanceId);

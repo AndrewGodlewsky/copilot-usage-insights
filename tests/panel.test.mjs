@@ -434,12 +434,12 @@ test('header credits follow filtered totals, keep fractions, and preserve unavai
   const history = [...records, { ...records[0], key: 'earlier', ms: earlier.getTime(), ts: earlier.toISOString(), project: 'Another project' }];
   Object.assign(report, buildReport(history, { range: '7d' }, now));
   await get('refresh').onclick();
-  assert.equal(get('hero-credits').textContent, '7.25');
+  assert.equal(get('hero-credits').textContent, '7.3');
   get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
-  assert.equal(get('hero-credits').textContent, '7.25', 'daily selection does not replace the filter total');
+  assert.equal(get('hero-credits').textContent, '7.3', 'daily selection does not replace the filter total');
   get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
   get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
-  assert.equal(get('hero-credits').textContent, '7.25');
+  assert.equal(get('hero-credits').textContent, '7.3');
   Object.assign(report, buildReport(history, { range: '7d', project: 'Another project' }, now));
   get('project').value = 'Another project'; await get('project').onchange();
   assert.equal(get('hero-credits').textContent, '0.25');
@@ -760,6 +760,27 @@ test('simplified numbers apply across views and context, persist, and only chang
   await get('settings-save').onclick();
   assert.equal(get('token-total').textContent, '42.2M');
   assert.match(get('efficiency-context-result').innerHTML, /2\.1T/);
+
+  large[0].nanoAiu = 12_345_678_901;
+  Object.assign(report, buildReport(large, {}, now));
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
+  assert.equal(get('hero-credits').textContent, '12.3');
+  for (const id of ['tiles', 'projects-summary', 'breakdown', 'efficiency-summary', 'efficiency-models', 'daily']) {
+    assert.match(get(id).innerHTML, /12\.3/, id);
+    assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
+  }
+  assert.match(get('breakdown').innerHTML, /<dt>AI credits<\/dt><dd>12\.3<\/dd>/);
+  await get('settings-open').onclick();
+  get('simplify-numbers').checked = false;
+  await get('settings-save').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('hero-credits').textContent, '12.345678901');
+  for (const id of ['tiles', 'projects-summary', 'breakdown', 'efficiency-summary', 'efficiency-models', 'daily']) {
+    assert.match(get(id).innerHTML, /12\.345678901/, id);
+  }
+  assert.equal(report.totals.credits, 12.345678901);
 });
 
 test('settings restore saved text size and apply changes only after a successful save', async () => {

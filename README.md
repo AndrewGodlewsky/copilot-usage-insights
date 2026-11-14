@@ -44,11 +44,11 @@ Start a **new session** in Copilot desktop and send:
 
 Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
 
-The canvas tab is labeled **Insights** to fit beside Copilot's close button. Copilot fades overflowing tab labels; the plugin cannot change that host styling. The dashboard and canvas catalog retain the full **Usage Insights** name.
+The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, icon spacing, and overflow fade; its plugin API does not expose settings for these. The title may fade near the close button when the host leaves too little room.
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.32** shortens the canvas tab label to **Insights** to avoid the fade caused by the longer title in Copilot's standard tab width. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.33** restores the **Usage Insights** tab title and applies Simplify numbers consistently to AI credits, including fractional charges. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -144,6 +144,8 @@ Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Window
 In **Settings → Text size**, choose **Small** (the original size, and the default), **Medium** (15% larger), or **Large** (30% larger), then click **Save settings**. The same proportional scale applies to headings, tables, controls, chart labels, tooltips, and the Settings dialog. Charts allow more room for larger labels, and wide tables can scroll horizontally. The choice is saved locally with your source settings and restored when you reopen the dashboard. Closing Settings without saving leaves the current size unchanged.
 
 In **Settings**, **Simplify numbers** is on by default, including for existing installations. Click **Save settings** to apply your choice throughout Usage, Breakdown, Efficiency, charts, tooltips, request details, and current-context snapshots. Turn it off for full numbers with locale-aware digit grouping. Numbers below 1,000 retain useful decimal precision; missing values remain unavailable and small nonzero credits are not rounded to zero.
+
+**AI credits** follow the same setting everywhere, including the header and credits-per-request averages. With simplification on, large credit amounts use K/M/B/T and smaller amounts use up to one decimal place (12.345678901 → 12.3). Nonzero amounts below one credit keep two significant digits (0.001234567 → 0.0012) so small charges stay visible. Turn simplification off to show detailed fractional amounts. This changes display only; totals, sorting, and copied review data keep their original values.
 
 | Full number | Simplified |
 | --- | --- |

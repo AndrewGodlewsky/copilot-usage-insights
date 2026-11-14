@@ -3,7 +3,7 @@ import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview } from './efficiency.mjs';
-import { formatNumber } from '../core/format.mjs';
+import { formatNumber, formatCredits } from '../core/format.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -12,6 +12,7 @@ window.addEventListener('error', event => clientDiagnostics.record('error', 'ui.
 window.addEventListener('unhandledrejection', event => clientDiagnostics.record('error', 'ui.rejection', diagnosticError(event.reason)));
 $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VERSION}\n\nWhat happened?\n\nSteps to reproduce:\n\nExpected behavior:\n\nDiagnostic logs (Show logs > Copy logs):\n\n`);
 const number = (value, options = {}) => formatNumber(value, { simplify: state.simplifyNumbers, ...options });
+const creditNumber = value => formatCredits(value, { simplify: state.simplifyNumbers });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
@@ -134,7 +135,7 @@ function options(id, values, all) {
   select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
-  return usageValue(row, 'credits', value => number(value, { maximumFractionDigits: 9 }));
+  return usageValue(row, 'credits', creditNumber);
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
@@ -165,7 +166,7 @@ function table(rows, heading, details = false) {
     const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
     const region = modelExpansion ? 'model-requests' : 'project-sessions';
     const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
+    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
   }).join('')}</tbody></table>`;
 }
 
@@ -191,7 +192,7 @@ function requestDetail(view) {
   if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
   const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
   const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
-  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, key === 'credits' ? creditNumber : number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
 }
 function requestList() {
   const view = state.requestView;
@@ -324,10 +325,10 @@ const efficiencyMeasures = [
   { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => number(value), hint: 'Output includes reasoning when reported.' },
   { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => number(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${number(value, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
-  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => number(value, { maximumFractionDigits: 9 }), hint: 'Only complete credit charges are included.' },
+  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: creditNumber, hint: 'Only complete credit charges are included.' },
 ];
 const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
-const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? number(row[metric.key], { maximumFractionDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+const efficiencyHint = (row, metric) => `${efficiencyValue(row, metric)} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
 function renderEfficiencyFlow(s) {
   const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
   const share = total > 0 ? s.pairedInput / total * 100 : null;
@@ -410,7 +411,7 @@ function efficiencyDirection(insight) {
   };
   return {
     title: 'Start a model comparison where credits concentrate',
-    evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
+    evidence: `${insight.model} used ${creditNumber(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
     action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
     caveat: 'Credit concentration may reflect the volume or difficulty of work rather than the model being inefficient.',
     compare: 'Compare credits per completed task and the quality of the result, including any retries you needed.',
@@ -524,7 +525,7 @@ function renderContent() {
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: number, selectable: true, selectedDay: state.selectedDay, textScale });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);

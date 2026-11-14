@@ -26,3 +26,10 @@ export function formatNumber(value, { simplify = true, ...options } = {}) {
   const precision = value !== 0 && Math.abs(value) < .001 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 3 };
   return value.toLocaleString(undefined, { ...precision, ...options });
 }
+
+export function formatCredits(value, { simplify = true } = {}) {
+  const precision = value !== 0 && Math.abs(value) < 1
+    ? { maximumSignificantDigits: simplify ? 2 : 12 }
+    : { maximumFractionDigits: simplify ? 1 : 9 };
+  return formatNumber(value, { simplify, ...precision });
+}
