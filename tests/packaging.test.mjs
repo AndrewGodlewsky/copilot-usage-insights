@@ -39,7 +39,7 @@ test('release history is complete, ordered, and bundled with the current build',
   const versions = notes.map(entry => entry.version);
   assert.equal(new Set(versions).size, versions.length);
   assert.deepEqual(versions, versions.toSorted((a, b) => b.localeCompare(a, 'en', { numeric: true })));
-  for (let patch = 0; patch <= 54; patch++) assert.ok(versions.includes(`0.1.${patch}`), 'retains historical Copilot release ' + patch);
+  for (let patch = 0; patch <= 55; patch++) assert.ok(versions.includes(`0.1.${patch}`), 'retains historical Copilot release ' + patch);
   for (const note of notes) {
     assert.match(note.version, /^\d+\.\d+\.\d+$/);
     assert.equal(typeof note.summary, 'string');

@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.56",
+    "summary": "Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."
+  },
+  {
     "version": "0.1.55",
     "summary": "Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."
   },

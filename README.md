@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.55** makes the footer version clickable and adds an offline release-history panel with short notes for each Copilot release. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.56** expands release notes into a larger panel with clickable release families and versions beside the notes. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -193,7 +193,7 @@ Selecting Today or Last 7 days does not skip older files during the first scan. 
 
 ## Support footer and diagnostic logs
 
-Every tab has a centered footer: **Usage Insights**, the packaged **version**, **Refresh**, **Settings**, **Show logs**, and **Feedback**. Refresh and Settings use the same actions as the top controls. The version comes from the package at build time. Click it to open **Release notes**, then choose a version from the dropdown. The panel starts on the installed version and shows one short summary at a time. Use Close or Escape to return to the dashboard. Notes are bundled with the installation, so browsing them works offline and does not scan usage data or fetch newer releases.
+Every tab has a centered footer: **Usage Insights**, the packaged **version**, **Refresh**, **Settings**, **Show logs**, and **Feedback**. Refresh and Settings use the same actions as the top controls. Click the version to open **Release notes**. Choose a release family on the left (such as **0.1.x**), then click an individual version to read its summary in the larger notes pane. On narrow screens, families appear above the version list; at phone widths both lists become scrollable rows above the notes. The panel starts on the installed version. Use Close or Escape to return to the dashboard. Notes are bundled with the installation, so browsing them works offline and does not scan usage data or fetch newer releases.
 
 To report a problem:
 
@@ -377,7 +377,7 @@ npm run build  # regenerate the committed panel/index.html
 npm test
 ```
 
-Release summaries are maintained in [release-notes.json](release-notes.json), newest first. When publishing a new version, add a short, plain-language summary for that version and retain the older entries. Keep `package.json`, `plugin.json`, `.github/plugin/marketplace.json`, and the desktop extension package version synchronized, then run the build and tests. The build rejects a missing current-version note, duplicate versions, or empty summaries. Historical notes describe changes at that release; later releases may supersede them.
+Release summaries are maintained in [release-notes.json](release-notes.json), newest first. Follow the mandatory [agent release instructions](AGENTS.md) for every version bump or publication: write the short summary, synchronize versions, rebuild the canvas, and run the tests. The build rejects a missing current-version note, duplicate versions, or empty summaries. Families are derived automatically from each version's first two numbers. Historical notes describe changes at that release; later releases may supersede them.
 
 The root `plugin.json` and `.github/plugin/marketplace.json` package this repository for distribution. The desktop extension entry is `com.github.copilot/extensions/usage-insights/extension.mjs`; the Copilot app provides `@github/copilot-sdk/extension` at runtime. Do not run that entry as a standalone Node process.
 

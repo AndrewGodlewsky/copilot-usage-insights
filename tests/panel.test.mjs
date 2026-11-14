@@ -6,8 +6,9 @@ import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 
-async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
-  const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes) {
+  let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  if (releaseNotes) html = html.replace(/const RELEASE_NOTES = .*;/, () => `const RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};`);
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
     return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
@@ -216,9 +217,33 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(get('logs-dialog').open, false);
 });
 
-test('footer version opens local release notes on every tab and restores focus on close', async () => {
+function releaseNavigation(get, document) {
+  const lists = {};
+  for (const [id, key] of [['release-families', 'releaseFamily'], ['release-versions', 'releaseVersion']]) {
+    const node = get(id); let html = '', buttons = [];
+    Object.defineProperty(node, 'innerHTML', { get: () => html, set(value) {
+      html = value;
+      buttons = [...html.matchAll(/<button\b([^>]*)>/g)].map(([, tag]) => {
+        const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
+        return { dataset: { [key]: attrs.get(key === 'releaseFamily' ? 'data-release-family' : 'data-release-version') },
+          setAttribute: (k, v) => attrs.set(k, String(v)), getAttribute: k => attrs.get(k),
+          focus() { document.activeElement = this; }, scrollIntoView() {},
+          click() { this.focus(); node.onclick({ target: { closest: () => this } }); } };
+      });
+    } });
+    node.querySelectorAll = () => buttons;
+    node.querySelector = () => buttons.find(button => button.getAttribute('aria-pressed') === 'true');
+    lists[key] = value => buttons.find(button => button.dataset[key] === value);
+  }
+  return lists;
+}
+
+test('footer version opens clickable local release history on every tab and restores focus on close', async () => {
   const { get, requests, document, server } = await requestPanel();
+  const { releaseFamily, releaseVersion } = releaseNavigation(get, document);
   const notes = JSON.parse(await fs.readFile(new URL('../release-notes.json', import.meta.url), 'utf8'));
+  const family = version => version.split('.').slice(0, 2).join('.');
+  const installedFamily = family(notes[0].version);
   assert.equal(get('plugin-version').getAttribute('aria-haspopup'), 'dialog');
   assert.equal(get('plugin-version').getAttribute('aria-controls'), 'release-notes-dialog');
   const dialog = get('release-notes-dialog');
@@ -229,16 +254,18 @@ test('footer version opens local release notes on every tab and restores focus o
     get('view').onclick({ target: { dataset: { view } } });
     get('plugin-version').onclick();
     assert.equal(dialog.open, true);
-    assert.equal(get('release-version').value, notes[0].version);
+    assert.equal(get('release-note-title').textContent, `v${notes[0].version}`);
     assert.equal(get('release-summary').textContent, notes[0].summary);
-    assert.equal(document.activeElement, get('release-version'));
-    assert.equal((get('release-version').innerHTML.match(/<option /g) || []).length, notes.length);
+    assert.equal(document.activeElement, releaseVersion(notes[0].version));
+    assert.equal((get('release-versions').innerHTML.match(/data-release-version=/g) || []).length, notes.filter(note => family(note.version) === installedFamily).length);
     for (const release of notes) {
-      get('release-version').value = release.version; get('release-version').onchange();
+      if (!releaseVersion(release.version)) releaseFamily(family(release.version)).click();
+      releaseVersion(release.version).click();
       assert.equal(get('release-summary').textContent, release.summary);
+      assert.equal(get('release-note-title').textContent, `v${release.version}`);
+      assert.equal(releaseVersion(release.version).getAttribute('aria-pressed'), 'true');
+      assert.equal(document.activeElement, releaseVersion(release.version), 'selection keeps focus on the clicked version');
     }
-    get('release-version').value = '<unknown>'; get('release-version').onchange();
-    assert.equal(get('release-version').value, notes[0].version);
     get('release-notes-close').onclick();
     assert.equal(dialog.open, false);
     assert.equal(document.activeElement, get('plugin-version'));
@@ -246,14 +273,42 @@ test('footer version opens local release notes on every tab and restores focus o
   assert.equal(requests.length, before, 'release browsing remains offline on every tab');
   server.transportError = false;
   get('plugin-version').onclick();
-  get('release-version').value = notes.at(-1).version; get('release-version').onchange();
+  releaseFamily(family(notes.at(-1).version)).click();
+  releaseVersion(notes.at(-1).version).click();
   await get('refresh').onclick();
   assert.equal(dialog.open, true);
-  assert.equal(get('release-version').value, notes.at(-1).version);
+  assert.equal(get('release-note-title').textContent, `v${notes.at(-1).version}`);
   assert.equal(get('release-summary').textContent, notes.at(-1).summary);
-  assert.equal(document.activeElement, get('release-version'));
+  assert.equal(document.activeElement, releaseVersion(notes.at(-1).version));
   dialog.onclose();
   assert.equal(document.activeElement, get('plugin-version'), 'native close events restore focus too');
+});
+
+test('release families show their versions without mixing notes or making requests', async () => {
+  const { version } = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const installedFamily = version.split('.').slice(0, 2).join('.');
+  const notes = [{ version, summary: 'Current release' }, { version: '0.0.2', summary: '<b>Plain text</b>' }, { version: '0.0.1', summary: 'First preview' }];
+  const { get, document, requests } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} }, undefined, notes);
+  const { releaseFamily, releaseVersion } = releaseNavigation(get, document);
+  const before = requests.length;
+  get('plugin-version').onclick();
+  assert.ok(releaseFamily(installedFamily));
+  assert.match(get('release-families').innerHTML, /data-release-family="0\.0"/);
+  releaseFamily('0.0').click();
+  assert.equal(releaseFamily('0.0').getAttribute('aria-pressed'), 'true');
+  assert.equal(releaseFamily(installedFamily).getAttribute('aria-pressed'), 'false');
+  assert.equal(releaseVersion(version), undefined);
+  assert.equal(get('release-note-title').textContent, 'v0.0.2');
+  assert.equal(get('release-summary').textContent, '<b>Plain text</b>');
+  assert.equal(get('release-summary').innerHTML, '', 'notes are rendered as text');
+  releaseVersion('0.0.1').click();
+  assert.equal(get('release-summary').textContent, 'First preview');
+  assert.equal(releaseVersion('0.0.2').getAttribute('aria-pressed'), 'false');
+  get('release-notes-close').onclick();
+  get('plugin-version').onclick();
+  assert.equal(get('release-note-title').textContent, `v${version}`);
+  assert.equal(releaseFamily(installedFamily).getAttribute('aria-pressed'), 'true');
+  assert.equal(requests.length, before);
 });
 
 test('a stalled server log request times out while local logs remain copyable', async () => {

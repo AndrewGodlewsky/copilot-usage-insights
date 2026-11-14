@@ -55,19 +55,39 @@ function diagnosticText(server) {
   entries.sort((a, b) => a.at.localeCompare(b.at));
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
-function showReleaseNote() {
-  const release = RELEASE_NOTES.find(entry => entry.version === $('release-version').value) || RELEASE_NOTES[0];
-  $('release-version').value = release.version;
+const releaseFamily = version => version.split('.').slice(0, 2).join('.');
+function showReleaseNote(version) {
+  const release = RELEASE_NOTES.find(entry => entry.version === version);
+  if (!release) return;
+  $('release-note-title').textContent = `v${release.version}`;
+  $('release-installed').hidden = release.version !== BUILD_VERSION;
   $('release-summary').textContent = release.summary;
+  $('release-note').scrollTop = 0;
+  for (const button of $('release-versions').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.releaseVersion === release.version));
+}
+function showReleaseFamily(family, version) {
+  const releases = RELEASE_NOTES.filter(entry => releaseFamily(entry.version) === family);
+  if (!releases.length) return;
+  for (const button of $('release-families').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.releaseFamily === family));
+  $('release-versions').innerHTML = releases.map(entry => `<button data-release-version="${esc(entry.version)}" aria-pressed="false" aria-controls="release-note"><span>v${esc(entry.version)}</span>${entry.version === BUILD_VERSION ? '<span class="release-installed-label">Installed</span>' : ''}</button>`).join('');
+  $('release-versions').scrollTop = 0;
+  showReleaseNote(version || releases[0].version);
 }
 $('plugin-version').onclick = () => {
-  $('release-version').innerHTML = RELEASE_NOTES.map(entry => `<option value="${esc(entry.version)}">v${esc(entry.version)}${entry.version === BUILD_VERSION ? ' (installed)' : ''}</option>`).join('');
-  $('release-version').value = BUILD_VERSION;
-  showReleaseNote();
+  const families = [...new Set(RELEASE_NOTES.map(entry => releaseFamily(entry.version)))];
+  $('release-families').innerHTML = families.map(family => `<button data-release-family="${esc(family)}" aria-pressed="false" aria-controls="release-versions"><span>v${esc(family)}.x</span></button>`).join('');
+  showReleaseFamily(releaseFamily(BUILD_VERSION), BUILD_VERSION);
   if (!$('release-notes-dialog').open) $('release-notes-dialog').showModal();
-  $('release-version').focus();
+  $('release-versions').querySelector('[aria-pressed="true"]')?.focus();
 };
-$('release-version').onchange = showReleaseNote;
+$('release-families').onclick = event => {
+  const button = event.target.closest('[data-release-family]');
+  if (button) showReleaseFamily(button.dataset.releaseFamily);
+};
+$('release-versions').onclick = event => {
+  const button = event.target.closest('[data-release-version]');
+  if (button) showReleaseNote(button.dataset.releaseVersion);
+};
 $('release-notes-close').onclick = () => $('release-notes-dialog').close();
 $('release-notes-dialog').onclose = () => $('plugin-version').focus({ preventScroll: true });
 let logsLoading = false;
