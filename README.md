@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.56** expands release notes into a larger panel with clickable release families and versions beside the notes. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.57** shows daily totals above the chart bars in place of the maximum scale label. Crowded ranges scroll horizontally to keep the values readable. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -133,6 +133,8 @@ The decorative header has four buildings with fixed sizes and positions for the 
 These buildings identify the selected filter and stay in place regardless of usage volume. Each building has three semi-random light patterns. Switching to a filter that hides a building and then showing it again advances to its next pattern, repeating after three. All history keeps the current pattern of any building already visible; newly appearing buildings advance independently. Refreshes and other dashboard controls leave the lights unchanged, with no animation or timed light changes. Reopening the dashboard resets the cycle. The sky palette follows local time, and the scene adapts to narrow canvases so buildings remain within the banner.
 
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
+
+The daily chart shows each day's recorded total above its bar, using tokens or AI credits according to the selected unit. Labels follow **Simplify numbers** and **Text size**, including partial/unavailable indicators. Days without requests have no total label; recorded zero-credit days show **0**. Crowded ranges scroll horizontally so labels stay readable, starting at the latest days and preserving your scroll position while browsing. Click a bar or its total to inspect that day's token types.
 
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
 - Both desktop and CLI usage can appear when they share the same Copilot home. This is local recorded activity, not an account-wide billing report.

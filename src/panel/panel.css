@@ -89,3 +89,5 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
  #release-versions{display:flex;gap:6px;min-width:0}
  #release-versions button{flex-shrink:0;flex-wrap:nowrap;width:auto;white-space:nowrap;margin:0}
 }
+
+#daily{overflow-x:auto;scrollbar-width:thin}.chart .daily-total{font-size:calc(10px * var(--text-scale));font-weight:600;font-variant-numeric:tabular-nums}

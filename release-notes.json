@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.57",
+    "summary": "Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."
+  },
+  {
     "version": "0.1.56",
     "summary": "Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."
   },

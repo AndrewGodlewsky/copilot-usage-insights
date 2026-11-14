@@ -47,8 +47,8 @@ function shortDay(day) {
   return `${MONTHS[Number(m) - 1]} ${Number(d)}`
 }
 
-function svg(w, h, body, label, role = 'img') {
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="${role}" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+function svg(w, h, body, label, role = 'img', minWidth = 0) {
+  return `<svg class="chart"${minWidth ? ` style="min-width:${minWidth}px"` : ''} viewBox="0 0 ${w} ${h}" role="${role}" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
 function empty(w, h, label) {
@@ -61,19 +61,23 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
-  const top = 18 * textScale
+  const top = 26 * textScale
   const bottom = (withWeekday ? 30 : 18) * textScale
   const plotH = height - top - bottom
   const totals = daily.map((d) => keys.reduce((s, k) => s + (d[k] || 0), 0))
   const max = Math.max(...totals)
   if (max <= 0 && !selectable) return empty(width, height, label)
+  const totalLabels = daily.map((d, i) => totals[i] > 0 || d.requests > 0
+    ? usageValue({ ...d, total: totals[i] }, keys.length === 1 ? keys[0] : 'total', fmt || compact) : '')
+  // Reserve a readable slot per value; the daily container scrolls when the range is crowded.
+  const minSlot = Math.max(0, ...totalLabels.map(text => text ? (text.length * 7 + 12) * textScale : 0))
+  width = Math.max(width, Math.ceil(minSlot * daily.length))
   const slot = width / daily.length
   // Bars take most of their slot so few-day ranges don't look sparse; capped so 1–2 days stay sane.
   const barW = Math.min(slot, Math.max(2, Math.min(96, slot * (slot > 40 ? 0.62 : 0.72))))
   const radius = Math.min(6, barW / 2)
   let defs = ''
   let body = `<line x1="0" x2="${width}" y1="${top + plotH + 0.5}" y2="${top + plotH + 0.5}" class="axis"/>`
-  body += `<text x="0" y="${11 * textScale}" class="t-muted">${esc(fmt ? fmt(max) : compact(max))}</text>`
   daily.forEach((d, i) => {
     const x = i * slot + (slot - barW) / 2
     const total = totals[i]
@@ -86,7 +90,7 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined }))
     const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown"` : ''
     body += `<g class="mark" data-tip="${tip}"${selection}>`
-    body += `<rect x="${x - (slot - barW) / 2}" y="${top}" width="${slot}" height="${plotH}" class="hit"/>`
+    body += `<rect x="${x - (slot - barW) / 2}" y="0" width="${slot}" height="${top + plotH}" class="hit"/>`
     if (h > 0) {
       const cid = `${id}-c${i}`
       defs += `<clipPath id="${cid}"><rect x="${x}" y="${top + plotH - h}" width="${barW}" height="${h + radius}" rx="${radius}"/></clipPath>`
@@ -103,6 +107,7 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
       }
       body += `</g>`
     }
+    if (totalLabels[i]) body += `<text x="${i * slot + slot / 2}" y="${top + plotH - h - 8 * textScale}" class="daily-total" text-anchor="middle">${esc(totalLabels[i])}</text>`
     body += `</g>`
   })
   // Inset edge labels and keep the latest date when labels would crowd each other.
@@ -115,7 +120,7 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     nextLabelX = x
   }
   body += dateLabels.join('')
-  return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img')
+  return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img', width)
 }
 
 // Rank-quantile buckets 1..4 over non-zero values; 0 stays level 0.

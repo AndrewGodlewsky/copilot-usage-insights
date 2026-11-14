@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue } from '../src/panel/charts.mjs'
 import { pixelBanner, paintScene, skyFor } from '../src/panel/art.mjs'
+import { formatNumber, formatCredits } from '../src/core/format.mjs'
 
 const day = (d, v) => ({ day: d, input: v, output: v / 2, cacheRead: v * 4, cacheWrite: v / 4, total: v * 5.75, credits: 0 })
 const wellFormed = (s) => {
@@ -22,6 +23,46 @@ test('stackedBars renders one mark per day with tooltips and handles empty', () 
   assert.match(stackedBars([]), /No usage yet/)
   assert.match(stackedBars([day('2026-10-28', 0)]), /No usage yet/)
 })
+test('daily totals sit above each nonempty bar instead of a maximum axis label', () => {
+  const chart = stackedBars([day('2026-11-12', 100), day('2026-11-13', 0), day('2026-11-14', 200)], { width: 600, selectable: true });
+  const labels = [...chart.matchAll(/<text x="([^"]+)" y="([^"]+)" class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)];
+  assert.deepEqual(labels.map(match => match[3]), ['575', '1.2K']);
+  assert.deepEqual(labels.map(match => Number(match[1])), [100, 500]);
+  const barTops = [...chart.matchAll(/<clipPath[^>]*><rect[^>]*y="([^"]+)"/g)].map(match => Number(match[1]));
+  labels.forEach((match, i) => assert.ok(Number(match[2]) < barTops[i] && Number(match[2]) >= 10));
+  assert.doesNotMatch(chart, /<text x="0"[^>]*class="t-muted"/);
+  assert.equal((chart.match(/data-day=/g) || []).length, 3, 'zero-usage days remain selectable');
+});
+
+test('bar totals respect full numbers, credits, zero charges, and unavailable or partial counts', () => {
+  const labels = chart => [...chart.matchAll(/class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)].map(match => match[1]);
+  const tokens = [{ ...day('2026-11-12', 1000), requests: 1, knownTokenRequests: 1 },
+    { ...day('2026-11-13', 10), requests: 2, knownTokenRequests: 1, missingTokens: 1 },
+    { ...day('2026-11-14', 0), requests: 1, knownTokenRequests: 0, missingTokens: 1 }];
+  assert.deepEqual(labels(stackedBars(tokens, { fmt: n => formatNumber(n, { simplify: false }) })), [formatNumber(5750, { simplify: false }), '57.5 *', 'Unavailable']);
+  const credits = [{ day: '2026-11-12', credits: 0, requests: 1 }, { day: '2026-11-13', credits: 1.234, requests: 1 },
+    { day: '2026-11-14', credits: 2, requests: 1, partialCredits: 1 }, { day: '2026-11-15', credits: null, requests: 1, missingCredits: 1 }];
+  assert.deepEqual(labels(stackedBars(credits, { keys: ['credits'], fmt: formatCredits })), ['0', '1.2', '2 *', 'Unavailable']);
+  assert.deepEqual(labels(stackedBars([credits[0]], { keys: ['credits'], selectable: true })), ['0']);
+});
+
+test('daily total labels have space at every text size without shrinking or hiding days', () => {
+  const days = Array.from({ length: 90 }, (_, i) => day(new Date(2026, 7, i + 1).toLocaleDateString('en-CA'), 10000000));
+  for (const textScale of [1, 1.15, 1.3]) for (const simplify of [true, false]) {
+    const chart = stackedBars(days, { width: 280, textScale, selectable: true, fmt: n => formatNumber(n, { simplify }) });
+    const width = Number(chart.match(/viewBox="0 0 ([^ ]+)/)[1]);
+    assert.ok(width > 280);
+    assert.ok(chart.includes('min-width:' + width + 'px'), 'wide chart scrolls instead of scaling down');
+    const labels = [...chart.matchAll(/<text x="([^"]+)" y="[^"]+" class="daily-total" text-anchor="middle">([^<]+)<\/text>/g)];
+    assert.equal(labels.length, 90);
+    for (let i = 0; i < labels.length; i++) {
+      const x = Number(labels[i][1]), half = labels[i][2].length * 3.5 * textScale;
+      assert.ok(x - half >= 0 && x + half <= width);
+      if (i) assert.ok(x - Number(labels[i - 1][1]) >= half * 2 + 6 * textScale);
+    }
+  }
+});
+
 test('usage displays preserve unavailable and partial credits and token categories', () => {
   const days = [{ day: '2026-11-12', credits: null, missingCredits: 1, requests: 1 }, { day: '2026-11-13', credits: 2, partialCredits: 1, requests: 1 }];
   const svg = stackedBars(days, { keys: ['credits'], labels: { credits: 'AI credits' }, colors: { credits: 'blue' } });
@@ -46,7 +87,8 @@ test('dense daily bars stay inside their selectable day slots', () => {
   const days = Array.from({ length: 500 }, (_, i) => day(new Date(2025, 0, i + 1).toLocaleDateString('en-CA'), 10));
   const s = stackedBars(days, { width: 360, selectable: true });
   const barWidth = Number(s.match(/<clipPath[^>]*><rect[^>]*width="([^"]+)"/)[1]);
-  assert.ok(barWidth <= 360 / days.length, 'a neighboring day must not cover the clicked bar');
+  const chartWidth = Number(s.match(/viewBox="0 0 ([^ ]+)/)[1]);
+  assert.ok(barWidth <= chartWidth / days.length, 'a neighboring day must not cover the clicked bar');
 });
 
 test('calendarHeatmap places every day and uses quantile levels', () => {
@@ -265,13 +307,14 @@ test('daily date labels stay within dense charts without overlapping at every te
   const days = Array.from({ length: 90 }, (_, i) => day(new Date(2026, 7, 16 + i).toLocaleDateString('en-CA'), 100));
   for (const width of [280, 500]) for (const textScale of [1, 1.15, 1.3]) {
     const chart = stackedBars(days, { width, textScale, selectable: true });
+    const chartWidth = Number(chart.match(/viewBox="0 0 ([^ ]+)/)[1]);
     const labels = [...chart.matchAll(/<text x="([^"]+)"[^>]*text-anchor="middle">([A-Z][a-z]{2} \d+)<\/text>/g)];
     const halfLabel = 23 * textScale;
     assert.ok(labels.length > 1);
     assert.equal(labels.at(-1)[2], 'Nov 13', 'latest date stays visible');
     for (let i = 0; i < labels.length; i++) {
       const x = Number(labels[i][1]);
-      assert.ok(x - halfLabel >= -0.1 && x + halfLabel <= width + 0.1, 'date labels fit within the chart');
+      assert.ok(x - halfLabel >= -0.1 && x + halfLabel <= chartWidth + 0.1, 'date labels fit within the chart');
       if (i) assert.ok(x - Number(labels[i - 1][1]) >= halfLabel * 2 - 0.1, 'neighboring dates have room');
     }
     assert.equal((chart.match(/role="button"/g) || []).length, 90);

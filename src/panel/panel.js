@@ -741,8 +741,10 @@ function renderContent() {
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
+  const dailyAtEnd = $('daily').scrollWidth - $('daily').clientWidth - $('daily').scrollLeft <= 2;
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
   $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
+  if (dailyAtEnd) $('daily').scrollLeft = $('daily').scrollWidth;
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
