@@ -212,6 +212,12 @@ function selectButton(container, name, value) {
   for (const button of $(container).querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset[name] === value));
 }
 $('view').onclick = e => { if (!e.target.dataset.view) return; state.view = e.target.dataset.view; selectButton('view', 'view', state.view); $('usage-view').hidden = state.view !== 'usage'; $('breakdown-view').hidden = state.view !== 'breakdown'; render(); };
+$('breakdown-sections').onclick = e => {
+  const section = e.target.dataset.section;
+  if (!['skills', 'plugins', 'mcp'].includes(section)) return;
+  selectButton('breakdown-sections', 'section', section);
+  for (const name of ['skills', 'plugins', 'mcp']) $(`${name}-panel`).hidden = name !== section;
+};
 $('metric').onclick = e => { if (!e.target.dataset.metric) return; state.metric = e.target.dataset.metric; selectButton('metric', 'metric', state.metric); render(); };
 $('refresh').onclick = () => load(true);
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
