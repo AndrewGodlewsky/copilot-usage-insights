@@ -44,9 +44,11 @@ Start a **new session** in Copilot desktop and send:
 
 Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
 
+The canvas tab is labeled **Insights** to fit beside Copilot's close button. Copilot fades overflowing tab labels; the plugin cannot change that host styling. The dashboard and canvas catalog retain the full **Usage Insights** name.
+
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.31** adds a saved Simplify numbers setting, enabled by default, for consistent K/M/B/T formatting throughout the dashboard. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.32** shortens the canvas tab label to **Insights** to avoid the fade caused by the longer title in Copilot's standard tab width. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
