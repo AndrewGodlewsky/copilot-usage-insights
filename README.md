@@ -2,18 +2,53 @@
 
 A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, activity, models, projects, and sessions.
 
-## Install from GitHub
+## Install in GitHub Copilot desktop
 
-1. In Copilot desktop, open **Customize** and select the marketplace settings control next to the marketplace dropdown.
-2. Add `https://github.com/AndrewGodlewsky/copilot-usage-insights` as a marketplace.
-3. Find **copilot-usage-insights** on the Browse page and click **Install**.
-4. Start a new session and ask **Open Usage Insights**.
+Use the GitHub Copilot desktop app with canvas support, signed in to your GitHub account. The app installs the plugin from this repository; you do not need to clone it or run npm commands.
 
-This repository contains both the marketplace catalog and the plugin. Use the default `main` branch. If you previously used the personal installer below, move or remove `~/.copilot/extensions/usage-insights` before enabling the marketplace copy, so only one copy is loaded.
+### 1. Add the marketplace
 
-## Test it locally
+1. Open **Customize** in the Copilot app sidebar.
+2. Select the **marketplace settings control** next to the marketplace dropdown.
+3. Follow the prompts to add a GitHub repository or Git URL. Paste this repository URL:
 
-Requires the GitHub Copilot desktop app with canvas support and Node.js 24 or later. There are no npm dependencies to install.
+   ```text
+   https://github.com/AndrewGodlewsky/copilot-usage-insights
+   ```
+
+4. Complete the add-marketplace prompts. If asked for a branch, use **`main`**.
+
+The marketplace name is **`copilot-usage-insights`**. This repository hosts its catalog at [.github/plugin/marketplace.json](.github/plugin/marketplace.json); the URL to enter in the app is the repository URL above.
+
+### 2. Install and enable the plugin
+
+1. Return to **Customize → Browse**.
+2. Select the **copilot-usage-insights** marketplace.
+3. Search for **`copilot-usage-insights`** and click **Install**.
+4. Open **Customize → Installed** and make sure the plugin's toggle is **on**.
+
+Adding the marketplace makes the plugin available to browse. Installing and enabling the plugin makes its canvas available to sessions. The marketplace and plugin both use the name `copilot-usage-insights`.
+
+### 3. Open the dashboard
+
+Start a **new session** in Copilot desktop and send:
+
+> Open Usage Insights.
+
+Copilot can call the plugin's `open_usage_insights` tool to open the dashboard in the right side panel. It reads local Copilot usage automatically. Use **Refresh** to reread the records or **Settings** to add other Copilot home folders.
+
+### If it does not appear
+
+- **Marketplace added, plugin missing:** check that the URL is the repository URL above and that the marketplace is included in the Browse filter. Adding the marketplace does not install the plugin automatically.
+- **Plugin installed, canvas unavailable:** check the toggle under **Customize → Installed**, then start a new session. Restart Copilot if it has not picked up the installation.
+- **Dashboard opens but is empty:** make a request in Copilot, then click **Refresh**. Expand **Local data sources** to check which folders were read. Only available local usage records are counted.
+- **Previously used the personal installer:** move its `usage-insights` folder out of `~/.copilot/extensions` before enabling the marketplace copy. On Windows, the default folder is `%USERPROFILE%\.copilot\extensions\usage-insights`. Keep one installed copy so the same tool is not registered twice. If you set `COPILOT_HOME`, use that folder instead of `~/.copilot`.
+
+These steps follow GitHub's [plugin and marketplace setup instructions](https://docs.github.com/en/copilot/how-tos/github-copilot-app/customize-github-copilot-app#adding-a-plugin-marketplace). Desktop installation and rendering still need an in-app smoke test; automated checks cover the package entry and dashboard backend.
+
+## Local development (optional)
+
+Use this path to test changes from a local checkout. It requires Node.js 24 or later in addition to the Copilot desktop app. There are no npm dependencies to install.
 
 From this repository:
 
