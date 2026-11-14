@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.59",
+    "summary": "Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."
+  },
+  {
     "version": "0.1.58",
     "summary": "Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."
   },

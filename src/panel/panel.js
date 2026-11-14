@@ -715,11 +715,13 @@ function renderContent() {
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
   const p = r.promptCredits;
   const promptCoverage = `${number(p.eligiblePrompts)} of ${number(p.prompts)} prompts`;
+  $('prompt-coverage-note').hidden = p.eligiblePrompts === p.prompts && !p.unlinkedRequests;
+  $('prompt-coverage-note').textContent = `* AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
   const promptHint = `Complete recorded AI credits for initial calls, agent continuations and reliably linked subagents, divided by eligible user prompts. ${promptCoverage} eligible. Prompts are dated by submission; all linked work is grouped before filters. ${p.modelFiltered ? 'Selected-model contribution only, per eligible prompt using the selected models; whole-prompt accounting must still be complete. ' : ''}Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} requests could not be linked to prompts. Unlinked calls make prompt attribution uncertain for their journal session. Local logs cannot establish work they never recorded.`;
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credits / prompt', creditNumber(p.averageCredits), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];

@@ -10,7 +10,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .chart [data-day]>.daily-column{transform-box:view-box;transition:transform 120ms ease-out}
 .chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:scale(1.06,1.03)}
 .chart [data-day]:hover .column-outline{stroke:var(--muted-fg)}
-.chart [data-day][aria-pressed=true] .column-outline{stroke:var(--q4);stroke-width:2}
+#daily .chart:has([aria-pressed=true]) [data-day][aria-pressed=false]>.daily-column{filter:saturate(.45);opacity:.7}
 .chart [data-day]:focus-visible .column-outline{stroke:var(--fg);stroke-width:2}
 @media(prefers-reduced-motion:reduce){.chart [data-day]>.daily-column{transition:none}.chart [data-day]:hover>.daily-column,.chart [data-day]:focus-visible>.daily-column{transform:none}}
 .selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
@@ -48,7 +48,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 #content[data-metric=tokens] :is(td,dd,strong.value)[data-measure=tokens],#content[data-metric=credits] :is(td,dd,strong.value)[data-measure=credits]{color:var(--metric-accent);font-weight:700}
 .toolbar-actions{display:flex;align-items:center;gap:inherit;margin-inline-start:auto;flex-shrink:0}
 
-#models-summary [role="button"]{cursor:pointer}#models-summary [role="button"]:focus-visible{outline:2px solid var(--s1);outline-offset:1px}#models-summary [role="button"]:hover .hit,#models-summary [aria-pressed="true"] .hit{fill:var(--muted)}#models-summary .choice-muted text{fill:var(--muted-fg)}#models-summary .choice-muted .bar{fill:var(--muted-fg)}#models-summary [aria-pressed="true"] .t-label{font-weight:700}#content #projects-summary .choice-muted td,#projects-summary .choice-muted button{color:var(--muted-fg)}#projects-summary [aria-pressed="true"]{font-weight:700;text-decoration:underline;text-underline-offset:3px}
+#models-summary [role="button"]{cursor:pointer;outline:none}#models-summary [role="button"]:focus-visible{outline:2px solid var(--s1);outline-offset:1px}#models-summary [role="button"]:hover .t-label{text-decoration:underline;text-underline-offset:3px}#models-summary .choice-muted text{fill:var(--muted-fg)}#models-summary .choice-muted .bar{fill:var(--muted-fg)}#models-summary [aria-pressed="true"] .t-label{font-weight:700}#content #projects-summary .choice-muted td,#projects-summary .choice-muted button{color:var(--muted-fg)}#projects-summary [aria-pressed="true"]{font-weight:700;text-decoration:underline;text-underline-offset:3px}
 
 #breakdown .usage-table{table-layout:fixed;min-width:calc(220px * var(--text-scale) + 9 * (var(--usage-metric-width) + 16px))}.usage-name-column{width:calc(220px * var(--text-scale))}#breakdown .usage-table th{white-space:normal;overflow-wrap:anywhere}#breakdown .usage-row td{white-space:normal;overflow-wrap:anywhere}#breakdown .usage-row .cell-text{min-width:0;max-width:none}#breakdown .usage-row[data-depth="1"] td:first-child,#breakdown .usage-header[data-depth="1"] th:first-child{padding-inline-start:calc(7px + 16px * var(--text-scale))}#breakdown .usage-row[data-depth="2"] td:first-child,#breakdown .usage-header[data-depth="2"] th:first-child{padding-inline-start:calc(7px + 32px * var(--text-scale))}
 #breakdown [data-depth="1"]{background:var(--bg)}#breakdown [data-depth="2"]{background:var(--card)}#breakdown [data-depth="3"]{background:var(--bg)}#breakdown .usage-context>td{padding:0;max-width:none;text-align:left;white-space:normal;overflow:visible}#breakdown .request-list,#breakdown .request-detail{background:transparent}#breakdown .request-list{padding:12px 7px;border:0}#breakdown .request-list>header{margin-bottom:0}#breakdown .usage-context[data-depth="1"] .request-list{padding-inline-start:calc(7px + 16px * var(--text-scale))}#breakdown .usage-context[data-depth="2"] .request-list{padding-inline-start:calc(7px + 32px * var(--text-scale))}
@@ -97,3 +97,5 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
  #release-versions{display:flex;gap:6px;min-width:0}
  #release-versions button{flex-shrink:0;flex-wrap:nowrap;width:auto;white-space:nowrap;margin:0}
 }
+
+#projects-summary .model-toggle:hover,#projects-summary .model-toggle:focus-visible{background:transparent;text-decoration:underline;text-underline-offset:3px}

@@ -953,8 +953,10 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   assert.match(card(3), /<span class="label">AI credit \/ 1M tokens<\/span>.*>2\.1K<\/strong>/);
   assert.match(card(3), /<span class="sub">input \+ output \+ cache<\/span>/);
   Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0.0678776, averageCredits: 0.0678776 });
+  report.promptCredits.unlinkedRequests = 0;
   await get('refresh').onclick();
   assert.match(card(2), />0\.068<\/strong>.*<span class="sub">1 prompts<\/span>/);
+  assert.equal(get('prompt-coverage-note').hidden, true);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();
@@ -969,7 +971,10 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   Object.assign(report, buildReport(incomplete, { range: '7d' }, now));
   Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 1, credits: 0.25, averageCredits: 0.25, modelFiltered: true, excluded: { attribution: 0, accounting: 1, unfinished: 0 } });
   await get('refresh').onclick();
-  assert.match(card(2), />0\.25 \*<\/strong>.*1 prompts · selected-model contribution/);
+  assert.match(card(2), />0\.25<\/strong>.*1 prompts · selected-model contribution/);
+  assert.equal(get('prompt-coverage-note').hidden, false);
+  assert.match(get('prompt-coverage-note').textContent, /^\* AI credits \/ prompt: 1 of 2 prompts/);
+  assert.match(get('prompt-coverage-note').textContent, /1 incomplete charges/);
   assert.match(card(2), /1 incomplete charges/);
   assert.match(card(3), /1 of 3 requests/);
   assert.match(card(3), /\*<\/strong>.*<span class="sub">input \+ output \+ cache<\/span>/);
@@ -984,6 +989,11 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   Object.assign(report, buildReport([], { range: '1d' }, now));
   await get('refresh').onclick();
   for (const index of [2, 3]) assert.match(card(index), />Unavailable<\/strong>/);
+  assert.equal(get('prompt-coverage-note').hidden, true, 'empty filtered data clears the note');
+  Object.assign(report.promptCredits, { unlinkedRequests: 2 });
+  await get('refresh').onclick();
+  assert.equal(get('prompt-coverage-note').hidden, false, 'unlinked calls remain disclosed without known prompts');
+  assert.match(get('prompt-coverage-note').textContent, /2 model calls could not be linked to prompts/);
 });
 
 test('metric buttons toggle emphasis off without changing chart units or loading data', async () => {
