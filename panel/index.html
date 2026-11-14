@@ -9,6 +9,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .chart .track{stroke:var(--muted)}.chart .bar{fill:var(--s1)}.chart .t-strong{font-size:calc(20px * var(--text-scale));font-weight:600}
 .chart [data-day]{cursor:pointer;outline:none}.chart [data-day]:hover>.hit{fill:var(--s1);fill-opacity:.08}.chart [data-day][aria-pressed=true]>.hit{fill:var(--s1);fill-opacity:.15;stroke:var(--s1);stroke-width:1}.chart [data-day]:focus-visible>.hit{stroke:var(--fg);stroke-width:2}.selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
 .card header label{white-space:nowrap}
+.card header .detail-sort{margin-left:auto}
 .skill-actions{display:inline-flex;align-items:center;gap:6px;max-width:100%}.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}.skill-link:hover{background:transparent;color:var(--fg)}.skill-copy{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--muted-fg)}.skill-copy:hover{color:var(--fg);border-color:var(--border)}#skills th,#skills td,#breakdown th,#breakdown td{text-align:center;padding-inline:7px}#skills th+th,#skills td+td,#breakdown th+th,#breakdown td+td{border-left:1px dotted var(--border)}#breakdown th:first-child,#breakdown td:first-child{text-align:left}#skills th:first-child,#skills td:first-child{width:14%;min-width:calc(120px * var(--text-scale));text-align:left;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 
 .integration-note,#mcp-coverage{margin-top:12px}
@@ -53,9 +54,9 @@ td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{d
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
       <p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p>
       <div class="controls"><div class="seg" id="breakdown-sections" role="group" aria-label="Breakdown details"><button data-section="skills" aria-pressed="true" aria-controls="skills-panel">Skills</button><button data-section="plugins" aria-pressed="false" aria-controls="plugins-panel">Plugins</button><button data-section="mcp" aria-pressed="false" aria-controls="mcp-panel">MCP</button></div></div>
-      <article class="card" id="skills-panel" aria-labelledby="skills-title"><header><h2 id="skills-title">Skills used</h2><span id="skills-summary" class="muted"></span></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p id="skills-coverage" class="footnote"></p></article>
-      <article class="card" id="plugins-panel" aria-labelledby="plugins-title" hidden><header><h2 id="plugins-title">Plugins</h2><span id="plugins-summary" class="muted"></span></header><div id="plugins" class="table-wrap"></div><p class="footnote integration-note">Current inventory reported by Copilot for this account and session. Date and usage filters do not apply. Enabled does not mean used.</p></article>
-      <article class="card" id="mcp-panel" aria-labelledby="mcp-title" hidden><header><h2 id="mcp-title">MCP Servers</h2><span id="mcp-summary" class="muted"></span></header><div id="mcp" class="table-wrap"></div><p id="mcp-note" class="footnote integration-note"></p><p id="mcp-coverage" class="footnote" hidden></p></article>
+      <article class="card" id="skills-panel" aria-label="Skills"><header><span id="skills-summary" class="muted"></span><label class="detail-sort">Sort by <select id="skills-sort" aria-label="Sort skills by"><option value="invocations">Most uses</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option><option value="sessions">Most sessions</option></select></label></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p id="skills-coverage" class="footnote"></p></article>
+      <article class="card" id="plugins-panel" aria-label="Plugins" hidden><header><span id="plugins-summary" class="muted"></span><label class="detail-sort">Sort by <select id="plugins-sort" aria-label="Sort plugins by"><option value="name">Name (A–Z)</option><option value="enabled">Enabled first</option><option value="marketplace">Marketplace (A–Z)</option></select></label></header><div id="plugins" class="table-wrap"></div><p class="footnote integration-note">Current inventory reported by Copilot for this account and session. Date and usage filters do not apply. Enabled does not mean used.</p></article>
+      <article class="card" id="mcp-panel" aria-label="MCP servers" hidden><header><span id="mcp-summary" class="muted"></span><label class="detail-sort">Sort by <select id="mcp-sort" aria-label="Sort MCP servers by"><option value="calls">Most calls</option><option value="failures">Most failures</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option></select></label></header><div id="mcp" class="table-wrap"></div><p id="mcp-note" class="footnote integration-note"></p><p id="mcp-coverage" class="footnote" hidden></p></article>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
@@ -724,6 +725,16 @@ function creditLabel(row) {
 function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
 }
+function sortActivity(rows, key) {
+  return [...rows].sort((a, b) => {
+    const byName = (a.displayName || a.name).localeCompare(b.displayName || b.name) || a.name.localeCompare(b.name);
+    if (key === 'name') return byName;
+    const av = key === 'lastUsed' ? Date.parse(a.lastUsed) || 0 : a[key] ?? -1;
+    const bv = key === 'lastUsed' ? Date.parse(b.lastUsed) || 0 : b[key] ?? -1;
+    return bv - av || byName;
+  });
+}
+const pluginMarketplace = plugin => plugin.marketplace || (plugin.source === 'builtin' ? 'Built-in' : 'Direct / local');
 function table(rows, heading, details = false) {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
@@ -750,7 +761,7 @@ function renderIntegrations(report) {
   const statusLabels = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
   const openDetails = new Set([...$('mcp').querySelectorAll('details[open]')].map(node => node.dataset.server));
   $('mcp-summary').textContent = `${number(mcp.rows.length)} servers · ${number(mcp.calls)} calls`;
-  $('mcp').innerHTML = mcp.rows.length ? `<table><thead><tr><th>Server</th><th title="Live status in the session hosting this dashboard, independent of date filters.">Current status</th><th>Calls</th><th>Failures</th><th title="Successful calls divided by calls with known outcomes; this is not connection uptime.">Success rate</th><th>Last used</th></tr></thead><tbody>${mcp.rows.map(row => {
+  $('mcp').innerHTML = mcp.rows.length ? `<table><thead><tr><th>Server</th><th title="Live status in the session hosting this dashboard, independent of date filters.">Current status</th><th>Calls</th><th>Failures</th><th title="Successful calls divided by calls with known outcomes; this is not connection uptime.">Success rate</th><th>Last used</th></tr></thead><tbody>${sortActivity(mcp.rows, $('mcp-sort').value).map(row => {
     const details = [`Server: ${row.name}`, `Successes: ${number(row.successes)}`, `Unknown outcomes: ${number(row.unknown)}`];
     if (row.enabled !== undefined && row.enabled !== null) details.push(`Enabled: ${row.enabled ? 'Yes' : 'No'}`);
     if (row.source) details.push(`Source: ${row.source}`);
@@ -768,8 +779,14 @@ function renderIntegrations(report) {
   $('mcp-coverage').hidden = !coverage.length;
   $('mcp-coverage').textContent = coverage.join(' ');
   const plugins = report.plugins || { available: false, rows: [] };
+  const pluginSort = $('plugins-sort').value;
+  const pluginRows = [...plugins.rows].sort((a, b) => {
+    const order = pluginSort === 'enabled' ? Number(b.installed) - Number(a.installed) || Number(b.enabled === true) - Number(a.enabled === true)
+      : pluginSort === 'marketplace' ? pluginMarketplace(a).localeCompare(pluginMarketplace(b)) : 0;
+    return order || a.name.localeCompare(b.name);
+  });
   $('plugins-summary').textContent = plugins.available ? `${number(plugins.rows.filter(p => p.installed).length)} installed` : 'Inventory unavailable';
-  $('plugins').innerHTML = !plugins.available ? '<p class="muted">Plugin inventory is unavailable. Open this dashboard in an updated Copilot session.</p>' : plugins.rows.length ? `<table><thead><tr><th>Plugin</th><th>Installed version</th><th>State</th><th>Marketplace</th><th>Management</th></tr></thead><tbody>${[...plugins.rows].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<tr>${textCell(p.name)}${textCell(p.version || '—')}${textCell(!p.installed ? 'Not installed' : p.enabled === null ? 'Unknown' : p.enabled ? 'Enabled' : 'Disabled')}${textCell(p.marketplace || (p.source === 'builtin' ? 'Built-in' : 'Direct / local'))}${textCell(p.managed ? 'Managed' : '—')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No plugins reported by Copilot.</p>';
+  $('plugins').innerHTML = !plugins.available ? '<p class="muted">Plugin inventory is unavailable. Open this dashboard in an updated Copilot session.</p>' : plugins.rows.length ? `<table><thead><tr><th>Plugin</th><th>Installed version</th><th>State</th><th>Marketplace</th><th>Management</th></tr></thead><tbody>${pluginRows.map(p => `<tr>${textCell(p.name)}${textCell(p.version || '—')}${textCell(!p.installed ? 'Not installed' : p.enabled === null ? 'Unknown' : p.enabled ? 'Enabled' : 'Disabled')}${textCell(pluginMarketplace(p))}${textCell(p.managed ? 'Managed' : '—')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No plugins reported by Copilot.</p>';
 }
 function renderBreakdown() {
   const report = state.report;
@@ -778,11 +795,11 @@ function renderBreakdown() {
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
-  $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="All recorded activations, including preloaded and unknown triggers. Hover over a count for its breakdown.">Activations</th><th title="Activations explicitly requested by the user.">By user</th><th title="Activations requested by the agent.">By agent</th><th>Sessions</th><th>Projects</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td class="text-cell" title="${esc(s.name)}"><span class="cell-text">${skillName(s)}</span></td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td>${textCell(s.plugin || '\u2014')}${textCell(s.version || '\u2014')}${textCell(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(s.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(s.lastUsed)))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  $('skills-summary').textContent = `${number(skills.invocations)} use${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="Recorded skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th title="Uses explicitly requested by the user.">By user</th><th title="Uses requested by the agent.">By agent</th><th>Sessions</th><th>Projects</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Last used</th></tr></thead><tbody>${sortActivity(skills.rows, $('skills-sort').value).map(s => `<tr><td class="text-cell" title="${esc(s.name)}"><span class="cell-text">${skillName(s)}</span></td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td>${textCell(s.plugin || '\u2014')}${textCell(s.version || '\u2014')}${textCell(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(s.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(s.lastUsed)))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill uses match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
   if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
-  if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
+  if (skills.omitted) coverage.push(`${number(skills.omitted)} skill uses omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
   $('skills-coverage').hidden = !coverage.length;
   $('skills-coverage').textContent = coverage.join(' ');
@@ -878,7 +895,7 @@ $('refresh').onclick = () => load(true);
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
+for (const id of ['group', 'sort', 'skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
   if (!button || state.skillActionPending) return;

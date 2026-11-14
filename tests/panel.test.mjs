@@ -16,7 +16,11 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
   }));
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
-  get('cache').checked = true; get('group').value = 'models'; get('sort').value = 'total';
+  for (const [, id, choices] of html.matchAll(/<select[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
+    const options = [...choices.matchAll(/<option value="([^"]*)"([^>]*)>/g)];
+    get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
+  }
+  get('cache').checked = true;
   const requests = [], rootStyle = new Map(), server = { config, saveError: '' };
   const context = createContext({
     document: { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: {
@@ -60,11 +64,12 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   const { get, nodes, requests } = await mountPanel(report);
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
-  assert.deepEqual(headers, ['Skill', 'Activations', 'By user', 'By agent', 'Sessions', 'Projects', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
+  assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Projects', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
   const cells = [...get('skills').innerHTML.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(([, value]) => value.replace(/<\/?span[^>]*>/g, ''));
   assert.equal(cells.length, headers.length);
   assert.deepEqual(cells.slice(1, 9), ['5', '2', '1', '1', '1', '&lt;team-tools&gt;', '2.0', '1.0.1']);
   assert.equal(cells.at(-1), '11/13/26, 10:49 PM');
+  assert.equal(get('skills-summary').textContent, '5 uses · 1 session');
   assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
   assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 1; Unknown: 1"/);
   assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|Failures|<hello-test>/);
@@ -121,6 +126,50 @@ test('MCP and plugin tables distinguish live inventory from filtered usage and e
   assert.match(get('mcp').innerHTML, /Unavailable/);
   assert.match(get('mcp').innerHTML, /50%/);
   assert.match(get('plugins').innerHTML, /unavailable/i);
+});
+
+test('detail panels sort independently and preserve choices and report data across refreshes', async () => {
+  const older = '2026-11-13T10:00:00Z', newer = '2026-11-14T10:00:00Z';
+  const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {} };
+  report.skills = { invocations: 16, sessions: 8, rows: [
+    { id: 'a', name: 'Alpha skill', invocations: 2, sessions: 2, projects: 1, lastUsed: newer },
+    { id: 'z', name: 'Zulu skill', invocations: 12, sessions: 1, projects: 1, lastUsed: older },
+    { id: 'b', name: 'Beta skill', invocations: 2, sessions: 5, projects: 1, lastUsed: older },
+  ] };
+  report.mcp = { available: true, calls: 12, rows: [
+    { name: 'Alpha server', displayName: 'Omega server', calls: 0, failures: 0, successes: 0, unknown: 0, successRate: null, lastUsed: null },
+    { name: 'Zulu server', calls: 10, failures: 0, successes: 10, unknown: 0, successRate: 100, lastUsed: older },
+    { name: 'Beta server', calls: 2, failures: 1, successes: 1, unknown: 0, successRate: 50, lastUsed: newer },
+  ] };
+  report.plugins = { available: true, rows: [
+    { name: 'Zulu plugin', enabled: true, installed: true, marketplace: 'Alpha marketplace' },
+    { name: 'Alpha plugin', enabled: false, installed: true, marketplace: 'Zulu marketplace' },
+    { name: 'Beta plugin', enabled: true, installed: false, source: 'builtin' },
+  ] };
+  const original = structuredClone(report);
+  const { get, requests } = await mountPanel(report);
+  const names = id => [...get(id).innerHTML.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) => id === 'mcp' ? cell.match(/<summary[^>]*>(.*?)<\/summary>/)[1] : cell.replace(/<[^>]*>/g, ''));
+  const sort = (id, key) => { get(`${id}-sort`).value = key; get(`${id}-sort`).onchange(); };
+  assert.deepEqual(names('skills'), ['Zulu skill', 'Alpha skill', 'Beta skill']);
+  assert.deepEqual(names('plugins'), ['Alpha plugin', 'Beta plugin', 'Zulu plugin']);
+  assert.deepEqual(names('mcp'), ['Zulu server', 'Beta server', 'Omega server']);
+  sort('skills', 'name'); assert.deepEqual(names('skills'), ['Alpha skill', 'Beta skill', 'Zulu skill']);
+  sort('skills', 'lastUsed'); assert.deepEqual(names('skills'), ['Alpha skill', 'Beta skill', 'Zulu skill']);
+  sort('skills', 'sessions'); assert.deepEqual(names('skills'), ['Beta skill', 'Alpha skill', 'Zulu skill']);
+  sort('plugins', 'enabled'); assert.deepEqual(names('plugins'), ['Zulu plugin', 'Alpha plugin', 'Beta plugin']);
+  sort('plugins', 'marketplace'); assert.deepEqual(names('plugins'), ['Zulu plugin', 'Beta plugin', 'Alpha plugin']);
+  sort('mcp', 'name'); assert.deepEqual(names('mcp'), ['Beta server', 'Omega server', 'Zulu server']);
+  sort('mcp', 'lastUsed'); assert.deepEqual(names('mcp'), ['Beta server', 'Zulu server', 'Omega server']);
+  sort('mcp', 'failures'); assert.deepEqual(names('mcp'), ['Beta server', 'Omega server', 'Zulu server']);
+  assert.equal(requests.length, 1, 'sorting uses the current report without extra requests');
+  get('breakdown-sections').onclick({ target: { dataset: { section: 'plugins' } } });
+  await get('refresh').onclick();
+  assert.equal(get('plugins-panel').hidden, false);
+  assert.equal(get('skills-panel').hidden, true);
+  assert.deepEqual(names('skills'), ['Beta skill', 'Alpha skill', 'Zulu skill']);
+  assert.deepEqual(names('plugins'), ['Zulu plugin', 'Beta plugin', 'Alpha plugin']);
+  assert.deepEqual(names('mcp'), ['Beta server', 'Omega server', 'Zulu server']);
+  assert.deepEqual(report, original, 'sorting never mutates the report or counts');
 });
 
 test('long selected filter names remain readable in full and keep their original filter IDs', async () => {

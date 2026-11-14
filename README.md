@@ -1,6 +1,6 @@
 # Copilot Usage Insights
 
-A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, skill activations, models, projects, sessions, MCP servers, and installed plugins.
+A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, skill uses, models, projects, sessions, MCP servers, and installed plugins.
 
 ## Install in GitHub Copilot desktop
 
@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.19** steadies the pixel skyline when changing date ranges: recent activity stays anchored to the right, older days are spaced proportionally, and the background stays consistent. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.20** gives Skills, Plugins, and MCP matching headers with the summary on the left and **Sort by** on the right. Repeated panel titles are removed, and skill **Activations** are now labeled **Uses**. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -116,15 +116,25 @@ Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Window
 
 In **Settings → Text size**, choose **Small** (the original size, and the default), **Medium** (15% larger), or **Large** (30% larger), then click **Save settings**. The same proportional scale applies to headings, tables, controls, chart labels, tooltips, and the Settings dialog. Charts allow more room for larger labels, and wide tables can scroll horizontally. The choice is saved locally with your source settings and restored when you reopen the dashboard. Closing Settings without saving leaves the current size unchanged.
 
-## Skills used
+## Skills
 
-Open **Breakdown** to see **Skills used** below the token table. Use the **Skills**, **Plugins**, and **MCP** buttons to switch detail panels. Skills is selected when the dashboard opens; your choice stays selected during refreshes, filter changes, and visits to the Usage view. The usage breakdown table stays visible above these buttons.
+Open **Breakdown → Skills** to see recorded skill uses below the token table. Use the **Skills**, **Plugins**, and **MCP** buttons to switch detail panels. Skills is selected when the dashboard opens; your choice stays selected during refreshes, filter changes, and visits to the Usage view. The usage breakdown table stays visible above these buttons.
 
-The **Skills used** columns are **Skill** (with folder actions), **Activations**, **By user**, **By agent**, **Sessions**, **Projects**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. Skill names stay left-aligned, while the remaining headers and values are centered with faint dotted column dividers. The skill column narrows as space becomes limited, and long names wrap. All columns remain available; scroll horizontally when they no longer fit. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
+Each detail panel has its summary on the left and a **Sort by** menu on the right, without a repeated title. Each menu keeps its own selection while the dashboard is open, including across refreshes, filter changes, and panel switches. Reopening the dashboard restores the defaults.
 
-**Last used** in Skills used displays local time in a compact month/day/year format, such as **11/13/26, 10:49 PM**. Hover over it for the full timestamp, including seconds.
+| Panel | Sort options | Default |
+| --- | --- | --- |
+| Skills | Most uses, Recently used, Name (A–Z), Most sessions | Most uses |
+| Plugins | Name (A–Z), Enabled first, Marketplace (A–Z) | Name (A–Z) |
+| MCP | Most calls, Most failures, Recently used, Name (A–Z) | Most calls |
 
-**By user** counts events whose `data.trigger` is `user-invoked` (a slash command or explicit UI action); **By agent** counts `agent-invoked`. **Activations** includes those plus **Preloaded** (`context-load`) and **Unknown** (missing or unrecognized triggers). Hover over an activation count to see all four counts. Preloaded and unknown activations are not assigned to either trigger column, so **By user** plus **By agent** can be less than **Activations**. A replayed event is counted once; a prompt that reuses an already loaded skill is not necessarily another activation.
+Counts sort from highest to lowest; recently used sorts newest first, with missing dates last. Names and marketplaces sort alphabetically as displayed. Enabled first puts installed, enabled plugins first and plugins not yet installed last. Sorting changes only row order, not counts or filters.
+
+The **Skills** columns are **Skill** (with folder actions), **Uses**, **By user**, **By agent**, **Sessions**, **Projects**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. Skill names stay left-aligned, while the remaining headers and values are centered with faint dotted column dividers. The skill column narrows as space becomes limited, and long names wrap. All columns remain available; scroll horizontally when they no longer fit. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
+
+**Last used** in the Skills panel displays local time in a compact month/day/year format, such as **11/13/26, 10:49 PM**. Hover over it for the full timestamp, including seconds.
+
+**By user** counts events whose `data.trigger` is `user-invoked` (a slash command or explicit UI action); **By agent** counts `agent-invoked`. **Uses** counts recorded skill loads, including those plus **Preloaded** (`context-load`) and **Unknown** (missing or unrecognized triggers). Hover over a use count to see all four counts. Preloaded and unknown activations are not assigned to either trigger column, so **By user** plus **By agent** can be less than **Uses**. A replayed event is counted once; a prompt that reuses an already loaded skill is not necessarily another activation.
 
 **Source plugin** and **Plugin version** come from `data.pluginName` and `data.pluginVersion` in Copilot's saved `skill.invoked` or `skill.invoked_ref` events under `session-state/<session>/events.jsonl`. The tracker reads the values recorded for that activation, rather than looking up the plugin's currently installed version. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. These fields are optional in GitHub's [`skill.invoked` event reference](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events#skillinvoked). Personal skills such as `~/.copilot/skills/example-skill/SKILL.md`, and project skills, normally have no source plugin. A dash (**—**) in either column means that field was absent; it does not mean the skill failed to run.
 
@@ -149,7 +159,7 @@ Click a skill name to open the folder containing its recorded `SKILL.md` in Expl
 
 The reader counts persisted `skill.invoked` and `skill.invoked_ref` events from local session logs. Reference events carry activation metadata while referring to the skill body separately; counting them does not require loading that body. Each distinct event ID within a session counts once, including when several activations reference the same content. Replayed events, full/reference copies of the same event, and copied homes are deduplicated. It includes sessions with Copilot-attributed requests and omits activations in sessions with mixed or missing provider attribution, with the omitted count shown. This conservative rule can omit genuine Copilot activations in mixed-provider sessions. A skill-only session can appear once Copilot request accounting is available.
 
-An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions and arguments are discarded; the dashboard keeps names, recorded file paths, current installed skill versions, and activation metadata locally. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
+An empty list means **no recorded skill uses match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions and arguments are discarded; the dashboard keeps names, recorded file paths, current installed skill versions, and activation metadata locally. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
 
 ## MCP Servers
 
