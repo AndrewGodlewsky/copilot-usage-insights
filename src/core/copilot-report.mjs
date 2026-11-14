@@ -74,8 +74,39 @@ function toolReport(records, activity, input, start, end, now) {
   return { rows, calls, omitted, mcpOmitted, projectOptions: [...projectOptions] };
 }
 
-export function buildReport(records, input = {}, now = new Date(), activity = {}) {
+function usageScope(records, input, now) {
   const q = normalizeQuery(input, now), today = localDay(now);
+  for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
+  const history = records.filter(r => r.ms <= now.getTime() && (!q.models || q.models.includes(r.model)) && (!input.project || r.project === input.project) && (!input.session || r.sessionId === input.session));
+  const first = history.reduce((min, r) => Math.min(min, localDay(new Date(r.ms))), today);
+  const start = q.range === 'custom' ? parseDateDay(q.startDate) : q.range === 'all' ? first : today - RANGE_DAYS.get(q.range) + 1;
+  const end = q.range === 'custom' ? parseDateDay(q.endDate) : today;
+  return { q, today, history, start, end };
+}
+
+export function buildRequestPage(records, input = {}, now = new Date()) {
+  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session', 'model', 'offset', 'id']);
+  if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown request filter');
+  if (typeof input.model !== 'string' || !input.model.trim()) throw new TypeError('Expected a model');
+  if (input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) throw new TypeError('Invalid request offset');
+  if (input.id !== undefined && (typeof input.id !== 'string' || !input.id || input.id.length > 8192)) throw new TypeError('Invalid request ID');
+  const { q, history, start, end } = usageScope(records, input, now);
+  const matching = history.filter(r => {
+    const day = localDay(new Date(r.ms));
+    return r.model === input.model && day >= start && day <= end && (input.id === undefined || r.key === input.id);
+  }).sort((a, b) => b.ms - a.ms || a.key.localeCompare(b.key));
+  const limit = input.id === undefined ? 25 : 1;
+  const offset = input.id === undefined ? Math.min(input.offset || 0, Math.max(0, Math.ceil(matching.length / limit) - 1) * limit) : 0;
+  return { total: matching.length, offset, limit, rows: matching.slice(offset, offset + limit).map(r => {
+    const b = bucket(); add(b, r, q.includeCache);
+    return { id: r.key, ts: r.ts, sessionId: r.sessionId, sessionName: r.sessionName || r.project || 'Unnamed session',
+      project: r.project, model: r.model, modelId: r.modelId, responseModel: r.responseModel || '',
+      initiator: r.initiator || '', isAuto: r.isAuto ?? null, duration: r.duration ?? null, ...finish(b) };
+  }) };
+}
+
+export function buildReport(records, input = {}, now = new Date(), activity = {}) {
+  const { q, today, history, start, end } = usageScope(records, input, now);
   const sessionInfo = new Map();
   for (const r of records) {
     const previous = sessionInfo.get(r.sessionId);
@@ -89,11 +120,6 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     const dated = !s.name || nameCounts.get(s.name) > 1;
     return [id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name];
   }));
-  for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
-  const history = records.filter(r => r.ms <= now.getTime() && (!q.models || q.models.includes(r.model)) && (!input.project || r.project === input.project) && (!input.session || r.sessionId === input.session));
-  const first = history.reduce((min, r) => Math.min(min, localDay(new Date(r.ms))), today);
-  const start = q.range === 'custom' ? parseDateDay(q.startDate) : q.range === 'all' ? first : today - RANGE_DAYS.get(q.range) + 1;
-  const end = q.range === 'custom' ? parseDateDay(q.endDate) : today;
   const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map();
   const calendar = new Map(), rhythm = Array(168).fill(0);
   const get = (map, key) => { if (!map.has(key)) map.set(key, bucket()); return map.get(key); };

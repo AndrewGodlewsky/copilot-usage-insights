@@ -3,7 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome } from './settings.mjs';
-import { buildReport } from '../core/copilot-report.mjs';
+import { buildReport, buildRequestPage } from '../core/copilot-report.mjs';
+import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
@@ -60,6 +61,14 @@ export async function startServer({ settings = createSettings(), scanner = creat
         const inventory = await readIntegrations();
         result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
         result.plugins = inventory.plugins;
+      } else if (message.method === 'usage.requests') {
+        buildRequestPage([], input, now());
+        const config = await settings.get();
+        const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes });
+        result = buildRequestPage(scan.records, input, now());
+        const ids = new Set(result.rows.map(row => row.id));
+        const prompts = await readRequestPrompts(scan.records.filter(r => ids.has(r.key)), { maxChars: input.id === undefined ? 160 : 12000 });
+        result.rows = result.rows.map(row => ({ ...row, prompt: prompts.get(row.id) }));
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();

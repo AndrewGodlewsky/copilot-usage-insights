@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
-import { buildReport } from '../src/core/copilot-report.mjs';
+import { buildReport, buildRequestPage } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
@@ -22,10 +22,11 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   }
   get('cache').checked = true;
   const requests = [], rootStyle = new Map(), server = { config, saveError: '' };
-  const context = createContext({
-    document: { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: {
+  const document = { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
-    } },
+  } };
+  const context = createContext({
+    document,
     window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval() {},
     fetch: async (url, options) => {
       const message = JSON.parse(options.body); requests.push(message);
@@ -36,14 +37,129 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
         report.preferences = { textSize: server.config.textSize };
         return { ok: true, json: async () => server.config };
       }
+      if (message.method === 'usage.requests') {
+        if (server.requestError) return { ok: false, json: async () => ({ error: server.requestError }) };
+        return { ok: true, json: async () => server.requestPage(message.input) };
+      }
       assert.ok(['usage.report', 'usage.refresh'].includes(message.method));
       return { ok: true, json: async () => report };
     },
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server };
+  return { get, nodes, requests, rootStyle, server, document };
 }
+
+async function requestPanel() {
+  const now = new Date(2026, 10, 14, 12), parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
+  for (let i = 0; i < 28; i++) parser.push(JSON.stringify({ type: 'session.usage_record', id: `call-${i}`, timestamp: now.toISOString(), data: { usage: {
+    provider: { kind: 'copilot' }, model: '<Sonnet>', inputTokens: 100, outputTokens: 20, reasoningTokens: 5,
+    cacheReadTokens: 60, cacheWriteTokens: 10, copilotUsage: { totalNanoAiu: 250000000 }, duration: 1000, initiator: 'agent', isAuto: false,
+  } } }));
+  const records = parser.snapshot().records.map(r => ({ ...r, sessionName: '<Session>' }));
+  const report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
+  const panel = await mountPanel(report);
+  panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
+    prompt: { available: true, text: input.id ? '<script>unsafe()</script> Full original prompt' : '<img onerror=unsafe()> Preview', truncated: !input.id },
+  })) });
+  const click = dataset => panel.get('breakdown').onclick({ target: { closest: () => ({ dataset }) } });
+  return { ...panel, click, report, records, now };
+}
+
+test('model request expansion loads on demand, pages safely, and refreshes selected details', async () => {
+  const { get, requests, click, server } = await requestPanel();
+  const html = () => get('breakdown').innerHTML;
+  assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0);
+  assert.match(html(), /data-request-model="&lt;Sonnet&gt;" aria-expanded="false"/);
+  await click({ requestModel: '<Sonnet>' });
+  assert.match(html(), /28 model requests/);
+  assert.match(html(), /1–25/);
+  assert.match(html(), /&lt;Session&gt;/);
+  assert.match(html(), /&lt;img onerror=unsafe\(\)&gt; Preview/);
+  assert.doesNotMatch(html(), /<img|<script|Full original prompt/);
+  assert.equal(requests.at(-1).input.model, '<Sonnet>');
+  await click({ requestPage: '25' });
+  assert.match(html(), /26–28/);
+  const requestId = JSON.stringify(['receipt', 's1', 'call-7']);
+  await click({ requestId });
+  assert.match(html(), /Original prompt/);
+  assert.match(html(), /&lt;script&gt;unsafe\(\)&lt;\/script&gt; Full original prompt/);
+  assert.match(html(), /Reasoning \(part of output\)/);
+  assert.match(html(), /Agent continuation/);
+  assert.doesNotMatch(html(), /<script/);
+  const original = server.requestPage;
+  server.requestPage = input => {
+    const page = original(input);
+    return { ...page, rows: page.rows.map(r => ({ ...r, duration: 2000, prompt: { available: false, text: '', truncated: false } })) };
+  };
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  assert.match(html(), /26–28/);
+  assert.match(html(), /Prompt unavailable: the local log/);
+  assert.match(html(), /<dt>Duration<\/dt><dd>2 s<\/dd>/);
+  assert.doesNotMatch(html(), /Full original prompt/);
+  await click({ requestId });
+  assert.doesNotMatch(html(), /Full original prompt/);
+  get('session').value = 'another-session';
+  await get('session').onchange();
+  assert.doesNotMatch(html(), /model request[s<]|Full original prompt/);
+  assert.match(html(), /aria-expanded="false"/);
+});
+
+test('request expansion handles retry and ignores responses after collapse or filter changes', async () => {
+  const { get, server, click } = await requestPanel();
+  server.requestError = '<Request failed>';
+  await click({ requestModel: '<Sonnet>' });
+  assert.match(get('breakdown').innerHTML, /Could not load requests: &lt;Request failed&gt;/);
+  server.requestError = '';
+  await click({ requestPage: '0' });
+  assert.match(get('breakdown').innerHTML, /28 model requests/);
+  const original = server.requestPage;
+  let resolve;
+  server.requestPage = input => new Promise(done => { resolve = () => done(original(input)); });
+  const loading = click({ requestId: JSON.stringify(['receipt', 's1', 'call-0']) });
+  await new Promise(setImmediate);
+  assert.match(get('breakdown').innerHTML, /Loading request details/);
+  await click({ requestModel: '<Sonnet>' });
+  resolve(); await loading;
+  assert.doesNotMatch(get('breakdown').innerHTML, /Full original prompt|Original prompt/);
+  const reopening = click({ requestModel: '<Sonnet>' });
+  await new Promise(setImmediate);
+  get('project').value = 'different-project';
+  await get('project').onchange();
+  resolve(); await reopening;
+  assert.doesNotMatch(get('breakdown').innerHTML, /28 model requests|Preview/);
+});
+
+test('request paging keeps keyboard focus during loading and moves to an enabled control at page edges', async () => {
+  const { get, server, click, document } = await requestPanel();
+  const node = get('breakdown');
+  let markup = node.innerHTML, buttons = [];
+  document.body = {};
+  Object.defineProperty(node, 'innerHTML', { get: () => markup, set(value) {
+    if (buttons.includes(document.activeElement)) document.activeElement = document.body;
+    markup = value;
+    buttons = [...value.matchAll(/<button\b([^>]*)>/g)].map(([, attrs]) => ({
+      dataset: Object.fromEntries([...attrs.matchAll(/data-([a-z-]+)="([^"]*)"/g)].map(([, key, value]) => [key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value])),
+      disabled: /\sdisabled(?:\s|$)/.test(attrs), focus() { if (!this.disabled) document.activeElement = this; },
+    }));
+  } });
+  node.querySelectorAll = selector => selector === 'button' ? buttons : [];
+  await click({ requestModel: '<Sonnet>' });
+  const original = server.requestPage;
+  let resolve;
+  server.requestPage = input => new Promise(done => { resolve = () => done(original(input)); });
+  for (const [direction, offset, expected] of [['next', '25', 'previous'], ['previous', '0', 'next']]) {
+    buttons.find(b => b.dataset.requestPageDirection === direction).focus();
+    const loading = click({ requestPage: offset, requestPageDirection: direction });
+    await new Promise(setImmediate);
+    assert.equal(document.activeElement.dataset.requestPageDirection, direction, 'loading does not remove focus');
+    assert.equal(document.activeElement.disabled, false);
+    resolve(); await loading;
+    assert.equal(document.activeElement.dataset.requestPageDirection, expected, 'page edge restores focus to an enabled paging action');
+    assert.equal(document.activeElement.disabled, false);
+  }
+});
 
 test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {
   const now = new Date(2026, 10, 14, 22);

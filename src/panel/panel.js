@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {} };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -39,13 +39,15 @@ async function load(force = false) {
         const input = query(), filterKey = JSON.stringify(input);
         const report = await request(method, input);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
         state.report = report;
         render();
+        if (state.requestView) loadRequestPage(state.requestView.offset);
         $('live').textContent = 'Usage updated';
       } catch (e) {
         if (version !== state.version) continue;
+        state.requestView = null;
         $('status').hidden = false;
         $('status').textContent = `Could not update usage: ${e.message}`;
         $('content').hidden = true;
@@ -84,7 +86,72 @@ function table(rows, heading, details = false) {
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name)}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const expandable = details && heading === 'Model';
+  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+    const open = expandable && state.requestView?.model === r.name;
+    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" data-request-model="${esc(r.name)}" aria-expanded="${open}"${open ? ' aria-controls="model-requests"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
+    return `<tr>${name}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="model-requests" class="request-list" aria-label="Requests for ${esc(r.name)}">${requestList()}</div></td></tr>` : '');
+  }).join('')}</tbody></table>`;
+}
+
+const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+const initiatorLabel = value => ({ user: 'User prompt', agent: 'Agent continuation', 'sub-agent': 'Subagent' }[value] || 'Not recorded');
+function requestDetail(view) {
+  if (view.detailPending) return '<p class="muted" role="status">Loading request details…</p>';
+  if (view.detailError) return `<p role="status">${esc(view.detailError)} <button data-request-id="${esc(view.selectedId)}" data-request-retry="true">Retry</button></p>`;
+  const r = view.detail;
+  if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
+  const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
+  const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
+  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? '<p class="footnote">Showing the first 12,000 characters.</p>' : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+}
+function requestList() {
+  const view = state.requestView;
+  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model requests…</p>';
+  if (view.error) return `<p role="status">${esc(view.error)} <button data-request-page="${view.offset}">Retry</button></p>`;
+  const page = view.page;
+  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the model totals.</p>';
+  const end = page.offset + page.rows.length;
+  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header><table class="request-table"><thead><tr><th>Time</th><th>Session</th><th>Prompt</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${page.rows.map(r => {
+    const open = view.selectedId === r.id;
+    const preview = r.prompt?.available ? (r.prompt.text || '(Empty prompt)') + (r.prompt.truncated ? '…' : '') : 'Prompt unavailable';
+    return `<tr><td><button class="request-toggle" data-request-id="${esc(r.id)}" aria-expanded="${open}"${open ? ' aria-controls="request-detail"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(requestDate.format(new Date(r.ts)))}</button></td><td class="text-cell"><span class="cell-text" title="${esc(r.sessionId)}">${esc(r.sessionName)}<small class="muted">${esc(r.project)}</small></span></td><td class="text-cell"><span class="cell-text request-preview">${esc(preview)}<small class="muted">${esc(initiatorLabel(r.initiator))}</small></span></td><td>${esc(usageValue(r, 'total', number))}</td><td>${esc(creditLabel(r))}</td></tr>` + (open ? `<tr class="request-expansion"><td colspan="5"><div id="request-detail" class="request-detail">${requestDetail(view)}</div></td></tr>` : '');
+  }).join('')}</tbody></table>`;
+}
+async function loadRequestPage(offset = 0) {
+  const view = state.requestView;
+  if (!view) return;
+  const version = ++view.version;
+  view.pending = true; view.error = ''; view.offset = offset;
+  renderBreakdown();
+  try {
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, offset });
+    if (state.requestView !== view || view.version !== version) return;
+    view.page = page; view.offset = page.offset;
+    if (view.selectedId && !page.rows.some(r => r.id === view.selectedId)) { view.selectedId = null; view.detail = null; }
+    else if (view.selectedId) await loadRequestDetail(view.selectedId);
+  } catch (e) {
+    if (state.requestView !== view || view.version !== version) return;
+    view.error = `Could not load requests: ${e.message}`;
+  } finally {
+    if (state.requestView === view && view.version === version) { view.pending = false; renderBreakdown(); }
+  }
+}
+async function loadRequestDetail(id) {
+  const view = state.requestView;
+  const version = ++view.detailVersion;
+  view.selectedId = id; view.detail = null; view.detailPending = true; view.detailError = '';
+  renderBreakdown();
+  try {
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, id });
+    if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
+    view.detail = page.rows[0] || null;
+  } catch (e) {
+    if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
+    view.detailError = `Could not load request details: ${e.message}`;
+  } finally {
+    if (state.requestView === view && view.detailVersion === version) { view.detailPending = false; renderBreakdown(); }
+  }
 }
 function skillFolder(file) {
   const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
@@ -136,7 +203,18 @@ function renderBreakdown() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
+  if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
+  const focusedRequest = document.activeElement?.dataset;
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
+  if (focusedRequest) {
+    const buttons = [...$('breakdown').querySelectorAll('button')];
+    if (focusedRequest.requestPageDirection) {
+      const paging = buttons.filter(b => b.dataset.requestPageDirection && !b.disabled);
+      (paging.find(b => b.dataset.requestPageDirection === focusedRequest.requestPageDirection) || paging[0] || buttons.find(b => b.dataset.requestId))?.focus({ preventScroll: true });
+    } else for (const key of ['requestModel', 'requestId', 'requestPage']) {
+      if (focusedRequest[key] !== undefined) buttons.find(b => b.dataset[key] === focusedRequest[key])?.focus({ preventScroll: true });
+    }
+  }
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} use${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
@@ -239,6 +317,23 @@ $('breakdown-sections').onclick = e => {
 };
 $('metric').onclick = e => { if (!e.target.dataset.metric) return; state.metric = e.target.dataset.metric; selectButton('metric', 'metric', state.metric); render(); };
 $('refresh').onclick = () => load(true);
+$('breakdown').onclick = async event => {
+  const button = event.target.closest('button');
+  if (!button || button.disabled) return;
+  const { requestModel, requestPage, requestId, requestRetry } = button.dataset;
+  if (requestModel !== undefined) {
+    if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
+    state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
+    await loadRequestPage();
+  } else if (state.requestView && requestPage !== undefined) {
+    if (state.requestView.pending) return;
+    state.requestView.selectedId = null; state.requestView.detail = null;
+    await loadRequestPage(Number(requestPage));
+  } else if (state.requestView && requestId !== undefined) {
+    if (state.requestView.selectedId === requestId && !requestRetry) { state.requestView.selectedId = null; state.requestView.detail = null; renderBreakdown(); return; }
+    await loadRequestDetail(requestId);
+  }
+};
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();

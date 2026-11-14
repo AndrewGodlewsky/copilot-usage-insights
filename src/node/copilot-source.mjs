@@ -69,7 +69,7 @@ export function createScanner() {
             }
             if (!prefixMatches) {
               hash = createHash('sha256');
-              entry = { parser: createReceiptParser({ sessionId: dir.name, source: real }), offset: 0, digest: hash.copy().digest('hex') };
+              entry = { parser: createReceiptParser({ sessionId: dir.name, source: real, logFile: file }), offset: 0, digest: hash.copy().digest('hex') };
             }
             let position = entry.offset, pending = Buffer.alloc(0), dropping = false;
             const chunk = Buffer.alloc(256 * 1024);

@@ -20,6 +20,11 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
     key, ts: new Date(ms).toISOString(), ms, sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', cwd, source,
     model: textValue(usage.modelDisplayName) || textValue(usage.model) || 'Unknown model',
     modelId: textValue(usage.model),
+    apiCallId: textValue(usage.apiCallId).slice(0, 256),
+    responseModel: textValue(usage.responseModel).slice(0, 256),
+    initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? usage.initiator : '',
+    isAuto: typeof usage.isAuto === 'boolean' ? usage.isAuto : null,
+    duration: Number.isFinite(usage.duration) && usage.duration >= 0 ? usage.duration : null,
     inputTotal, input: cacheKnown ? inputTotal - cacheRead - cacheWrite : null,
     cacheRead: cacheKnown ? cacheRead : null, cacheWrite: cacheKnown ? cacheWrite : null,
     output, reasoning: count(usage.reasoningTokens),
@@ -28,7 +33,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
   } };
 }
 
-export function createReceiptParser({ sessionId: initialSession, source }) {
+export function createReceiptParser({ sessionId: initialSession, source, logFile = '' }) {
   let sessionId = initialSession, cwd = '', project = '';
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), seen = new Set();
@@ -83,7 +88,7 @@ export function createReceiptParser({ sessionId: initialSession, source }) {
         if (key) seen.add(key);
         const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project, source });
         if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
-        if (result.record) records.set(key, result.record);
+        if (result.record) records.set(key, { ...result.record, logFile });
         else if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else invalid++;
