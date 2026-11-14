@@ -16,7 +16,7 @@ const creditNumber = value => formatCredits(value, { simplify: state.simplifyNum
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -106,16 +106,16 @@ async function load(force = false, refresh = false) {
         const input = query(), filterKey = JSON.stringify(input);
         const report = await request(method, input, rescan);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.filterKey = filterKey; }
         applyPreferences(report.preferences);
         state.creditsUnavailable = false;
         state.report = report;
         render();
-        if (state.requestView) loadRequestPage(state.requestView.offset);
+        if (state.modelView) loadModelSessionPage(state.modelView.offset);
         $('live').textContent = 'Usage updated';
       } catch (e) {
         if (version !== state.version) continue;
-        state.requestView = null;
+        state.requestView = null; state.modelView = null;
         state.creditsUnavailable = true;
         renderHeaderCredits();
         $('status').hidden = false;
@@ -162,12 +162,19 @@ function table(rows, heading, details = false) {
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
   const modelExpansion = details && heading === 'Model', projectExpansion = details && heading === 'Project';
-  const expandable = modelExpansion || projectExpansion, attribute = modelExpansion ? 'data-request-model' : 'data-project-name';
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
-    const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
-    const region = modelExpansion ? 'model-requests' : 'project-sessions';
-    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
+  const sessionExpansion = details && heading === 'Session' && !!state.modelView, requestExpansion = details && heading === 'Time';
+  const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion;
+  const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : 'data-request-id';
+  const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : 'request-detail';
+  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+    const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
+    const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
+    const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
+    const name = expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
+    const cells = `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    if (!open) return cells;
+    const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : requestDetail(state.requestView);
+    return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -187,38 +194,62 @@ function projectSessionList(project) {
 const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 const initiatorLabel = value => ({ user: 'User prompt', agent: 'Agent continuation', 'sub-agent': 'Subagent' }[value] || 'Not recorded');
 function requestDetail(view) {
-  if (view.detailPending) return '<p class="muted" role="status">Loading request details…</p>';
+  if (view.detailPending) return '<p class="muted" role="status">Loading original prompt…</p>';
   if (view.detailError) return `<p role="status">${esc(view.detailError)} <button data-request-id="${esc(view.selectedId)}" data-request-retry="true">Retry</button></p>`;
   const r = view.detail;
   if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
-  const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
-  const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
-  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, key === 'credits' ? creditNumber : number), key === 'credits' ? 'credits' : 'tokens']), ...context].map(([label, value, measure]) => `<div><dt>${esc(label)}</dt><dd${measure ? ` data-measure="${measure}"` : ''}>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+  return `<h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+}
+function modelSessionList() {
+  const view = state.modelView;
+  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model sessions…</p>';
+  if (view.error) return `<p role="status">${esc(view.error)} <button data-model-session-page="${view.offset}">Retry</button></p>`;
+  const page = view.page;
+  if (!page?.rows.length) return '<p class="muted">No matching sessions remain. Refresh to update the model totals.</p>';
+  const end = page.offset + page.rows.length;
+  return `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Session', true)}`;
 }
 function requestList() {
   const view = state.requestView;
-  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model requests…</p>';
+  if (view.pending && !view.page) return '<p class="muted" role="status">Loading session requests…</p>';
   if (view.error) return `<p role="status">${esc(view.error)} <button data-request-page="${view.offset}">Retry</button></p>`;
   const page = view.page;
-  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the model totals.</p>';
+  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the session totals.</p>';
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header><table class="request-table"><thead><tr><th>Time</th><th>Session</th><th>Started by</th><th data-measure="tokens">Tokens</th><th data-measure="credits">AI credits</th></tr></thead><tbody>${page.rows.map(r => {
-    const open = view.selectedId === r.id;
-    return `<tr><td><button class="request-toggle" data-request-id="${esc(r.id)}" aria-expanded="${open}"${open ? ' aria-controls="request-detail"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(requestDate.format(new Date(r.ts)))}</button></td><td class="text-cell"><span class="cell-text" title="${esc(r.sessionId)}">${esc(r.sessionName)}<small class="muted">${esc(r.project)}</small></span></td>${textCell(initiatorLabel(r.initiator))}<td data-measure="tokens">${esc(usageValue(r, 'total', number))}</td><td data-measure="credits">${esc(creditLabel(r))}</td></tr>` + (open ? `<tr class="request-expansion"><td colspan="5"><div id="request-detail" class="request-detail">${requestDetail(view)}</div></td></tr>` : '');
-  }).join('')}</tbody></table>`;
+  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Time', true)}`;
+}
+async function loadModelSessionPage(offset = 0) {
+  const view = state.modelView;
+  if (!view) return;
+  const version = ++view.version;
+  view.pending = true; view.error = ''; view.offset = offset;
+  renderBreakdown();
+  try {
+    const page = await request('usage.sessions', { ...JSON.parse(state.filterKey), model: view.model, sort: $('sort').value, offset });
+    if (state.modelView !== view || view.version !== version) return;
+    view.page = page; view.offset = page.offset;
+    if (state.requestView && !page.rows.some(r => r.id === state.requestView.session)) state.requestView = null;
+    else if (state.requestView) await loadRequestPage(state.requestView.offset);
+  } catch (e) {
+    if (state.modelView !== view || view.version !== version) return;
+    view.error = `Could not load sessions: ${e.message}`;
+  } finally {
+    if (state.modelView === view && view.version === version) { view.pending = false; renderBreakdown(); }
+  }
 }
 async function loadRequestPage(offset = 0) {
   const view = state.requestView;
   if (!view) return;
   const version = ++view.version;
   view.pending = true; view.error = ''; view.offset = offset;
+  view.details.clear(); view.detailVersion++; view.detail = null; view.detailPending = !!view.selectedId;
   renderBreakdown();
   try {
-    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, offset });
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, session: view.session, offset });
     if (state.requestView !== view || view.version !== version) return;
     view.page = page; view.offset = page.offset;
     if (view.selectedId && !page.rows.some(r => r.id === view.selectedId)) { view.selectedId = null; view.detail = null; }
-    else if (view.selectedId) await loadRequestDetail(view.selectedId);
+    else if (view.selectedId) { view.pending = false; await loadRequestDetail(view.selectedId); }
   } catch (e) {
     if (state.requestView !== view || view.version !== version) return;
     view.error = `Could not load requests: ${e.message}`;
@@ -228,16 +259,18 @@ async function loadRequestPage(offset = 0) {
 }
 async function loadRequestDetail(id) {
   const view = state.requestView;
+  if (!view || !view.page?.rows.some(r => r.id === id) || view.pending) return;
   const version = ++view.detailVersion;
+  if (view.details.has(id)) { view.selectedId = id; view.detail = view.details.get(id); view.detailPending = false; view.detailError = ''; renderBreakdown(); return; }
   view.selectedId = id; view.detail = null; view.detailPending = true; view.detailError = '';
   renderBreakdown();
   try {
-    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, id });
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, session: view.session, id });
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
-    view.detail = page.rows[0] || null;
+    view.detail = page.rows[0] || null; view.details.set(id, view.detail);
   } catch (e) {
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
-    view.detailError = `Could not load request details: ${e.message}`;
+    view.detailError = `Could not load original prompt: ${e.message}`;
   } finally {
     if (state.requestView === view && view.detailVersion === version) { view.detailPending = false; renderBreakdown(); }
   }
@@ -296,17 +329,17 @@ function renderBreakdownContent() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value;
-  if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
+  if (group !== 'models' || state.modelView && !report.models.some(r => r.name === state.modelView.model)) { state.modelView = null; state.requestView = null; }
   if (group !== 'projects' || state.projectView && !report.projects.some(r => r.name === state.projectView.project)) state.projectView = null;
   const focusedRequest = document.activeElement?.dataset;
   $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true);
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
-    if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection) {
-      const key = focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
+    if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection || focusedRequest.modelSessionPageDirection) {
+      const key = focusedRequest.modelSessionPageDirection ? 'modelSessionPageDirection' : focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
       const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
       (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || buttons.find(b => b.dataset.projectName === state.projectView?.project && b.dataset.projectName !== undefined) || $('group'))?.focus({ preventScroll: true });
-    } else for (const key of ['requestModel', 'requestId', 'requestPage', 'projectName']) {
+    } else for (const key of ['requestModel', 'requestSession', 'requestId', 'requestPage', 'modelSessionPage', 'projectName']) {
       if (focusedRequest[key] !== undefined) (buttons.find(b => b.dataset[key] === focusedRequest[key]) || $('group'))?.focus({ preventScroll: true });
     }
   }
@@ -635,7 +668,7 @@ $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
+  const { requestModel, requestSession, modelSessionPage, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
   if (projectName !== undefined && $('group').value === 'projects') {
     state.projectView = state.projectView?.project === projectName ? null : { project: projectName, offset: 0 };
     renderBreakdown();
@@ -645,8 +678,18 @@ $('breakdown').onclick = async event => {
     const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
     $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
   } else if (requestModel !== undefined) {
-    if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
-    state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
+    state.requestView = null;
+    if (state.modelView?.model === requestModel) { state.modelView = null; renderBreakdown(); return; }
+    state.modelView = { model: requestModel, offset: 0, version: 0 };
+    await loadModelSessionPage();
+  } else if (state.modelView && modelSessionPage !== undefined) {
+    if (state.modelView.pending) return;
+    state.requestView = null;
+    await loadModelSessionPage(Number(modelSessionPage));
+  } else if (state.modelView && requestSession !== undefined) {
+    if (state.modelView.pending || !state.modelView.page?.rows.some(r => r.id === requestSession)) return;
+    if (state.requestView?.session === requestSession) { state.requestView = null; renderBreakdown(); return; }
+    state.requestView = { model: state.modelView.model, session: requestSession, offset: 0, version: 0, detailVersion: 0, details: new Map() };
     await loadRequestPage();
   } else if (state.requestView && requestPage !== undefined) {
     if (state.requestView.pending) return;
@@ -660,7 +703,11 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort']) $(id).onchange = () => { if (state.projectView) state.projectView.offset = 0; renderBreakdown(); };
+for (const id of ['group', 'sort']) $(id).onchange = () => {
+  if (state.projectView) state.projectView.offset = 0;
+  renderBreakdown();
+  if (id === 'sort' && state.modelView) { state.requestView = null; return loadModelSessionPage(0); }
+};
 for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome } from './settings.mjs';
-import { buildReport, buildRequestPage } from '../core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
@@ -96,11 +96,12 @@ export async function startServer({ settings = createSettings(), scanner = creat
         for (const kind of ['mcp', 'plugins']) if (!inventory[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...inventory[kind].diagnostic });
         result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
         result.plugins = inventory.plugins;
-      } else if (message.method === 'usage.requests') {
-        buildRequestPage([], input, now());
+      } else if (message.method === 'usage.requests' || message.method === 'usage.sessions') {
+        const buildPage = message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
+        buildPage([], input, now());
         const config = await settings.get();
         const { scan } = await readHistory(config);
-        result = buildRequestPage(scan.records, input, now());
+        result = buildPage(scan.records, input, now());
         if (input.id !== undefined) {
           const ids = new Set(result.rows.map(row => row.id));
           const promptFields = { rows: ids.size };

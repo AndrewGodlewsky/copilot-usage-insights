@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
-import { buildReport, buildRequestPage } from '../src/core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
@@ -45,6 +45,10 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
         server.config = { ...server.config, ...message.input };
         report.preferences = { textSize: server.config.textSize, simplifyNumbers: server.config.simplifyNumbers ?? true };
         return { ok: true, json: async () => server.config };
+      }
+      if (message.method === 'usage.sessions') {
+        if (server.sessionError) return { ok: false, json: async () => ({ error: server.sessionError }) };
+        return { ok: true, json: async () => server.sessionPage(message.input) };
       }
       if (message.method === 'usage.requests') {
         if (server.requestError) return { ok: false, json: async () => ({ error: server.requestError }) };
@@ -126,6 +130,7 @@ async function requestPanel() {
   const records = parser.snapshot().records.map(r => ({ ...r, sessionName: '<Session>' }));
   const report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
   const panel = await mountPanel(report);
+  panel.server.sessionPage = input => buildModelSessionPage(records, input, now);
   panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
     ...(input.id ? { prompt: { available: true, text: '<script>unsafe()</script> Full original prompt', truncated: false } } : {}),
   })) });
@@ -133,69 +138,73 @@ async function requestPanel() {
   return { ...panel, click, report, records, now };
 }
 
-test('model request expansion loads on demand, pages safely, and refreshes selected details', async () => {
+test('model sessions expand into matching request columns and on-demand original prompts', async () => {
   const { get, requests, click, server } = await requestPanel();
   const html = () => get('breakdown').innerHTML;
-  assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0);
-  assert.match(html(), /data-request-model="&lt;Sonnet&gt;" aria-expanded="false"/);
+  assert.equal(requests.filter(r => r.method === 'usage.requests' || r.method === 'usage.sessions').length, 0);
   await click({ requestModel: '<Sonnet>' });
+  assert.match(html(), /data-request-session="s1" aria-expanded="false"/);
+  assert.match(html(), /&lt;Session&gt;/);
+  assert.equal(requests.at(-1).method, 'usage.sessions');
+  assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0);
+  await click({ requestSession: 's1' });
   assert.match(html(), /28 model requests/);
   assert.match(html(), /1–25/);
-  assert.match(html(), /&lt;Session&gt;/);
-  assert.match(html(), /<th>Started by<\/th>/);
-  assert.doesNotMatch(html(), /<th>Prompt<\/th>|Prompt unavailable|<img|<script|Full original prompt/);
-  assert.equal(requests.at(-1).input.model, '<Sonnet>');
+  const headers = [...html().matchAll(/<thead>(.*?)<\/thead>/g)].map(([, h]) => [...h.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(([, text]) => text));
+  assert.deepEqual(headers.map(h => h[0]), ['Model', 'Session', 'Time']);
+  for (const h of headers) assert.deepEqual(h.slice(1), ['Requests', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / request', 'Tokens', 'AI credits']);
+  assert.doesNotMatch(html(), /<th>Started by<\/th>|Full original prompt|<script/);
+  assert.equal(requests.at(-1).input.session, 's1');
   await click({ requestPage: '25' });
   assert.match(html(), /26–28/);
   const requestId = JSON.stringify(['receipt', 's1', 'call-7']);
   await click({ requestId });
   assert.match(html(), /Original prompt/);
   assert.match(html(), /&lt;script&gt;unsafe\(\)&lt;\/script&gt; Full original prompt/);
-  assert.match(html(), /Reasoning \(part of output\)/);
-  assert.match(html(), /Agent continuation/);
-  assert.doesNotMatch(html(), /<script/);
+  assert.doesNotMatch(html(), /request-metrics|<script/);
+  const count = requests.length;
+  await click({ requestId });
+  await click({ requestId });
+  assert.equal(requests.length, count, 'reopening a prompt in the same page uses its bounded cache');
   const original = server.requestPage;
-  server.requestPage = input => {
-    const page = original(input);
-    return { ...page, rows: page.rows.map(r => ({ ...r, duration: 2000, prompt: { available: false, text: '', truncated: false } })) };
-  };
-  await get('refresh').onclick();
-  await new Promise(setImmediate);
+  server.requestPage = input => ({ ...original(input), rows: original(input).rows.map(r => ({ ...r, prompt: { available: false, text: '', truncated: false } })) });
+  await get('refresh').onclick(); await new Promise(setImmediate);
   assert.match(html(), /26–28/);
   assert.match(html(), /Prompt unavailable: the local log/);
-  assert.match(html(), /<dt>Duration<\/dt><dd>2 s<\/dd>/);
   assert.doesNotMatch(html(), /Full original prompt/);
-  await click({ requestId });
-  assert.doesNotMatch(html(), /Full original prompt/);
-  get('session').value = 'another-session';
-  await get('session').onchange();
-  assert.doesNotMatch(html(), /model request[s<]|Full original prompt/);
-  assert.match(html(), /aria-expanded="false"/);
+  get('session').value = 'another-session'; await get('session').onchange();
+  assert.doesNotMatch(html(), /data-request-session|model requests|Original prompt/);
 });
 
-test('request expansion handles retry and ignores responses after collapse or filter changes', async () => {
+test('nested expansion retries failures and ignores late prompt and session responses', async () => {
   const { get, server, click } = await requestPanel();
-  server.requestError = '<Request failed>';
+  server.sessionError = '<Session failed>';
   await click({ requestModel: '<Sonnet>' });
+  assert.match(get('breakdown').innerHTML, /Could not load sessions: &lt;Session failed&gt;/);
+  server.sessionError = '';
+  await click({ modelSessionPage: '0' });
+  server.requestError = '<Request failed>';
+  await click({ requestSession: 's1' });
   assert.match(get('breakdown').innerHTML, /Could not load requests: &lt;Request failed&gt;/);
   server.requestError = '';
   await click({ requestPage: '0' });
-  assert.match(get('breakdown').innerHTML, /28 model requests/);
   const original = server.requestPage;
   let resolve;
   server.requestPage = input => new Promise(done => { resolve = () => done(original(input)); });
   const loading = click({ requestId: JSON.stringify(['receipt', 's1', 'call-0']) });
   await new Promise(setImmediate);
-  assert.match(get('breakdown').innerHTML, /Loading request details/);
-  await click({ requestModel: '<Sonnet>' });
+  assert.match(get('breakdown').innerHTML, /Loading original prompt/);
+  await click({ requestSession: 's1' });
   resolve(); await loading;
   assert.doesNotMatch(get('breakdown').innerHTML, /Full original prompt|Original prompt/);
+  await click({ requestModel: '<Sonnet>' });
+  const sessions = server.sessionPage;
+  server.sessionPage = input => new Promise(done => { resolve = () => done(sessions(input)); });
   const reopening = click({ requestModel: '<Sonnet>' });
   await new Promise(setImmediate);
-  get('project').value = 'different-project';
-  await get('project').onchange();
+  get('project').value = 'different-project'; await get('project').onchange();
   resolve(); await reopening;
-  assert.doesNotMatch(get('breakdown').innerHTML, /28 model requests|Preview/);
+  assert.doesNotMatch(get('breakdown').innerHTML, /data-request-session|model requests|Original prompt/);
 });
 
 test('request paging keeps keyboard focus during loading and moves to an enabled control at page edges', async () => {
@@ -213,6 +222,7 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
   } });
   node.querySelectorAll = selector => selector === 'button' ? buttons : [];
   await click({ requestModel: '<Sonnet>' });
+  await click({ requestSession: 's1' });
   const original = server.requestPage;
   let resolve;
   server.requestPage = input => new Promise(done => { resolve = () => done(original(input)); });
@@ -226,6 +236,40 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
     assert.equal(document.activeElement.dataset.requestPageDirection, expected, 'page edge restores focus to an enabled paging action');
     assert.equal(document.activeElement.disabled, false);
   }
+});
+
+test('model sessions page independently, sort before paging, and discard removed descendants on refresh', async () => {
+  const { get, report, records, now, server, requests, click } = await requestPanel();
+  let history = Array.from({ length: 52 }, (_, i) => ({ ...records[0], key: `r-${i}`, sessionId: `s${i}`,
+    sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, nanoAiu: (52 - i) * 1e9 }));
+  Object.assign(report, buildReport(history, {}, now));
+  server.sessionPage = input => buildModelSessionPage(history, input, now);
+  server.requestPage = input => buildRequestPage(history, input, now);
+  await get('refresh').onclick();
+  await click({ requestModel: '<Sonnet>' });
+  const html = () => get('breakdown').innerHTML;
+  const ids = () => [...html().matchAll(/data-request-session="([^"]+)"/g)].map(([, id]) => id);
+  assert.equal(ids().length, 25); assert.equal(ids()[0], 's51');
+  await click({ requestSession: 's51' });
+  assert.match(html(), /1 model request/);
+  assert.equal(requests.at(-1).input.session, 's51');
+  await click({ modelSessionPage: '25' });
+  assert.equal(ids()[0], 's26');
+  assert.doesNotMatch(html(), /id="session-requests"/);
+  await click({ modelSessionPage: '50' });
+  assert.deepEqual(ids(), ['s1', 's0']);
+  await click({ requestSession: 's1' });
+  get('sort').value = 'credits'; await get('sort').onchange();
+  assert.equal(requests.at(-1).input.sort, 'credits'); assert.equal(ids()[0], 's0');
+  assert.doesNotMatch(html(), /id="session-requests"/);
+  await click({ modelSessionPage: '50' });
+  await click({ requestSession: 's51' });
+  history = [{ ...history[0], sessionName: '<Renamed session>' }];
+  Object.assign(report, buildReport(history, {}, now));
+  await get('refresh').onclick(); await new Promise(setImmediate);
+  assert.deepEqual(ids(), ['s0']);
+  assert.match(html(), /&lt;Renamed session&gt;/);
+  assert.doesNotMatch(html(), /id="session-requests"|<Renamed session>/);
 });
 
 test('project sessions expand and page locally, sort the full set, and reset or clamp pages as needed', async () => {
@@ -850,8 +894,9 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.match(get('tip').innerHTML, /42\.2M/);
   assert.doesNotMatch(get('tip').innerHTML, /Unavailable/);
   await click({ requestModel: '<Sonnet>' });
+  await click({ requestSession: 's1' });
   await click({ requestId: large[0].key });
-  assert.match(get('breakdown').innerHTML, /<dt>Output<\/dt><dd data-measure="tokens">2\.1K<\/dd>/);
+  assert.match(get('breakdown').innerHTML.split('class="request-table"')[1], /<td data-measure="tokens">2\.1K<\/td>/);
   await get('settings-open').onclick();
   assert.equal(get('simplify-numbers').checked, true);
   get('simplify-numbers').checked = false;
@@ -898,7 +943,7 @@ test('simplified numbers apply across views and context, persist, and only chang
     assert.match(get(id).innerHTML, /12\.3/, id);
     assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
   }
-  assert.match(get('breakdown').innerHTML, /<dt>AI credits<\/dt><dd data-measure="credits">12\.3<\/dd>/);
+  assert.match(get('breakdown').innerHTML.split('class="request-table"')[1], /<td data-measure="credits">12\.3<\/td>/);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();

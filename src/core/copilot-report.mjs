@@ -124,8 +124,8 @@ function usageScope(records, input, now) {
   return { q, today, history, start, end };
 }
 
-export function buildRequestPage(records, input = {}, now = new Date()) {
-  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session', 'model', 'offset', 'id']);
+function modelRequestScope(records, input, now, extra) {
+  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session', 'model', 'offset', extra]);
   if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown request filter');
   if (typeof input.model !== 'string' || !input.model.trim()) throw new TypeError('Expected a model');
   if (input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) throw new TypeError('Invalid request offset');
@@ -134,7 +134,13 @@ export function buildRequestPage(records, input = {}, now = new Date()) {
   const matching = history.filter(r => {
     const day = localDay(new Date(r.ms));
     return r.model === input.model && day >= start && day <= end && (input.id === undefined || r.key === input.id);
-  }).sort((a, b) => b.ms - a.ms || a.key.localeCompare(b.key));
+  });
+  return { q, matching };
+}
+
+export function buildRequestPage(records, input = {}, now = new Date()) {
+  const { q, matching } = modelRequestScope(records, input, now, 'id');
+  matching.sort((a, b) => b.ms - a.ms || a.key.localeCompare(b.key));
   const limit = input.id === undefined ? 25 : 1;
   const offset = input.id === undefined ? Math.min(input.offset || 0, Math.max(0, Math.ceil(matching.length / limit) - 1) * limit) : 0;
   return { total: matching.length, offset, limit, rows: matching.slice(offset, offset + limit).map(r => {
@@ -145,8 +151,7 @@ export function buildRequestPage(records, input = {}, now = new Date()) {
   }) };
 }
 
-export function buildReport(records, input = {}, now = new Date(), activity = {}) {
-  const { q, today, history, start, end } = usageScope(records, input, now);
+function sessionNames(records) {
   const sessionInfo = new Map();
   for (const r of records) {
     const previous = sessionInfo.get(r.sessionId);
@@ -155,11 +160,31 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   }
   const nameCounts = new Map();
   for (const s of sessionInfo.values()) if (s.name) nameCounts.set(s.name, (nameCounts.get(s.name) || 0) + 1);
-  const sessionLabels = new Map([...sessionInfo].map(([id, s]) => {
+  return new Map([...sessionInfo].map(([id, s]) => {
     const name = s.name || (s.project === 'Unknown project' ? 'Session' : s.project);
     const dated = !s.name || nameCounts.get(s.name) > 1;
     return [id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name];
   }));
+}
+
+export function buildModelSessionPage(records, input = {}, now = new Date()) {
+  const { q, matching } = modelRequestScope(records, input, now, 'sort');
+  const sort = input.sort ?? 'total';
+  if (!['total', 'credits', 'requests'].includes(sort)) throw new TypeError('Invalid session sort');
+  const names = sessionNames(records), sessions = new Map();
+  for (const r of matching) {
+    if (!sessions.has(r.sessionId)) sessions.set(r.sessionId, bucket());
+    add(sessions.get(r.sessionId), r, q.includeCache);
+  }
+  const rows = [...sessions].map(([id, b]) => ({ id, name: names.get(id), ...finish(b) }))
+    .sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const limit = 25, offset = Math.min(input.offset || 0, Math.max(0, Math.ceil(rows.length / limit) - 1) * limit);
+  return { total: rows.length, offset, limit, rows: rows.slice(offset, offset + limit) };
+}
+
+export function buildReport(records, input = {}, now = new Date(), activity = {}) {
+  const { q, today, history, start, end } = usageScope(records, input, now);
+  const sessionLabels = sessionNames(records);
   const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map();
   const efficiency = createEfficiencyAccumulator();
   const calendar = new Map(), rhythm = Array(168).fill(0);

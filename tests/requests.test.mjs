@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage } from '../src/core/copilot-report.mjs';
+import * as reportApi from '../src/core/copilot-report.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
 import { readRequestPrompts } from '../src/node/request-prompts.mjs';
 import { createSettings } from '../src/node/settings.mjs';
@@ -57,6 +58,50 @@ test('request pages follow report filters, totals, missing coverage, and stable 
   for (const input of [{}, { model: 'Sonnet', offset: -1 }, { model: 'Sonnet', offset: 1.2 }, { model: 'Sonnet', id: {} }, { model: 'Sonnet', path: '/secret' }]) assert.throws(() => buildRequestPage(records, input, now), TypeError);
 });
 
+test('model sessions reconcile with model requests across filters without merging identical names', () => {
+  assert.equal(typeof reportApi.buildModelSessionPage, 'function');
+  const records = parse([receipt('a'), receipt('b'), receipt('c', { model: 'Other' }),
+    receipt('missing', { inputTokens: undefined, copilotUsage: undefined }), receipt('partial', { aiCreditsStatus: 'partial' })]);
+  for (const [i, r] of records.entries()) Object.assign(r, { sessionId: i % 2 ? 's2' : 's1', sessionName: 'Same name', project: i < 2 ? 'A' : 'B' });
+  records.push({ ...records[0], key: 'yesterday', ms: new Date(2026, 10, 13, 23, 59).getTime(), ts: new Date(2026, 10, 13, 23, 59).toISOString() });
+  records.push({ ...records[0], key: 'future', ms: now.getTime() + 1000 });
+  for (const filters of [{ range: '1d' }, { range: 'all', includeCache: false }, { range: '7d', project: 'A' }, { range: 'all', session: 's2' }, { range: 'custom', startDate: '2026-11-13', endDate: '2026-11-13' }]) {
+    const input = { ...filters, model: 'Sonnet' };
+    const page = reportApi.buildModelSessionPage(records, input, now);
+    const parent = buildReport(records, { ...filters, models: ['Sonnet'] }, now).totals;
+    for (const field of ['requests', 'input', 'output', 'reasoning', 'cacheRead', 'cacheWrite', 'total', 'credits', 'missingTokens', 'partialCredits', 'completeTokenRequests']) {
+      assert.equal(page.rows.reduce((sum, r) => sum + (r[field] ?? 0), 0), parent[field] ?? 0, field);
+    }
+    for (const row of page.rows) {
+      const requests = buildRequestPage(records, { ...input, session: row.id }, now).rows;
+      assert.equal(requests.length, row.requests);
+      assert.equal(requests.reduce((sum, r) => sum + r.total, 0), row.total);
+      const known = requests.filter(r => r.completeTokenRequests);
+      assert.equal(row.averageTokens, known.length ? known.reduce((sum, r) => sum + r.total, 0) / known.length : null);
+    }
+  }
+  const page = reportApi.buildModelSessionPage(records, { model: 'Sonnet', range: 'all' }, now);
+  assert.equal(page.total, 2);
+  assert.deepEqual(new Set(page.rows.map(r => r.id)), new Set(['s1', 's2']));
+  assert.ok(page.rows.every(r => r.name.startsWith('Same name')));
+  assert.doesNotMatch(JSON.stringify(page), /logFile|apiCallId|source|prompt/);
+  assert.equal(reportApi.buildModelSessionPage(records, { model: 'Sonnet', models: ['Other'] }, now).total, 0);
+});
+
+test('model session pages sort the complete set, clamp offsets, and validate options', () => {
+  assert.equal(typeof reportApi.buildModelSessionPage, 'function');
+  const base = parse([receipt('base')])[0];
+  const records = Array.from({ length: 52 }, (_, i) => ({ ...base, key: `r${i}`, sessionId: `s${i}`, sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, nanoAiu: (52 - i) * 1e9 }));
+  const page = reportApi.buildModelSessionPage(records, { model: 'Sonnet', sort: 'total' }, now);
+  assert.equal(page.limit, 25); assert.equal(page.total, 52); assert.equal(page.rows[0].id, 's51');
+  assert.equal(reportApi.buildModelSessionPage(records, { model: 'Sonnet', sort: 'credits' }, now).rows[0].id, 's0');
+  assert.equal(reportApi.buildModelSessionPage(records, { model: 'Sonnet', sort: 'requests' }, now).rows[0].id, 's0');
+  assert.equal(reportApi.buildModelSessionPage(records, { model: 'Sonnet', offset: 1000 }, now).offset, 50);
+  for (const input of [{}, { model: 'Sonnet', offset: -1 }, { model: 'Sonnet', sort: 'unknown' }, { model: 'Sonnet', id: 'r1' }]) {
+    assert.throws(() => reportApi.buildModelSessionPage(records, input, now), TypeError);
+  }
+});
+
 test('prompts join by API call and interaction IDs, deduplicate messages, and stay out of accounting', async t => {
   const content = '<script>alert("hello")</script> ' + 'Long prompt '.repeat(100);
   const events = [user('prompt1', 'i1', content), receipt('call1'), assistant('call1', 'i1'), assistant('call1', 'i1'),
@@ -105,6 +150,11 @@ test('request API reuses history, reads prompts only for details, and rechecks e
   const report = await (await call({ method: 'usage.report' })).json();
   assert.doesNotMatch(JSON.stringify(report), /Selected prompt|Unselected secret/);
   await fs.rename(file, file + '.moved');
+  const sessionResponse = await call({ method: 'usage.sessions', input: { model: 'Sonnet' } });
+  assert.equal(sessionResponse.status, 200);
+  const sessions = await sessionResponse.json();
+  assert.equal(sessions.total, 1); assert.equal(sessions.rows[0].id, 's1');
+  assert.doesNotMatch(JSON.stringify(sessions), /Selected prompt|Unselected secret|logFile|apiCallId/);
   const page = await (await call({ method: 'usage.requests', input: { model: 'Sonnet' } })).json();
   assert.equal(page.total, 1);
   assert.doesNotMatch(JSON.stringify(page), /prompt|Selected prompt|Unselected secret|logFile|apiCallId/);

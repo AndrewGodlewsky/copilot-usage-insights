@@ -25,6 +25,7 @@ td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{d
 .model-toggle,.request-toggle{border:0;border-radius:3px;background:transparent;padding:2px 0;color:var(--s1);text-align:left}.model-toggle{white-space:normal;overflow-wrap:anywhere;color:var(--fg)}.model-toggle:hover,.model-toggle:focus-visible{background:var(--muted);color:var(--fg)}.request-toggle:hover{background:transparent;color:var(--fg);text-decoration:underline}.model-toggle span,.request-toggle span{color:var(--muted-fg)}
 #breakdown .request-expansion>td{padding:0;max-width:none;text-align:left;white-space:normal;overflow:visible}.request-list{padding:16px;background:var(--bg);border-block:1px solid var(--border)}.request-list>header{margin-bottom:12px}.request-list strong{font-size:calc(12px * var(--text-scale))}.request-paging{display:flex;gap:8px;align-items:center;margin-left:auto}.request-paging span{color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}.request-paging button{padding:4px 8px}.request-table small{display:block;margin-top:4px}.request-detail{padding:16px;background:var(--card);border-left:2px solid var(--s1)}.request-detail h3{font-size:calc(12px * var(--text-scale));margin:16px 0 8px}.request-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 20px;margin:0}.request-metrics dt{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.request-metrics dd{margin:4px 0 0;white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.request-prompt{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;max-height:22em;overflow:auto;padding:12px;border:1px solid var(--border);border-radius:6px;margin:0}
 .request-paging button[aria-disabled=true]{opacity:.55;cursor:default}.request-paging button:disabled{cursor:default}
+#session-requests{background:var(--card);padding:12px}#session-requests .request-detail{background:var(--bg)}.request-detail h3{margin-top:0}.request-toggle{color:var(--fg)}
 
 .efficiency-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:8px 0}.efficiency-intro>div{min-width:0}.efficiency-intro>button{flex-shrink:0}.efficiency-kicker{display:block;color:var(--muted-fg);font-size:calc(10px * var(--text-scale));letter-spacing:.08em;font-weight:600;margin-bottom:7px}.efficiency-intro h2{font-size:calc(24px * var(--text-scale));letter-spacing:-.025em;line-height:1.3}.efficiency-intro #efficiency-scope{margin-top:10px}.efficiency-flow{padding:22px}.efficiency-flow-heading{display:flex;align-items:center;gap:22px;margin:8px 0 20px}.efficiency-flow-heading>strong{font-size:calc(46px * var(--text-scale));line-height:1.2;font-weight:600;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.efficiency-flow-heading>strong>span{font-size:.55em;margin-left:2px;color:var(--muted-fg)}.efficiency-flow-heading h3{font-size:calc(17px * var(--text-scale));font-weight:600;margin:0 0 4px}.efficiency-flow-heading p{max-width:52ch}.efficiency-track{height:14px;display:flex;overflow:hidden;border-radius:4px;background:var(--muted)}.efficiency-track>span{height:100%}.efficiency-flow-labels{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:10px 0 7px;font-size:calc(12px * var(--text-scale))}.efficiency-flow-labels>span{display:flex;align-items:center;gap:7px}.efficiency-flow-labels i{width:8px;height:8px;border-radius:2px}.efficiency-flow-labels b{font-weight:600}.efficiency-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:20px 0;margin-top:18px!important;gap:18px;border-top:1px solid var(--border)}.efficiency-metrics>div{display:flex;flex-direction:column;gap:5px;min-width:0}.efficiency-metrics .label{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.efficiency-metrics .value{font-size:calc(23px * var(--text-scale));font-weight:600;line-height:1.25;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.efficiency-metrics .sub{font-size:calc(10px * var(--text-scale));color:var(--muted-fg)}.efficiency-cache{border-left:3px solid var(--s3);padding:12px 15px;background:var(--bg);border-radius:0 5px 5px 0}.efficiency-cache strong{font-size:calc(13px * var(--text-scale));font-weight:600}.efficiency-cache p{font-size:calc(11px * var(--text-scale));margin-top:4px;max-width:95ch}.efficiency-insight{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px;padding-block:8px}.efficiency-insight h3{font-size:calc(17px * var(--text-scale));line-height:1.4;letter-spacing:-.015em}.efficiency-insight .efficiency-experiment{border-left:2px solid var(--border);padding-left:20px}.efficiency-experiment details{border:0;border-radius:0;padding:3px 0 0}.efficiency-experiment details p{margin:10px 0 0;color:var(--muted-fg);font-size:calc(12px * var(--text-scale))}.efficiency-comparison{padding:16px;background:var(--card)}.efficiency-comparison>summary{color:var(--fg);font-size:calc(13px * var(--text-scale));font-weight:600}.efficiency-comparison>summary span{font-weight:400}.efficiency-comparison .table-wrap{margin-top:15px}.efficiency-context>p{max-width:88ch;font-size:calc(12px * var(--text-scale))}.efficiency-context-total{margin:20px 0 4px;font-size:calc(12px * var(--text-scale));color:var(--muted-fg)}.efficiency-context-total strong{font-size:calc(25px * var(--text-scale));font-weight:600;color:var(--fg);margin-right:5px}.efficiency-context-categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:15px;margin:20px 0}.efficiency-context-categories dt{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.efficiency-context-categories dd{font-size:calc(17px * var(--text-scale));font-weight:600;margin:5px 0 0}.context-sources{margin-top:12px}.context-sources td+td,.context-sources th+th{border-left:1px dotted var(--border)}#efficiency-review-dialog{width:min(820px,calc(100% - 32px))}#efficiency-review-output{font-family:ui-monospace,Consolas,monospace;font-size:calc(11px * var(--text-scale));white-space:pre-wrap;overflow-wrap:anywhere}#efficiency-review-status{min-height:1.7em}
 @media(max-width:720px){.efficiency-intro{flex-direction:column;gap:12px}.efficiency-flow{padding:16px}.efficiency-flow-heading{align-items:flex-start;gap:14px}.efficiency-flow-heading>strong{font-size:calc(36px * var(--text-scale))}.efficiency-insight{grid-template-columns:1fr;gap:14px}.efficiency-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.efficiency-experiment{margin-bottom:4px}}
@@ -72,7 +73,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
     </section>
     <section id="breakdown-view" hidden>
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
-      <p class="footnote">Expand a model to see its requests, then expand a request for token details and its original prompt. File-level and command-level charges are not available.</p>
+      <p class="footnote">Expand a model to see its sessions, then a session to see its requests. Click a request timestamp to view its original prompt when available. File-level and command-level charges are not available.</p>
       <div class="controls"><div class="seg" id="breakdown-sections" role="group" aria-label="Breakdown details"><button data-section="skills" aria-pressed="true" aria-controls="skills-panel">Skills</button><button data-section="plugins" aria-pressed="false" aria-controls="plugins-panel">Plugins</button><button data-section="mcp" aria-pressed="false" aria-controls="mcp-panel">MCP</button></div></div>
       <article class="card" id="skills-panel" aria-label="Skills"><header><span id="skills-summary" class="muted"></span><label class="detail-sort">Sort by <select id="skills-sort" aria-label="Sort skills by"><option value="invocations">Most uses</option><option value="failures">Most failures</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option><option value="sessions">Most sessions</option></select></label></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p id="skills-coverage" class="footnote"></p></article>
       <article class="card" id="plugins-panel" aria-label="Plugins" hidden><header><span id="plugins-summary" class="muted"></span><label class="detail-sort">Sort by <select id="plugins-sort" aria-label="Sort plugins by"><option value="name">Name (A–Z)</option><option value="enabled">Enabled first</option><option value="marketplace">Marketplace (A–Z)</option></select></label></header><div id="plugins" class="table-wrap"></div><p class="footnote integration-note">Current inventory reported by Copilot for this account and session. Date and usage filters do not apply. Enabled does not mean used.</p></article>
@@ -99,14 +100,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.43</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.44</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.43";
+const BUILD_VERSION = "0.1.44";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -198,7 +199,7 @@ const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copi
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
 const enumFields = {
-  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'skills.openFolder', 'efficiency.context']),
+  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   action: new Set(['copy', 'open']),
@@ -834,7 +835,7 @@ const creditNumber = value => formatCredits(value, { simplify: state.simplifyNum
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -924,16 +925,16 @@ async function load(force = false, refresh = false) {
         const input = query(), filterKey = JSON.stringify(input);
         const report = await request(method, input, rescan);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.filterKey = filterKey; }
         applyPreferences(report.preferences);
         state.creditsUnavailable = false;
         state.report = report;
         render();
-        if (state.requestView) loadRequestPage(state.requestView.offset);
+        if (state.modelView) loadModelSessionPage(state.modelView.offset);
         $('live').textContent = 'Usage updated';
       } catch (e) {
         if (version !== state.version) continue;
-        state.requestView = null;
+        state.requestView = null; state.modelView = null;
         state.creditsUnavailable = true;
         renderHeaderCredits();
         $('status').hidden = false;
@@ -980,12 +981,19 @@ function table(rows, heading, details = false) {
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
   const modelExpansion = details && heading === 'Model', projectExpansion = details && heading === 'Project';
-  const expandable = modelExpansion || projectExpansion, attribute = modelExpansion ? 'data-request-model' : 'data-project-name';
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
-    const open = modelExpansion ? state.requestView?.model === r.name : projectExpansion && state.projectView?.project === r.name;
-    const region = modelExpansion ? 'model-requests' : 'project-sessions';
-    const name = expandable ? `<td class="text-cell"><button class="model-toggle cell-text" ${attribute}="${esc(r.name)}" aria-expanded="${open}"${open ? ` aria-controls="${region}"` : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(r.name)}</button></td>` : textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name);
-    return `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>` + (open ? `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="request-list" aria-label="${modelExpansion ? 'Requests' : 'Sessions'} for ${esc(r.name)}">${modelExpansion ? requestList() : projectSessionList(r.name)}</div></td></tr>` : '');
+  const sessionExpansion = details && heading === 'Session' && !!state.modelView, requestExpansion = details && heading === 'Time';
+  const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion;
+  const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : 'data-request-id';
+  const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : 'request-detail';
+  return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
+    const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
+    const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
+    const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
+    const name = expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
+    const cells = `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    if (!open) return cells;
+    const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : requestDetail(state.requestView);
+    return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -1005,38 +1013,62 @@ function projectSessionList(project) {
 const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
 const initiatorLabel = value => ({ user: 'User prompt', agent: 'Agent continuation', 'sub-agent': 'Subagent' }[value] || 'Not recorded');
 function requestDetail(view) {
-  if (view.detailPending) return '<p class="muted" role="status">Loading request details…</p>';
+  if (view.detailPending) return '<p class="muted" role="status">Loading original prompt…</p>';
   if (view.detailError) return `<p role="status">${esc(view.detailError)} <button data-request-id="${esc(view.selectedId)}" data-request-retry="true">Retry</button></p>`;
   const r = view.detail;
   if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
-  const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
-  const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
-  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, key === 'credits' ? creditNumber : number), key === 'credits' ? 'credits' : 'tokens']), ...context].map(([label, value, measure]) => `<div><dt>${esc(label)}</dt><dd${measure ? ` data-measure="${measure}"` : ''}>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+  return `<h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+}
+function modelSessionList() {
+  const view = state.modelView;
+  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model sessions…</p>';
+  if (view.error) return `<p role="status">${esc(view.error)} <button data-model-session-page="${view.offset}">Retry</button></p>`;
+  const page = view.page;
+  if (!page?.rows.length) return '<p class="muted">No matching sessions remain. Refresh to update the model totals.</p>';
+  const end = page.offset + page.rows.length;
+  return `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Session', true)}`;
 }
 function requestList() {
   const view = state.requestView;
-  if (view.pending && !view.page) return '<p class="muted" role="status">Loading model requests…</p>';
+  if (view.pending && !view.page) return '<p class="muted" role="status">Loading session requests…</p>';
   if (view.error) return `<p role="status">${esc(view.error)} <button data-request-page="${view.offset}">Retry</button></p>`;
   const page = view.page;
-  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the model totals.</p>';
+  if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the session totals.</p>';
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header><table class="request-table"><thead><tr><th>Time</th><th>Session</th><th>Started by</th><th data-measure="tokens">Tokens</th><th data-measure="credits">AI credits</th></tr></thead><tbody>${page.rows.map(r => {
-    const open = view.selectedId === r.id;
-    return `<tr><td><button class="request-toggle" data-request-id="${esc(r.id)}" aria-expanded="${open}"${open ? ' aria-controls="request-detail"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(requestDate.format(new Date(r.ts)))}</button></td><td class="text-cell"><span class="cell-text" title="${esc(r.sessionId)}">${esc(r.sessionName)}<small class="muted">${esc(r.project)}</small></span></td>${textCell(initiatorLabel(r.initiator))}<td data-measure="tokens">${esc(usageValue(r, 'total', number))}</td><td data-measure="credits">${esc(creditLabel(r))}</td></tr>` + (open ? `<tr class="request-expansion"><td colspan="5"><div id="request-detail" class="request-detail">${requestDetail(view)}</div></td></tr>` : '');
-  }).join('')}</tbody></table>`;
+  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Time', true)}`;
+}
+async function loadModelSessionPage(offset = 0) {
+  const view = state.modelView;
+  if (!view) return;
+  const version = ++view.version;
+  view.pending = true; view.error = ''; view.offset = offset;
+  renderBreakdown();
+  try {
+    const page = await request('usage.sessions', { ...JSON.parse(state.filterKey), model: view.model, sort: $('sort').value, offset });
+    if (state.modelView !== view || view.version !== version) return;
+    view.page = page; view.offset = page.offset;
+    if (state.requestView && !page.rows.some(r => r.id === state.requestView.session)) state.requestView = null;
+    else if (state.requestView) await loadRequestPage(state.requestView.offset);
+  } catch (e) {
+    if (state.modelView !== view || view.version !== version) return;
+    view.error = `Could not load sessions: ${e.message}`;
+  } finally {
+    if (state.modelView === view && view.version === version) { view.pending = false; renderBreakdown(); }
+  }
 }
 async function loadRequestPage(offset = 0) {
   const view = state.requestView;
   if (!view) return;
   const version = ++view.version;
   view.pending = true; view.error = ''; view.offset = offset;
+  view.details.clear(); view.detailVersion++; view.detail = null; view.detailPending = !!view.selectedId;
   renderBreakdown();
   try {
-    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, offset });
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, session: view.session, offset });
     if (state.requestView !== view || view.version !== version) return;
     view.page = page; view.offset = page.offset;
     if (view.selectedId && !page.rows.some(r => r.id === view.selectedId)) { view.selectedId = null; view.detail = null; }
-    else if (view.selectedId) await loadRequestDetail(view.selectedId);
+    else if (view.selectedId) { view.pending = false; await loadRequestDetail(view.selectedId); }
   } catch (e) {
     if (state.requestView !== view || view.version !== version) return;
     view.error = `Could not load requests: ${e.message}`;
@@ -1046,16 +1078,18 @@ async function loadRequestPage(offset = 0) {
 }
 async function loadRequestDetail(id) {
   const view = state.requestView;
+  if (!view || !view.page?.rows.some(r => r.id === id) || view.pending) return;
   const version = ++view.detailVersion;
+  if (view.details.has(id)) { view.selectedId = id; view.detail = view.details.get(id); view.detailPending = false; view.detailError = ''; renderBreakdown(); return; }
   view.selectedId = id; view.detail = null; view.detailPending = true; view.detailError = '';
   renderBreakdown();
   try {
-    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, id });
+    const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, session: view.session, id });
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
-    view.detail = page.rows[0] || null;
+    view.detail = page.rows[0] || null; view.details.set(id, view.detail);
   } catch (e) {
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
-    view.detailError = `Could not load request details: ${e.message}`;
+    view.detailError = `Could not load original prompt: ${e.message}`;
   } finally {
     if (state.requestView === view && view.detailVersion === version) { view.detailPending = false; renderBreakdown(); }
   }
@@ -1114,17 +1148,17 @@ function renderBreakdownContent() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value;
-  if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
+  if (group !== 'models' || state.modelView && !report.models.some(r => r.name === state.modelView.model)) { state.modelView = null; state.requestView = null; }
   if (group !== 'projects' || state.projectView && !report.projects.some(r => r.name === state.projectView.project)) state.projectView = null;
   const focusedRequest = document.activeElement?.dataset;
   $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true);
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
-    if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection) {
-      const key = focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
+    if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection || focusedRequest.modelSessionPageDirection) {
+      const key = focusedRequest.modelSessionPageDirection ? 'modelSessionPageDirection' : focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
       const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
       (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || buttons.find(b => b.dataset.projectName === state.projectView?.project && b.dataset.projectName !== undefined) || $('group'))?.focus({ preventScroll: true });
-    } else for (const key of ['requestModel', 'requestId', 'requestPage', 'projectName']) {
+    } else for (const key of ['requestModel', 'requestSession', 'requestId', 'requestPage', 'modelSessionPage', 'projectName']) {
       if (focusedRequest[key] !== undefined) (buttons.find(b => b.dataset[key] === focusedRequest[key]) || $('group'))?.focus({ preventScroll: true });
     }
   }
@@ -1453,7 +1487,7 @@ $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
+  const { requestModel, requestSession, modelSessionPage, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
   if (projectName !== undefined && $('group').value === 'projects') {
     state.projectView = state.projectView?.project === projectName ? null : { project: projectName, offset: 0 };
     renderBreakdown();
@@ -1463,8 +1497,18 @@ $('breakdown').onclick = async event => {
     const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
     $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
   } else if (requestModel !== undefined) {
-    if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
-    state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
+    state.requestView = null;
+    if (state.modelView?.model === requestModel) { state.modelView = null; renderBreakdown(); return; }
+    state.modelView = { model: requestModel, offset: 0, version: 0 };
+    await loadModelSessionPage();
+  } else if (state.modelView && modelSessionPage !== undefined) {
+    if (state.modelView.pending) return;
+    state.requestView = null;
+    await loadModelSessionPage(Number(modelSessionPage));
+  } else if (state.modelView && requestSession !== undefined) {
+    if (state.modelView.pending || !state.modelView.page?.rows.some(r => r.id === requestSession)) return;
+    if (state.requestView?.session === requestSession) { state.requestView = null; renderBreakdown(); return; }
+    state.requestView = { model: state.modelView.model, session: requestSession, offset: 0, version: 0, detailVersion: 0, details: new Map() };
     await loadRequestPage();
   } else if (state.requestView && requestPage !== undefined) {
     if (state.requestView.pending) return;
@@ -1478,7 +1522,11 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort']) $(id).onchange = () => { if (state.projectView) state.projectView.offset = 0; renderBreakdown(); };
+for (const id of ['group', 'sort']) $(id).onchange = () => {
+  if (state.projectView) state.projectView.offset = 0;
+  renderBreakdown();
+  if (id === 'sort' && state.modelView) { state.requestView = null; return loadModelSessionPage(0); }
+};
 for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
