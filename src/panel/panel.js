@@ -566,8 +566,6 @@ function renderEfficiency() {
   for (const [id, value] of [['efficiency-cache-minimum', 50000], ['efficiency-growth-minimum', 10000], ['efficiency-tools-minimum', 1000]]) $(id).textContent = number(value);
   const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
-  const rangeName = RANGE_LABELS[state.report.query.range];
-  $('efficiency-scope').textContent = `${number(summary.requests)} recorded requests · ${rangeName} · applied model, project, and session filters`;
   renderEfficiencyFlow(summary);
   renderEfficiencyHabits();
   renderEfficiencyReliability();
