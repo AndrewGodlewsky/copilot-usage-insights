@@ -3,7 +3,7 @@ import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
-import { TOKEN_TOPICS, renderTokenTopic } from './token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 
 const $ = id => document.getElementById(id);
@@ -494,16 +494,19 @@ function efficiencyDirection(insight) {
 }
 function renderEfficiencyHabits() {
   const habits = state.report?.efficiency?.interactions;
+  const summary = state.report?.efficiency?.summary;
   const metrics = [
     ['User messages', habits?.prompts, 'Recorded user-origin messages'],
     ['Messages / session', habits?.averagePromptsPerSession, `${number(habits?.promptSessions ?? 0)} sessions with messages`],
     ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`],
+    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`],
     ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],
   ];
   $('efficiency-habits').innerHTML = habits?.reason === 'model-filter'
     ? '<p class="muted">Clear the model filter to see conversation habits. User messages cannot reliably be assigned to one model when a session uses several.</p>'
     : !habits?.observedSessions ? `<p class="muted">${habits?.omitted ? 'No interaction metadata could be attributed exclusively to Copilot.' : 'No matching message or turn metadata was recorded. Usage receipts alone cannot tell us how many times you chatted.'}</p>`
-      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Averages cover only sessions with recorded messages or turns within the date, project, and session filters. These are not lifetime session lengths. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${number(summary?.averageInput)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
   if (habits?.omitted && habits.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">${number(habits.omitted)} events excluded because Copilot attribution was missing or mixed.</p>`;
   const instructions = efficiencyContextSnapshot?.available ? efficiencyContextSnapshot.categories?.customInstructions : null;
   $('efficiency-instructions').innerHTML = instructions == null
@@ -525,13 +528,14 @@ function renderEfficiencyReliability() {
 function showEfficiencySection(section) {
   if (!['tokens', 'patterns', 'review'].includes(section)) return;
   selectButton('efficiency-sections', 'efficiencySection', section);
+  $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
-const tokenPanelNames = ['overview', 'context', 'cache', 'recovery', 'detail'];
+const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
 const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
-$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Usage patterns'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
+$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Spending'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
 $('efficiency-topic').value = tokenTopic;
 function showTokenTopic(id) {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
@@ -547,11 +551,28 @@ function showTokenTopic(id) {
   $('token-topic-title').textContent = topic.label;
   $('token-topic-question').textContent = topic.question;
   $('token-topic-scope').textContent = ['results', 'skills'].includes(tokenTopic) ? 'Current conversation · separate from the selected history'
-    : ['delegation', 'compaction', 'transitions', 'repetition'].includes(tokenTopic) ? 'Measurement not available yet' : 'Selected history · current filters';
+    : tokenTopic === 'delegation' ? 'Measurement not available yet' : 'Selected history · current filters';
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').onchange = () => showTokenTopic($('efficiency-topic').value);
+let patternTopic = 'findings';
+const patternPanelNames = ['findings', 'habits', 'recovery', 'models', 'detail'];
+$('efficiency-pattern-topic').innerHTML = PATTERN_TOPICS.map(topicOption).join('');
+$('efficiency-pattern-topic').value = patternTopic;
+function showPatternTopic(id) {
+  if (PATTERN_TOPICS.some(topic => topic.id === id)) patternTopic = id;
+  $('efficiency-pattern-topic').value = patternTopic;
+  const panel = patternPanelNames.includes(patternTopic) ? patternTopic : 'detail';
+  for (const name of patternPanelNames) $(`pattern-${name}-panel`).hidden = name !== panel;
+  if (panel !== 'detail') return;
+  const topic = PATTERN_TOPICS.find(item => item.id === patternTopic);
+  $('pattern-topic-title').textContent = topic.label;
+  $('pattern-topic-question').textContent = topic.question;
+  $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
+  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, credits: creditNumber });
+}
+$('efficiency-pattern-topic').onchange = () => showPatternTopic($('efficiency-pattern-topic').value);
 function openTokenContext() {
   showEfficiencySection('tokens');
   showTokenTopic('context');
@@ -570,11 +591,12 @@ function renderEfficiency() {
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   showTokenTopic(tokenTopic);
+  showPatternTopic(patternTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);
     return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${index + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
-  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Open Model comparisons or try a wider date range.'}</p>`;
   if (failedServer) {
     const completed = failedServer.failures + failedServer.successes;
     $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;

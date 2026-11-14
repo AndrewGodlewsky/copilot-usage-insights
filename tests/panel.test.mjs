@@ -1251,39 +1251,83 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(report.totals.credits, 12.345678901);
 });
 
-test('all token-efficiency topics switch one panel at a time without requests and retain selection', async () => {
-  const { get, requests } = await requestPanel();
-  const panels = ['overview', 'context', 'cache', 'recovery', 'detail'];
-  const topics = ['overview', 'growth', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'recovery', 'drivers', 'prompt-size', 'compaction', 'transitions', 'repetition', 'skills'];
-  const choose = id => { get('efficiency-topic').value = id; get('efficiency-topic').onchange(); };
-  const visible = () => panels.filter(id => !get(`token-${id}-panel`).hidden);
-  assert.equal((get('efficiency-topic').innerHTML.match(/<option /g) || []).length, 16);
-  assert.equal((get('efficiency-topic').innerHTML.match(/<optgroup /g) || []).length, 3);
-  assert.deepEqual(visible(), ['overview']);
+test('Efficiency section pickers separate topics, switch locally, and retain independent selections', async () => {
+  const { get, requests, windowListeners, timeouts, document } = await requestPanel();
+  const tokenPanels = ['overview', 'context', 'cache', 'detail'];
+  const tokenTopics = ['overview', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'drivers', 'skills'];
+  const patternPanels = ['findings', 'habits', 'recovery', 'models', 'detail'];
+  const patternTopics = ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models'];
+  const choose = (picker, id) => { get(picker).value = id; get(picker).onchange(); };
+  const visible = (prefix, panels) => panels.filter(id => !get(prefix + '-' + id + '-panel').hidden);
+  const switchTab = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
+  assert.deepEqual(visible('token', tokenPanels), ['overview']);
+  assert.deepEqual(visible('pattern', patternPanels), ['findings']);
+  assert.equal((get('efficiency-topic').innerHTML.match(/<option /g) || []).length, 10);
+  assert.equal((get('efficiency-pattern-topic').innerHTML.match(/<option /g) || []).length, 8);
   const before = requests.length;
-  for (const topic of topics) {
-    choose(topic);
-    assert.deepEqual(visible(), [panels.includes(topic) ? topic : 'detail']);
+  for (const topic of tokenTopics) {
+    choose('efficiency-topic', topic);
+    assert.deepEqual(visible('token', tokenPanels), [tokenPanels.includes(topic) ? topic : 'detail']);
     assert.equal(get('efficiency-topic').value, topic);
-    if (!panels.includes(topic)) assert.ok(get('token-topic-body').innerHTML.length > 0);
+    if (!tokenPanels.includes(topic)) assert.ok(get('token-topic-body').innerHTML.length > 0);
   }
-  assert.equal(requests.length, before, 'topic navigation does not load logs, inspect context, or invoke AI');
-  choose('invalid');
-  assert.equal(get('efficiency-topic').value, 'skills');
-  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'patterns' } } });
-  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'tokens' } } });
+  switchTab('patterns');
+  for (const topic of patternTopics) {
+    choose('efficiency-pattern-topic', topic);
+    assert.deepEqual(visible('pattern', patternPanels), [patternPanels.includes(topic) ? topic : 'detail']);
+    assert.equal(get('efficiency-pattern-topic').value, topic);
+    if (!patternPanels.includes(topic)) assert.ok(get('pattern-topic-body').innerHTML.length > 0);
+    assert.equal(get('efficiency-topic').value, 'skills');
+  }
+  choose('efficiency-topic', 'growth');
+  choose('efficiency-pattern-topic', 'cache');
+  assert.equal(get('efficiency-topic').value, 'skills', 'wrong dashboard topic is ignored');
+  assert.equal(get('efficiency-pattern-topic').value, 'models');
+  assert.equal(requests.length, before, 'navigation never loads logs, inspects context, or invokes AI');
+  switchTab('review');
+  assert.equal(get('efficiency-patterns-panel').hidden, true);
+  assert.equal(get('efficiency-tokens-panel').hidden, true);
+  switchTab('patterns');
+  get('efficiency-pattern-topic').focus();
   await get('refresh').onclick();
+  assert.equal(get('efficiency-pattern-topic').value, 'models');
+  assert.equal(document.activeElement, get('efficiency-pattern-topic'));
+  choose('efficiency-pattern-topic', 'growth');
+  const oldGrowth = get('pattern-topic-body').innerHTML;
+  get('model').value = 'Alpha';
+  await get('model').onchange();
+  assert.equal(get('efficiency-pattern-topic').value, 'growth');
   assert.equal(get('efficiency-topic').value, 'skills');
-  assert.deepEqual(visible(), ['detail']);
+  assert.ok(oldGrowth.length && get('pattern-topic-body').innerHTML.length);
+  windowListeners.get('resize')();
+  timeouts.at(-1).callback();
+  assert.equal(get('efficiency-pattern-topic').value, 'growth');
+  await get('settings-open').onclick();
+  get('text-size').value = 'large';
+  await get('settings-save').onclick();
+  assert.equal(get('efficiency-pattern-topic').value, 'growth');
   const contextBefore = requests.length;
-  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
-  assert.equal(get('efficiency-topic').value, 'context');
-  assert.deepEqual(visible(), ['context']);
-  assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
-  choose('recovery');
+  choose('efficiency-pattern-topic', 'habits');
   get('efficiency-inspect-instructions').onclick();
+  assert.equal(get('efficiency-tokens-panel').hidden, false);
   assert.equal(get('efficiency-topic').value, 'context');
-  assert.deepEqual(visible(), ['context']);
+  assert.equal(get('efficiency-pattern-topic').value, 'habits');
+  assert.equal(document.activeElement, get('efficiency-context-read'));
+  assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
+});
+
+test('Efficiency panels live only in their assigned dashboard and AI review stays separate', async () => {
+  const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  const tokens = html.split('<section id="efficiency-tokens-panel"')[1].split('<section id="efficiency-patterns-panel"')[0];
+  const patterns = html.split('<section id="efficiency-patterns-panel"')[1].split('<section id="efficiency-review-panel"')[0];
+  const review = html.split('<section id="efficiency-review-panel"')[1].split('<details class="efficiency-method"')[0];
+  assert.match(tokens, /id="token-context-panel"/);
+  assert.doesNotMatch(tokens, /id="efficiency-reliability"|id="efficiency-habits"|id="efficiency-models"/);
+  for (const id of ['efficiency-reliability', 'efficiency-habits', 'efficiency-models']) assert.match(patterns, new RegExp('id="' + id + '"'));
+  assert.match(patterns, /<h2[^>]*>Findings<\/h2>/);
+  assert.match(patterns, /<h2[^>]*>Model comparisons<\/h2>/);
+  assert.match(review, /id="efficiency-review-open"/);
+  assert.doesNotMatch(review, /id="(?:token|pattern)-|id="efficiency-(?:topic|pattern-topic|habits|models|insights|reliability)"/);
 });
 
 test('token topic inspector links retain keyboard focus through refresh and section changes', async () => {
@@ -1321,6 +1365,7 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
   choose('patterns'); choose('review'); choose('invalid');
   assert.equal(requests.length, before, 'subview selection never loads data or invokes AI');
   assert.equal(get('efficiency-review-panel').hidden, false);
+  assert.equal(get('efficiency-method').hidden, true);
   assert.equal(buttons[2]['aria-pressed'], 'true');
   await get('refresh').onclick();
   assert.equal(get('efficiency-review-panel').hidden, false);
@@ -1330,7 +1375,11 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
     { name: 'mcp-tool', server: '<server>', calls: 2, successes: 0, failures: 2, unknown: 0 }];
   await get('refresh').onclick();
   choose('patterns');
+  assert.equal(get('efficiency-method').hidden, false);
   assert.match(get('efficiency-habits').innerHTML, /1\.3K/);
+  assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call/);
+  assert.equal((get('efficiency-habits').innerHTML.match(/Characters \/ prompt/g) || []).length, 1);
+  assert.match(get('efficiency-habits').innerHTML, /separate averages, not a matched ratio/);
   assert.match(get('efficiency-habits').innerHTML, /Messages \/ session|Agent turns \/ session/);
   assert.match(get('efficiency-reliability').innerHTML, /66\.7%|0%/);
   assert.match(get('efficiency-reliability').innerHTML, /&lt;private tool&gt;|&lt;server&gt;/);
@@ -1345,10 +1394,12 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
   report.efficiency.interactions = { observedSessions: 0, omitted: 3 };
   await get('refresh').onclick();
   assert.match(get('efficiency-habits').innerHTML, /3 events excluded because Copilot attribution was missing or mixed/);
+  assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call:/);
   assert.doesNotMatch(get('efficiency-habits').innerHTML, /No matching message or turn metadata was recorded/);
   report.efficiency.interactions = { reason: 'model-filter' };
   await get('refresh').onclick();
   assert.match(get('efficiency-habits').innerHTML, /Clear the model filter/);
+  assert.doesNotMatch(get('efficiency-habits').innerHTML, /Characters \/ prompt|Input tokens \/ call/);
   assert.match(get('efficiency-reliability').innerHTML, /unavailable under a model filter/);
   choose('review'); get('efficiency-review-open').onclick();
   assert.match(get('efficiency-review-output').value, /"reason": "model-filter"/);

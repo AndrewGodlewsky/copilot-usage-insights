@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TOKEN_TOPICS, renderTokenTopic } from '../src/panel/token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic } from '../src/panel/token-topics.mjs';
 
 const formats = { number: value => value == null ? 'Unavailable' : String(value), credits: value => value == null ? 'Unavailable' : String(value) };
 const render = (id, report = {}) => renderTokenTopic(id, report, formats);
 
-test('token topic catalog includes every approved section and an overview', () => {
-  assert.deepEqual(TOKEN_TOPICS.map(t => t.id), ['overview', 'growth', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'recovery', 'drivers', 'prompt-size', 'compaction', 'transitions', 'repetition', 'skills']);
-  assert.equal(new Set(TOKEN_TOPICS.map(t => t.label)).size, 16);
-  assert.ok(TOKEN_TOPICS.every(t => t.question));
+test('efficiency catalogs separate consumption from workflow findings without duplicating topics', () => {
+  assert.deepEqual(TOKEN_TOPICS.map(t => t.id), ['overview', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'drivers', 'skills']);
+  assert.deepEqual(PATTERN_TOPICS.map(t => t.id), ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models']);
+  const all = [...TOKEN_TOPICS, ...PATTERN_TOPICS];
+  assert.equal(new Set(all.map(t => t.id)).size, all.length);
+  assert.ok(all.every(t => t.question));
 });
 
 test('topic introductions handle absent measurements without invented zeros', () => {
-  for (const id of ['growth', 'tools', 'prompts', 'output', 'drivers', 'prompt-size']) {
+  for (const id of ['growth', 'tools', 'prompts', 'output', 'drivers']) {
     const html = render(id);
     assert.doesNotMatch(html, /NaN|undefined|Infinity/);
     assert.match(html, /Unavailable|No .*recorded|No comparable/);
@@ -59,5 +61,4 @@ test('current-context topic entry points never claim historical attribution', ()
     assert.match(render(id), /current context/i);
     assert.match(render(id), /historical|history/i);
   }
-  assert.match(render('prompt-size', { efficiency: { interactions: { reason: 'model-filter' } } }), /Clear the model filter/);
 });

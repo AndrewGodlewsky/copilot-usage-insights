@@ -2,7 +2,6 @@ import { esc, usageValue } from './charts.mjs';
 
 export const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', group: '', question: 'See the overall balance of input and output.' },
-  { id: 'growth', label: 'Context growth', group: 'Context', question: 'Why do later calls in a conversation process more input?' },
   { id: 'context', label: 'Always-loaded context', group: 'Context', question: 'What occupies context before your next request?' },
   { id: 'tools', label: 'Tool and MCP footprint', group: 'Context', question: 'How much input describes the tools available to the agent?' },
   { id: 'results', label: 'Files, searches, and tool results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
@@ -10,13 +9,19 @@ export const TOKEN_TOPICS = [
   { id: 'prompts', label: 'Work behind each prompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
   { id: 'delegation', label: 'Delegated work', group: 'Agent work', question: 'How much usage happens in subagents?' },
   { id: 'output', label: 'Reasoning and generated output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
-  { id: 'recovery', label: 'Calls and recovery', group: 'Agent work', question: 'Which operations have recorded failures that deserve attention?' },
-  { id: 'drivers', label: 'Biggest spend drivers', group: 'Usage patterns', question: 'Which sessions account for the largest recorded charges?' },
-  { id: 'prompt-size', label: 'Prompt size versus processing', group: 'Usage patterns', question: 'How much do you type, and how much input does the model process?' },
-  { id: 'compaction', label: 'Context reduction', group: 'Usage patterns', question: 'What changes when a conversation is compacted?' },
-  { id: 'transitions', label: 'Model changes and fresh starts', group: 'Usage patterns', question: 'What happens to input and cache reuse around a model change or resumed session?' },
-  { id: 'repetition', label: 'Repeated exploration', group: 'Usage patterns', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'drivers', label: 'Biggest spend drivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
   { id: 'skills', label: 'Skills and instruction footprint', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+];
+
+export const PATTERN_TOPICS = [
+  { id: 'findings', label: 'Findings', group: '', question: 'Review measured patterns and practical experiments.' },
+  { id: 'habits', label: 'Conversation habits', group: '', question: 'How do your prompts and conversations relate to the work that follows?' },
+  { id: 'growth', label: 'Context growth', group: '', question: 'Why do later calls in a conversation process more input?' },
+  { id: 'compaction', label: 'Context reduction', group: '', question: 'What changes when a conversation is compacted?' },
+  { id: 'recovery', label: 'Calls and recovery', group: '', question: 'Which operations have recorded failures that deserve attention?' },
+  { id: 'transitions', label: 'Model changes and fresh starts', group: '', question: 'What happens to input and cache reuse around a model change or resumed session?' },
+  { id: 'repetition', label: 'Repeated exploration', group: '', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'models', label: 'Model comparisons', group: '', question: 'Compare recorded charges and context use across models.' },
 ];
 
 export function renderTokenTopic(id, report, { number, credits }) {
@@ -59,14 +64,6 @@ export function renderTokenTopic(id, report, { number, credits }) {
       .slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name)).slice(0, 5);
     if (!rows.length) return '<p class="muted">No session charges are recorded for these filters. Unavailable charges are not zero.</p>';
     return '<p>Up to five session/project groups with the largest recorded AI credit totals.</p><div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Session</th><th>Project</th><th>AI credits</th></tr></thead><tbody>' + rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td><td class="text-cell"><span class="cell-text">${esc(row.project)}</span></td><td>${esc(usageValue(row, 'credits', credits))}</td></tr>`).join('') + '</tbody></table></div>' + note('An asterisk marks incomplete charges, which can affect the ranking. A session spanning projects can appear more than once. These are recorded charges, not a judgment of task value.');
-  }
-  if (id === 'prompt-size') {
-    const habits = report.efficiency?.interactions || {};
-    if (habits.reason === 'model-filter') return '<p class="muted">Clear the model filter to see recorded prompt lengths. These session-wide measurements cannot reliably be assigned to one model.</p>';
-    return metrics(
-      metric('Characters / prompt', habits.averagePromptChars, `${number(habits.promptSamples ?? 0)} recorded prompt lengths`),
-      metric('Input tokens / call', summary.averageInput, coverage(summary.inputRequests)),
-    ) + note('These are separate averages, not a matched prompt-to-call ratio. One prompt can cause several model calls. Characters are not tokens, and prompt text lengths exclude attachments and injected context. Short or long prompts do not establish quality.');
   }
   if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
   if (id === 'transitions') return unmeasured('Changes in input and cache reuse around model switches and resumed sessions are not measured here yet. Those comparisons need reliable transition events and must distinguish manual choices, automatic routing, and subagent work.');

@@ -97,31 +97,35 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <article id="token-overview-panel" class="card efficiency-flow" aria-labelledby="token-overview-heading"><header><h2 id="token-overview-heading">Overview</h2><span class="muted">Selected filters · input includes cache</span></header><div id="efficiency-flow"></div><div id="efficiency-summary" class="efficiency-metrics" aria-label="Average request measurements"></div></article>
       <article id="token-context-panel" class="card efficiency-context" aria-labelledby="token-context-heading" hidden><header><div><h2 id="token-context-heading">Always-loaded context</h2><p class="footnote">Current conversation · separate from the selected history</p></div><button id="efficiency-context-read">Inspect context</button></header><p class="muted">Instructions, tool definitions, and conversation history can occupy context before your next request. Inspect the conversation hosting this dashboard to see its largest recorded contributors.</p><div id="efficiency-context-result" aria-live="polite"><p class="footnote integration-note">Loaded only when you ask. An installed skill or plugin is not proof that it is consuming context.</p></div></article>
       <article id="token-cache-panel" class="card" aria-labelledby="token-cache-heading" hidden><header><div><h2 id="token-cache-heading">Cache reuse</h2><p class="footnote">Selected history · calls with complete cache counts</p></div></header><div id="efficiency-cache" class="efficiency-cache"></div><p class="footnote integration-note">Cache reuse does not identify why other input was processed fresh. A new conversation, model change, or expired cache can affect reuse; these measurements do not establish the cause.</p></article>
-      <article id="token-recovery-panel" class="card" aria-labelledby="token-recovery-heading" hidden><header><div><h2 id="token-recovery-heading">Calls and recovery</h2><p class="footnote">Recorded tool outcomes in the selected range</p></div></header><div id="efficiency-reliability"></div><p class="footnote integration-note">A failed tool call can lead to a useful recovery. These counts do not measure wasted tokens, task quality, or server uptime. Model API failures and retries are not reliably retained in this history.</p></article>
       <article id="token-detail-panel" class="card token-topic-detail" aria-labelledby="token-topic-title" hidden><header><div><h2 id="token-topic-title"></h2><p id="token-topic-scope" class="footnote"></p></div></header><p id="token-topic-question" class="muted"></p><div id="token-topic-body"></div></article>
       </div>
       </section>
       <section id="efficiency-patterns-panel" aria-label="Worth a closer look" hidden>
-        <article class="card"><header><div><h2>Your conversation habits</h2><p class="footnote">Recorded messages and root-agent turns</p></div></header><div id="efficiency-habits"></div><div id="efficiency-instructions" class="efficiency-cache"></div><button id="efficiency-inspect-instructions">Inspect current instructions</button></article>
-      <article class="card efficiency-actions"><header><div><h2>Worth a closer look</h2><p class="footnote">Measured patterns, with one small experiment for each.</p></div><span id="efficiency-insight-count" class="muted"></span></header><div id="efficiency-insights"></div></article>
-        <article class="card"><header><div><h2>Model averages</h2><p class="footnote">Measured credits and context per request</p></div></header><div id="efficiency-models" class="table-wrap"></div><p class="footnote integration-note">Select a model to inspect its usage. Hover over a measurement for coverage. Compare similar tasks: lower cost does not establish better results.</p><p class="footnote integration-note"><a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing" target="_blank" rel="noopener noreferrer">View current Copilot model pricing</a>. Prices can change; these averages use recorded charges, not today's list prices. No pricing table is stored by this plugin.</p></article>
+      <div class="token-topic-navigation"><label for="efficiency-pattern-topic">Section<select id="efficiency-pattern-topic" aria-controls="pattern-topic-content" aria-describedby="pattern-topic-hint"><option value="findings">Findings</option></select></label><p id="pattern-topic-hint" class="footnote">Explore usage patterns and practical changes to try, one section at a time.</p></div>
+      <div id="pattern-topic-content">
+      <article id="pattern-findings-panel" class="card efficiency-actions" aria-labelledby="pattern-findings-heading"><header><div><h2 id="pattern-findings-heading">Findings</h2><p class="footnote">Measured patterns, with one small experiment for each.</p></div><span id="efficiency-insight-count" class="muted"></span></header><div id="efficiency-insights"></div></article>
+      <article id="pattern-habits-panel" class="card" aria-labelledby="pattern-habits-heading" hidden><header><div><h2 id="pattern-habits-heading">Conversation habits</h2><p class="footnote">Prompt size, recorded messages, and root-agent turns</p></div></header><div id="efficiency-habits"></div><div id="efficiency-instructions" class="efficiency-cache"></div><button id="efficiency-inspect-instructions">Inspect current instructions</button></article>
+      <article id="pattern-recovery-panel" class="card" aria-labelledby="pattern-recovery-heading" hidden><header><div><h2 id="pattern-recovery-heading">Calls and recovery</h2><p class="footnote">Recorded tool outcomes in the selected range</p></div></header><div id="efficiency-reliability"></div><p class="footnote integration-note">A failed tool call can lead to a useful recovery. These counts do not measure wasted tokens, task quality, or server uptime. Model API failures and retries are not reliably retained in this history.</p></article>
+      <article id="pattern-models-panel" class="card" aria-labelledby="pattern-models-heading" hidden><header><div><h2 id="pattern-models-heading">Model comparisons</h2><p class="footnote">Measured credits and context per request</p></div></header><div id="efficiency-models" class="table-wrap"></div><p class="footnote integration-note">Select a model to inspect its usage. Hover over a measurement for coverage. Compare similar tasks: lower cost does not establish better results.</p><p class="footnote integration-note"><a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing" target="_blank" rel="noopener noreferrer">View current Copilot model pricing</a>. Prices can change; these averages use recorded charges, not today's list prices. No pricing table is stored by this plugin.</p></article>
+      <article id="pattern-detail-panel" class="card token-topic-detail" aria-labelledby="pattern-topic-title" hidden><header><div><h2 id="pattern-topic-title"></h2><p id="pattern-topic-scope" class="footnote"></p></div></header><p id="pattern-topic-question" class="muted"></p><div id="pattern-topic-body"></div></article>
+      </div>
       </section>
       <section id="efficiency-review-panel" aria-label="AI review" hidden>
         <article class="card efficiency-review"><header><div><h2>A personal review of your usage</h2><p class="footnote">You choose when to involve AI</p></div></header><p>Prepare a small snapshot of your filtered statistics, preview it, and copy it into a Copilot conversation. Ask for up to three observations, each with evidence and one practical experiment.</p><ol><li>Choose the dates and filters you want reviewed.</li><li>Optionally inspect current context in Where did the tokens go?</li><li>Preview the snapshot, then paste it into Copilot for feedback.</li></ol><button id="efficiency-review-open">Prepare AI review</button><p class="footnote integration-note">The snapshot includes model averages, cache reuse, tool outcomes, and recorded conversation habits. Model names use aliases; prompts and session names are excluded. Copilot can explain patterns, but cannot infer whether a model was planning or coding from these statistics alone. You can add that task context yourself before sending.</p></article>
       </section>
-      <details class="efficiency-method"><summary>How to read this page</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and <span id="efficiency-cache-minimum">50K</span> input tokens, with 80% coverage. Increasing input means at least 2× and <span id="efficiency-growth-minimum">10K</span> more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>Tool definitions are already part of input, not tool results. A tool-overhead finding requires at least 5 matched samples, 80% coverage, <span id="efficiency-tools-minimum">1K</span> definition tokens per request and 10% of input. MCP findings require at least 3 failed calls; their failure rate excludes unknown outcomes. Current-context sources may overlap and are not added together. These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
+      <details class="efficiency-method" id="efficiency-method"><summary>How to read this page</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and <span id="efficiency-cache-minimum">50K</span> input tokens, with 80% coverage. Increasing input means at least 2× and <span id="efficiency-growth-minimum">10K</span> more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>Tool definitions are already part of input, not tool results. A tool-overhead finding requires at least 5 matched samples, 80% coverage, <span id="efficiency-tools-minimum">1K</span> definition tokens per request and 10% of input. MCP findings require at least 3 failed calls; their failure rate excludes unknown outcomes. Current-context sources may overlap and are not added together. These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.52</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.53</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.52";
+const BUILD_VERSION = "0.1.53";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -859,7 +863,6 @@ function buildEfficiencyReview(report, context, scope = {}) {
 
 const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', group: '', question: 'See the overall balance of input and output.' },
-  { id: 'growth', label: 'Context growth', group: 'Context', question: 'Why do later calls in a conversation process more input?' },
   { id: 'context', label: 'Always-loaded context', group: 'Context', question: 'What occupies context before your next request?' },
   { id: 'tools', label: 'Tool and MCP footprint', group: 'Context', question: 'How much input describes the tools available to the agent?' },
   { id: 'results', label: 'Files, searches, and tool results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
@@ -867,13 +870,19 @@ const TOKEN_TOPICS = [
   { id: 'prompts', label: 'Work behind each prompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
   { id: 'delegation', label: 'Delegated work', group: 'Agent work', question: 'How much usage happens in subagents?' },
   { id: 'output', label: 'Reasoning and generated output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
-  { id: 'recovery', label: 'Calls and recovery', group: 'Agent work', question: 'Which operations have recorded failures that deserve attention?' },
-  { id: 'drivers', label: 'Biggest spend drivers', group: 'Usage patterns', question: 'Which sessions account for the largest recorded charges?' },
-  { id: 'prompt-size', label: 'Prompt size versus processing', group: 'Usage patterns', question: 'How much do you type, and how much input does the model process?' },
-  { id: 'compaction', label: 'Context reduction', group: 'Usage patterns', question: 'What changes when a conversation is compacted?' },
-  { id: 'transitions', label: 'Model changes and fresh starts', group: 'Usage patterns', question: 'What happens to input and cache reuse around a model change or resumed session?' },
-  { id: 'repetition', label: 'Repeated exploration', group: 'Usage patterns', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'drivers', label: 'Biggest spend drivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
   { id: 'skills', label: 'Skills and instruction footprint', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+];
+
+const PATTERN_TOPICS = [
+  { id: 'findings', label: 'Findings', group: '', question: 'Review measured patterns and practical experiments.' },
+  { id: 'habits', label: 'Conversation habits', group: '', question: 'How do your prompts and conversations relate to the work that follows?' },
+  { id: 'growth', label: 'Context growth', group: '', question: 'Why do later calls in a conversation process more input?' },
+  { id: 'compaction', label: 'Context reduction', group: '', question: 'What changes when a conversation is compacted?' },
+  { id: 'recovery', label: 'Calls and recovery', group: '', question: 'Which operations have recorded failures that deserve attention?' },
+  { id: 'transitions', label: 'Model changes and fresh starts', group: '', question: 'What happens to input and cache reuse around a model change or resumed session?' },
+  { id: 'repetition', label: 'Repeated exploration', group: '', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'models', label: 'Model comparisons', group: '', question: 'Compare recorded charges and context use across models.' },
 ];
 
 function renderTokenTopic(id, report, { number, credits }) {
@@ -916,14 +925,6 @@ function renderTokenTopic(id, report, { number, credits }) {
       .slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name)).slice(0, 5);
     if (!rows.length) return '<p class="muted">No session charges are recorded for these filters. Unavailable charges are not zero.</p>';
     return '<p>Up to five session/project groups with the largest recorded AI credit totals.</p><div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Session</th><th>Project</th><th>AI credits</th></tr></thead><tbody>' + rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td><td class="text-cell"><span class="cell-text">${esc(row.project)}</span></td><td>${esc(usageValue(row, 'credits', credits))}</td></tr>`).join('') + '</tbody></table></div>' + note('An asterisk marks incomplete charges, which can affect the ranking. A session spanning projects can appear more than once. These are recorded charges, not a judgment of task value.');
-  }
-  if (id === 'prompt-size') {
-    const habits = report.efficiency?.interactions || {};
-    if (habits.reason === 'model-filter') return '<p class="muted">Clear the model filter to see recorded prompt lengths. These session-wide measurements cannot reliably be assigned to one model.</p>';
-    return metrics(
-      metric('Characters / prompt', habits.averagePromptChars, `${number(habits.promptSamples ?? 0)} recorded prompt lengths`),
-      metric('Input tokens / call', summary.averageInput, coverage(summary.inputRequests)),
-    ) + note('These are separate averages, not a matched prompt-to-call ratio. One prompt can cause several model calls. Characters are not tokens, and prompt text lengths exclude attachments and injected context. Short or long prompts do not establish quality.');
   }
   if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
   if (id === 'transitions') return unmeasured('Changes in input and cache reuse around model switches and resumed sessions are not measured here yet. Those comparisons need reliable transition events and must distinguish manual choices, automatic routing, and subagent work.');
@@ -1421,16 +1422,19 @@ function efficiencyDirection(insight) {
 }
 function renderEfficiencyHabits() {
   const habits = state.report?.efficiency?.interactions;
+  const summary = state.report?.efficiency?.summary;
   const metrics = [
     ['User messages', habits?.prompts, 'Recorded user-origin messages'],
     ['Messages / session', habits?.averagePromptsPerSession, `${number(habits?.promptSessions ?? 0)} sessions with messages`],
     ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`],
+    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`],
     ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],
   ];
   $('efficiency-habits').innerHTML = habits?.reason === 'model-filter'
     ? '<p class="muted">Clear the model filter to see conversation habits. User messages cannot reliably be assigned to one model when a session uses several.</p>'
     : !habits?.observedSessions ? `<p class="muted">${habits?.omitted ? 'No interaction metadata could be attributed exclusively to Copilot.' : 'No matching message or turn metadata was recorded. Usage receipts alone cannot tell us how many times you chatted.'}</p>`
-      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Averages cover only sessions with recorded messages or turns within the date, project, and session filters. These are not lifetime session lengths. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${number(summary?.averageInput)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
   if (habits?.omitted && habits.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">${number(habits.omitted)} events excluded because Copilot attribution was missing or mixed.</p>`;
   const instructions = efficiencyContextSnapshot?.available ? efficiencyContextSnapshot.categories?.customInstructions : null;
   $('efficiency-instructions').innerHTML = instructions == null
@@ -1452,13 +1456,14 @@ function renderEfficiencyReliability() {
 function showEfficiencySection(section) {
   if (!['tokens', 'patterns', 'review'].includes(section)) return;
   selectButton('efficiency-sections', 'efficiencySection', section);
+  $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
-const tokenPanelNames = ['overview', 'context', 'cache', 'recovery', 'detail'];
+const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
 const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
-$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Usage patterns'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
+$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Spending'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
 $('efficiency-topic').value = tokenTopic;
 function showTokenTopic(id) {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
@@ -1474,11 +1479,28 @@ function showTokenTopic(id) {
   $('token-topic-title').textContent = topic.label;
   $('token-topic-question').textContent = topic.question;
   $('token-topic-scope').textContent = ['results', 'skills'].includes(tokenTopic) ? 'Current conversation · separate from the selected history'
-    : ['delegation', 'compaction', 'transitions', 'repetition'].includes(tokenTopic) ? 'Measurement not available yet' : 'Selected history · current filters';
+    : tokenTopic === 'delegation' ? 'Measurement not available yet' : 'Selected history · current filters';
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').onchange = () => showTokenTopic($('efficiency-topic').value);
+let patternTopic = 'findings';
+const patternPanelNames = ['findings', 'habits', 'recovery', 'models', 'detail'];
+$('efficiency-pattern-topic').innerHTML = PATTERN_TOPICS.map(topicOption).join('');
+$('efficiency-pattern-topic').value = patternTopic;
+function showPatternTopic(id) {
+  if (PATTERN_TOPICS.some(topic => topic.id === id)) patternTopic = id;
+  $('efficiency-pattern-topic').value = patternTopic;
+  const panel = patternPanelNames.includes(patternTopic) ? patternTopic : 'detail';
+  for (const name of patternPanelNames) $(`pattern-${name}-panel`).hidden = name !== panel;
+  if (panel !== 'detail') return;
+  const topic = PATTERN_TOPICS.find(item => item.id === patternTopic);
+  $('pattern-topic-title').textContent = topic.label;
+  $('pattern-topic-question').textContent = topic.question;
+  $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
+  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, credits: creditNumber });
+}
+$('efficiency-pattern-topic').onchange = () => showPatternTopic($('efficiency-pattern-topic').value);
 function openTokenContext() {
   showEfficiencySection('tokens');
   showTokenTopic('context');
@@ -1497,11 +1519,12 @@ function renderEfficiency() {
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   showTokenTopic(tokenTopic);
+  showPatternTopic(patternTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);
     return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${index + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
-  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Open Model comparisons or try a wider date range.'}</p>`;
   if (failedServer) {
     const completed = failedServer.failures + failedServer.successes;
     $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
