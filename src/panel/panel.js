@@ -55,6 +55,21 @@ function diagnosticText(server) {
   entries.sort((a, b) => a.at.localeCompare(b.at));
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
+function showReleaseNote() {
+  const release = RELEASE_NOTES.find(entry => entry.version === $('release-version').value) || RELEASE_NOTES[0];
+  $('release-version').value = release.version;
+  $('release-summary').textContent = release.summary;
+}
+$('plugin-version').onclick = () => {
+  $('release-version').innerHTML = RELEASE_NOTES.map(entry => `<option value="${esc(entry.version)}">v${esc(entry.version)}${entry.version === BUILD_VERSION ? ' (installed)' : ''}</option>`).join('');
+  $('release-version').value = BUILD_VERSION;
+  showReleaseNote();
+  if (!$('release-notes-dialog').open) $('release-notes-dialog').showModal();
+  $('release-version').focus();
+};
+$('release-version').onchange = showReleaseNote;
+$('release-notes-close').onclick = () => $('release-notes-dialog').close();
+$('release-notes-dialog').onclose = () => $('plugin-version').focus({ preventScroll: true });
 let logsLoading = false;
 async function showLogs() {
   if (!$('logs-dialog').open) $('logs-dialog').showModal();

@@ -216,6 +216,46 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(get('logs-dialog').open, false);
 });
 
+test('footer version opens local release notes on every tab and restores focus on close', async () => {
+  const { get, requests, document, server } = await requestPanel();
+  const notes = JSON.parse(await fs.readFile(new URL('../release-notes.json', import.meta.url), 'utf8'));
+  assert.equal(get('plugin-version').getAttribute('aria-haspopup'), 'dialog');
+  assert.equal(get('plugin-version').getAttribute('aria-controls'), 'release-notes-dialog');
+  const dialog = get('release-notes-dialog');
+  dialog.close = () => { dialog.open = false; dialog.onclose(); };
+  const before = requests.length;
+  server.transportError = true;
+  for (const view of ['usage', 'breakdown', 'efficiency']) {
+    get('view').onclick({ target: { dataset: { view } } });
+    get('plugin-version').onclick();
+    assert.equal(dialog.open, true);
+    assert.equal(get('release-version').value, notes[0].version);
+    assert.equal(get('release-summary').textContent, notes[0].summary);
+    assert.equal(document.activeElement, get('release-version'));
+    assert.equal((get('release-version').innerHTML.match(/<option /g) || []).length, notes.length);
+    for (const release of notes) {
+      get('release-version').value = release.version; get('release-version').onchange();
+      assert.equal(get('release-summary').textContent, release.summary);
+    }
+    get('release-version').value = '<unknown>'; get('release-version').onchange();
+    assert.equal(get('release-version').value, notes[0].version);
+    get('release-notes-close').onclick();
+    assert.equal(dialog.open, false);
+    assert.equal(document.activeElement, get('plugin-version'));
+  }
+  assert.equal(requests.length, before, 'release browsing remains offline on every tab');
+  server.transportError = false;
+  get('plugin-version').onclick();
+  get('release-version').value = notes.at(-1).version; get('release-version').onchange();
+  await get('refresh').onclick();
+  assert.equal(dialog.open, true);
+  assert.equal(get('release-version').value, notes.at(-1).version);
+  assert.equal(get('release-summary').textContent, notes.at(-1).summary);
+  assert.equal(document.activeElement, get('release-version'));
+  dialog.onclose();
+  assert.equal(document.activeElement, get('plugin-version'), 'native close events restore focus too');
+});
+
 test('a stalled server log request times out while local logs remain copyable', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, server, timeouts } = await mountPanel(report);
