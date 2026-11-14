@@ -6,7 +6,7 @@
   <nav class="controls" aria-label="Dashboard controls">
     <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button><button data-view="efficiency" aria-pressed="false">Efficiency</button></div>
     <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
-    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true">Tokens</button><button data-metric="credits" aria-pressed="false">AI credits</button></div>
+    <div class="seg" id="metric"><button data-metric="tokens" aria-pressed="true" title="Show token values. Click again to clear emphasis.">Tokens</button><button data-metric="credits" aria-pressed="false" title="Show AI credit values. Click again to clear emphasis.">AI credits</button></div>
     <div class="toolbar-actions" role="group" aria-label="Dashboard actions"><button id="refresh">Refresh</button><button id="settings-open">Settings</button></div>
   </nav>
   <div id="custom" class="controls" hidden><label>From <input type="date" id="start-date"></label><label>Through <input type="date" id="end-date"></label><button id="apply-dates">Apply dates</button><span class="muted">Inclusive, in local time</span></div>

@@ -517,6 +517,46 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   for (const index of [2, 3]) assert.match(card(index), />Unavailable<\/strong>/);
 });
 
+test('metric buttons toggle emphasis off without changing chart units or loading data', async () => {
+  const { get, requests } = await requestPanel();
+  const buttons = ['tokens', 'credits'].map(metric => ({ dataset: { metric }, 'aria-pressed': String(metric === 'tokens'),
+    setAttribute(name, value) { this[name] = value; } }));
+  get('metric').querySelectorAll = () => buttons;
+  const press = metric => get('metric').onclick({ target: { dataset: { metric } } });
+  const selected = () => buttons.map(b => b['aria-pressed']);
+  const before = requests.length;
+  assert.equal(get('content').dataset.metric, 'tokens');
+  press('tokens');
+  assert.equal(get('content').dataset.metric, undefined, 'removing the attribute disables both accent and neutral-gray CSS');
+  assert.deepEqual(selected(), ['false', 'false']);
+  assert.equal(get('daily-title').textContent, 'Daily tokens');
+  press('tokens');
+  assert.equal(get('content').dataset.metric, 'tokens');
+  assert.deepEqual(selected(), ['true', 'false']);
+  press('credits');
+  assert.equal(get('content').dataset.metric, 'credits');
+  assert.deepEqual(selected(), ['false', 'true']);
+  assert.equal(get('daily-title').textContent, 'Daily AI credits');
+  const chart = get('daily').innerHTML;
+  press('credits');
+  assert.equal(get('content').dataset.metric, undefined);
+  assert.deepEqual(selected(), ['false', 'false']);
+  assert.equal(get('daily').innerHTML, chart, 'clearing credit emphasis keeps the current chart');
+  press('invalid');
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.equal(get('content').dataset.metric, undefined);
+  assert.equal(requests.length, before, 'toggling emphasis is entirely local');
+  await get('refresh').onclick();
+  get('range').value = '1d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(get('content').dataset.metric, undefined, 'neutral display survives refreshes and filter changes');
+  assert.deepEqual(selected(), ['false', 'false']);
+  press('credits');
+  assert.equal(get('content').dataset.metric, 'credits');
+  press('tokens');
+  assert.equal(get('content').dataset.metric, 'tokens');
+  assert.deepEqual(selected(), ['true', 'false']);
+});
+
 test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
   const { get, requests, intervals, listeners, document } = await requestPanel();
   assert.equal(intervals.length, 1);

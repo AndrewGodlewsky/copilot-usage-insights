@@ -16,7 +16,7 @@ const creditNumber = value => formatCredits(value, { simplify: state.simplifyNum
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', metricEmphasis: true, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -519,7 +519,8 @@ function render() {
 function renderContent() {
   const r = state.report;
   if (!r) return;
-  $('content').dataset.metric = state.metric;
+  if (state.metricEmphasis) $('content').dataset.metric = state.metric;
+  else delete $('content').dataset.metric;
   $('tiles').hidden = state.view === 'efficiency';
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   renderHeaderCredits();
@@ -620,7 +621,14 @@ $('breakdown-sections').onclick = e => {
   selectButton('breakdown-sections', 'section', section);
   for (const name of ['skills', 'plugins', 'mcp']) $(`${name}-panel`).hidden = name !== section;
 };
-$('metric').onclick = e => { if (!e.target.dataset.metric) return; state.metric = e.target.dataset.metric; selectButton('metric', 'metric', state.metric); render(); };
+$('metric').onclick = e => {
+  const metric = e.target.dataset.metric;
+  if (!['tokens', 'credits'].includes(metric)) return;
+  state.metricEmphasis = metric !== state.metric || !state.metricEmphasis;
+  state.metric = metric;
+  selectButton('metric', 'metric', state.metricEmphasis ? metric : null);
+  render();
+};
 $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
