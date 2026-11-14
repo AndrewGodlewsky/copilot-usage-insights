@@ -26,6 +26,8 @@ td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{d
 #breakdown .request-expansion>td{padding:0;max-width:none;text-align:left;white-space:normal;overflow:visible}.request-list{padding:16px;background:var(--bg);border-block:1px solid var(--border)}.request-list>header{margin-bottom:12px}.request-list strong{font-size:calc(12px * var(--text-scale))}.request-paging{display:flex;gap:8px;align-items:center;margin-left:auto}.request-paging span{color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}.request-paging button{padding:4px 8px}.request-table small{display:block;margin-top:4px}.request-detail{padding:16px;background:var(--card);border-left:2px solid var(--s1)}.request-detail h3{font-size:calc(12px * var(--text-scale));margin:16px 0 8px}.request-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 20px;margin:0}.request-metrics dt{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.request-metrics dd{margin:4px 0 0;white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.request-prompt{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;max-height:22em;overflow:auto;padding:12px;border:1px solid var(--border);border-radius:6px;margin:0}
 .request-paging button[aria-disabled=true]{opacity:.55;cursor:default}.request-paging button:disabled{cursor:default}
 
+.efficiency-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:8px 0}.efficiency-intro>div{min-width:0}.efficiency-intro>button{flex-shrink:0}.efficiency-kicker{display:block;color:var(--muted-fg);font-size:calc(10px * var(--text-scale));letter-spacing:.08em;font-weight:600;margin-bottom:7px}.efficiency-intro h2{font-size:calc(24px * var(--text-scale));letter-spacing:-.025em;line-height:1.3}.efficiency-intro #efficiency-scope{margin-top:10px}.efficiency-flow{padding:22px}.efficiency-flow-heading{display:flex;align-items:center;gap:22px;margin:8px 0 20px}.efficiency-flow-heading>strong{font-size:calc(46px * var(--text-scale));line-height:1.2;font-weight:600;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.efficiency-flow-heading>strong>span{font-size:.55em;margin-left:2px;color:var(--muted-fg)}.efficiency-flow-heading h3{font-size:calc(17px * var(--text-scale));font-weight:600;margin:0 0 4px}.efficiency-flow-heading p{max-width:52ch}.efficiency-track{height:14px;display:flex;overflow:hidden;border-radius:4px;background:var(--muted)}.efficiency-track>span{height:100%}.efficiency-flow-labels{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:10px 0 7px;font-size:calc(12px * var(--text-scale))}.efficiency-flow-labels>span{display:flex;align-items:center;gap:7px}.efficiency-flow-labels i{width:8px;height:8px;border-radius:2px}.efficiency-flow-labels b{font-weight:600}.efficiency-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:20px 0;margin-top:18px!important;gap:18px;border-top:1px solid var(--border)}.efficiency-metrics>div{display:flex;flex-direction:column;gap:5px;min-width:0}.efficiency-metrics .label{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.efficiency-metrics .value{font-size:calc(23px * var(--text-scale));font-weight:600;line-height:1.25;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.efficiency-metrics .sub{font-size:calc(10px * var(--text-scale));color:var(--muted-fg)}.efficiency-cache{border-left:3px solid var(--s3);padding:12px 15px;background:var(--bg);border-radius:0 5px 5px 0}.efficiency-cache strong{font-size:calc(13px * var(--text-scale));font-weight:600}.efficiency-cache p{font-size:calc(11px * var(--text-scale));margin-top:4px;max-width:95ch}.efficiency-insight{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:28px;padding-block:8px}.efficiency-insight h3{font-size:calc(17px * var(--text-scale));line-height:1.4;letter-spacing:-.015em}.efficiency-insight .efficiency-experiment{border-left:2px solid var(--border);padding-left:20px}.efficiency-experiment details{border:0;border-radius:0;padding:3px 0 0}.efficiency-experiment details p{margin:10px 0 0;color:var(--muted-fg);font-size:calc(12px * var(--text-scale))}.efficiency-comparison{padding:16px;background:var(--card)}.efficiency-comparison>summary{color:var(--fg);font-size:calc(13px * var(--text-scale));font-weight:600}.efficiency-comparison>summary span{font-weight:400}.efficiency-comparison .table-wrap{margin-top:15px}.efficiency-context>p{max-width:88ch;font-size:calc(12px * var(--text-scale))}.efficiency-context-total{margin:20px 0 4px;font-size:calc(12px * var(--text-scale));color:var(--muted-fg)}.efficiency-context-total strong{font-size:calc(25px * var(--text-scale));font-weight:600;color:var(--fg);margin-right:5px}.efficiency-context-categories{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:15px;margin:20px 0}.efficiency-context-categories dt{font-size:calc(11px * var(--text-scale));color:var(--muted-fg)}.efficiency-context-categories dd{font-size:calc(17px * var(--text-scale));font-weight:600;margin:5px 0 0}.context-sources{margin-top:12px}.context-sources td+td,.context-sources th+th{border-left:1px dotted var(--border)}#efficiency-review-dialog{width:min(820px,calc(100% - 32px))}#efficiency-review-output{font-family:ui-monospace,Consolas,monospace;font-size:calc(11px * var(--text-scale));white-space:pre-wrap;overflow-wrap:anywhere}#efficiency-review-status{min-height:1.7em}
+@media(max-width:720px){.efficiency-intro{flex-direction:column;gap:12px}.efficiency-flow{padding:16px}.efficiency-flow-heading{align-items:flex-start;gap:14px}.efficiency-flow-heading>strong{font-size:calc(36px * var(--text-scale))}.efficiency-insight{grid-template-columns:1fr;gap:14px}.efficiency-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.efficiency-experiment{margin-bottom:4px}}
 .session-paging{color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}
 html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 .support-footer{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 8px;padding:10px 0;color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}.support-footer button,.support-footer a{font:inherit;border:0;background:transparent;padding:2px 0;color:var(--s1);text-decoration:none}.support-footer button:hover,.support-footer a:hover{color:var(--fg);text-decoration:underline}.support-footer a:focus-visible{outline:2px solid var(--s1);outline-offset:3px}.support-footer button:disabled{cursor:default}#logs-dialog{width:min(900px,calc(100% - 32px))}#logs-output{font-family:ui-monospace,Consolas,monospace;font-size:calc(11px * var(--text-scale));white-space:pre;overflow:auto}#logs-dialog footer{display:flex;justify-content:flex-end;gap:8px}#logs-status{min-height:1.7em}
@@ -69,22 +71,24 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <article class="card" id="mcp-panel" aria-label="MCP servers" hidden><header><span id="mcp-summary" class="muted"></span><label class="detail-sort">Sort by <select id="mcp-sort" aria-label="Sort MCP servers by"><option value="calls">Most calls</option><option value="failures">Most failures</option><option value="lastUsed">Recently used</option><option value="name">Name (A–Z)</option></select></label></header><div id="mcp" class="table-wrap"></div><p id="mcp-note" class="footnote integration-note"></p><p id="mcp-coverage" class="footnote" hidden></p></article>
     </section>
     <section id="efficiency-view" hidden>
-      <div class="efficiency-intro"><h2>Make each request go further</h2><p class="muted">Find patterns in context, cache reuse, and credit spend. These measures describe resource use; they do not measure the quality or value of your work.</p></div>
-      <div id="efficiency-summary" class="tiles" aria-label="Efficiency measures"></div>
-      <article class="card"><header><h2>Where to look next</h2><span class="muted">Based on the selected filters</span></header><div id="efficiency-insights"></div></article>
-      <article class="card"><header><h2>Compare models</h2><span class="muted">Most requests first</span></header><div id="efficiency-models" class="table-wrap"></div><p class="footnote integration-note">Select a model to inspect its usage. Hover over a measurement for its coverage. Workloads differ; compare similar tasks before choosing a model.</p></article>
-      <details class="efficiency-method"><summary>How these measures work</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and 50k input tokens, with 80% coverage. Increasing input means at least 2× and 10k more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
+      <div class="efficiency-intro"><div><span class="efficiency-kicker">YOUR USAGE, EXPLAINED</span><h2>Understand what each request carries</h2><p class="muted">See what uses your tokens, find patterns worth investigating, and choose one change to try.</p><p id="efficiency-scope" class="footnote"></p></div><button id="efficiency-review-open">Prepare AI review</button></div>
+      <article class="card efficiency-flow"><header><h2>Where your tokens go</h2><span class="muted">Selected filters · input includes cache</span></header><div id="efficiency-flow"></div><div id="efficiency-summary" class="efficiency-metrics" aria-label="Average request measurements"></div><div id="efficiency-cache" class="efficiency-cache"></div></article>
+      <article class="card efficiency-actions"><header><div><h2>Worth a closer look</h2><p class="footnote">Measured patterns, with one small experiment for each.</p></div><span id="efficiency-insight-count" class="muted"></span></header><div id="efficiency-insights"></div></article>
+      <article class="card efficiency-context"><header><div><h2>What is in your context right now?</h2><p class="footnote">Current conversation · separate from the selected history</p></div><button id="efficiency-context-read">Inspect context</button></header><p class="muted">Instructions, tool definitions, and conversation history can occupy context before your next request. Inspect the conversation hosting this dashboard to see its largest recorded contributors.</p><div id="efficiency-context-result" aria-live="polite"><p class="footnote integration-note">Loaded only when you ask. An installed skill or plugin is not proof that it is consuming context.</p></div></article>
+      <details class="efficiency-comparison"><summary>Compare models <span class="muted">· averages and measurement coverage</span></summary><div id="efficiency-models" class="table-wrap"></div><p class="footnote integration-note">Select a model to inspect its usage. Hover over a measurement for its coverage. Workloads differ; compare similar tasks and verify the result before choosing a model.</p></details>
+      <details class="efficiency-method"><summary>How to read this page</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and 50k input tokens, with 80% coverage. Increasing input means at least 2× and 10k more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>Tool definitions are already part of input, not tool results. A tool-overhead finding requires at least 5 matched samples, 80% coverage, 1k definition tokens per request and 10% of input. MCP findings require at least 3 failed calls; their failure rate excludes unknown outcomes. Current-context sources may overlap and are not added together. These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompts are read locally when you expand an individual request; nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.29</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.30</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
+  <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.29";
+const BUILD_VERSION = "0.1.30";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -159,11 +163,11 @@ function providerLabel(provider, fallback = provider) {
 // src/core/diagnostics.mjs
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
-const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas';
+const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
 const enumFields = {
-  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'skills.openFolder']),
+  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   action: new Set(['copy', 'open']),
@@ -733,6 +737,40 @@ function pixelBanner(report, opts = {}) {
   return `<svg class="banner" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" role="img" aria-label="Pixel skyline for the selected date range" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
+// src/panel/efficiency.mjs
+const reviewMetricKeys = ['requests', 'inputRequests', 'inputTokens', 'outputRequests', 'outputTokens', 'cacheRequests', 'cacheInput', 'cacheRead', 'creditRequests', 'credits', 'averageInput', 'averageOutput', 'cacheHitRate', 'averageCredits', 'pairedRequests', 'pairedInput', 'pairedOutput', 'toolRequests', 'toolTokens', 'toolInput', 'averageToolTokens', 'toolShare', 'reasoningRequests', 'reasoningTokens'];
+const reviewNumbers = (row, keys) => Object.fromEntries(keys.map(key => [key, Number.isFinite(row?.[key]) && row[key] >= 0 ? row[key] : null]));
+const reviewDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z)?$/.test(value) ? value : null;
+
+function buildEfficiencyReview(report, context, scope = {}) {
+  const e = report.efficiency, models = e.models.slice(0, 20);
+  const modelAlias = name => { const index = models.findIndex(row => row.name === name); return index < 0 ? 'Other model' : `Model ${index + 1}`; };
+  const mcp = (report.mcp?.rows || []).filter(row => row.calls > 0).sort((a, b) => b.calls - a.calls);
+  const data = {
+    schema: 'usage-insights-efficiency-v1', capturedAt: reviewDate(report.generatedAt),
+    units: 'Tokens are counts; credits are Copilot AI credits; shares/rates are percentages (0–100). Counts may have different coverage.',
+    scope: { range: ['1d', '7d', '30d', '90d', 'all', 'custom'].includes(report.query.range) ? report.query.range : null,
+      startDate: reviewDate(report.query.startDate), endDate: reviewDate(report.query.endDate),
+      modelFiltered: Boolean(scope.models?.length), projectFiltered: Boolean(scope.project), sessionFiltered: Boolean(scope.session) },
+    history: { summary: reviewNumbers(e.summary, reviewMetricKeys),
+      models: models.map(row => ({ name: modelAlias(row.name), ...reviewNumbers(row, ['requests', 'inputRequests', 'averageInput', 'outputRequests', 'averageOutput', 'cacheRequests', 'cacheInput', 'cacheRead', 'cacheHitRate', 'toolRequests', 'averageToolTokens', 'toolShare', 'creditRequests', 'credits', 'averageCredits']) })), modelsOmitted: Math.max(0, e.models.length - models.length),
+      patterns: e.insights.filter(i => ['growth', 'cache', 'spend', 'tools'].includes(i.kind)).slice(0, 4).map(i => ({ kind: i.kind, model: modelAlias(i.model),
+        ...reviewNumbers(i, ['early', 'late', 'multiple', 'rate', 'input', 'cached', 'credits', 'share', 'average', 'samples', 'requests']) })),
+      mcp: mcp.slice(0, 20).map((row, i) => ({ name: `Server ${i + 1}`, ...reviewNumbers(row, ['calls', 'successes', 'failures', 'unknown', 'successRate']) })), mcpServersOmitted: Math.max(0, mcp.length - 20) },
+    currentContext: context?.available ? { checkedAt: reviewDate(context.checkedAt), ...reviewNumbers(context, ['totalTokens', 'limit']),
+      categories: reviewNumbers(context.categories, ['systemPrompt', 'customInstructions', 'systemTools', 'mcpTools', 'messages']) } : null,
+    limits: [
+      'Historical filters apply to history only. Current context is a separate, on-demand snapshot of the conversation hosting the dashboard.',
+      'Input includes cache. Tool definitions are a subset of input, not tool results. Reasoning is a subset of output. Do not add these subsets to totals.',
+      'Averages use only known samples. Paired input/output uses the same requests; cache/tool shares use their own matched denominators.',
+      'No prompts, outcomes of the actual work, installed-skill usage ratio, per-skill tokens, or historical context-source attribution are available here.',
+      'Low cache reuse does not prove chat switching. Large context does not prove waste. MCP tool failures do not prove connectivity failures.',
+      'Model and server names are aliases. Workloads can differ. Current context is an estimate, not a historical bill.'
+    ]
+  };
+  return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + JSON.stringify(data, null, 2);
+}
+
 // src/panel/panel.js
 
 const $ = id => document.getElementById(id);
@@ -1045,38 +1083,118 @@ function renderBreakdownContent() {
 const efficiencyMeasures = [
   { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => compact(value), hint: 'Input includes cached context.' },
   { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => compact(value), hint: 'Output includes reasoning when reported.' },
+  { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => compact(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
   { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => value.toLocaleString(undefined, { maximumSignificantDigits: 4 }), hint: 'Only complete credit charges are included.' },
 ];
 const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
 const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? row[metric.key].toLocaleString(undefined, { maximumSignificantDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+function renderEfficiencyFlow(s) {
+  const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
+  const share = total > 0 ? s.pairedInput / total * 100 : null;
+  $('efficiency-flow').innerHTML = share === null
+    ? '<p class="muted">Input and output counts from the same requests are needed to show where tokens go. Try a wider range if these records are incomplete.</p>'
+    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${compact(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${compact(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
+  $('efficiency-cache').innerHTML = s.cacheHitRate == null
+    ? `<strong>Cache reuse is not measurable here.</strong><p class="muted">${number(s.cacheRequests ?? 0)} of ${number(s.requests)} requests have a complete cache split. Missing cache detail is not zero reuse.</p>`
+    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${compact(s.cacheRead)} of ${compact(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
+}
+
+let efficiencyContextSnapshot;
+$('efficiency-context-read').onclick = async () => {
+  const button = $('efficiency-context-read');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Inspecting current context…</p>';
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    efficiencyContextSnapshot = await request('efficiency.context', {}, false, controller.signal);
+    renderEfficiencyContext();
+  } catch (error) {
+    efficiencyContextSnapshot = undefined;
+    clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
+    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical measures above are still available.</p>';
+  } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; }
+};
+function renderEfficiencyContext() {
+  const c = efficiencyContextSnapshot;
+  if (!c?.available) {
+    const message = c?.reason === 'empty' ? 'This conversation has no context snapshot yet. Make a request in Copilot, then inspect again.'
+      : c?.reason === 'timeout' ? 'Copilot did not return a context snapshot in time. Try again later, or use /context in Copilot.'
+        : 'Context attribution is not available in this host session. Try /context in Copilot to inspect it there.';
+    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical measures above are still available.</p>`;
+    return;
+  }
+  const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
+  const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${compact(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${compact(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : compact(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${compact(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details><p class="footnote integration-note">Start with the largest contributor you control. Shorten repeated instructions, move task-specific detail into a skill or reference loaded when needed, or remove unrelated tool definitions for a focused task. Then inspect again and verify the agent still has the context it needs.</p>`;
+}
+$('efficiency-review-open').onclick = () => {
+  if (!state.report) return;
+  $('efficiency-review-output').value = buildEfficiencyReview(state.report, efficiencyContextSnapshot, JSON.parse(state.filterKey || '{}'));
+  $('efficiency-review-status').textContent = 'Snapshot ready. Review the data before copying.';
+  $('efficiency-review-dialog').showModal();
+};
+$('efficiency-review-close').onclick = () => $('efficiency-review-dialog').close();
+$('efficiency-review-copy').onclick = async () => {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText($('efficiency-review-output').value);
+    $('efficiency-review-status').textContent = 'Copied. Paste into a Copilot conversation when you want a review.';
+  } catch {
+    $('efficiency-review-output').focus(); $('efficiency-review-output').select();
+    $('efficiency-review-status').textContent = 'Clipboard access is unavailable. The report is selected; copy it manually.';
+  }
+};
 function efficiencyDirection(insight) {
+  if (insight.kind === 'tools') return {
+    title: 'Tools take context before they do any work',
+    evidence: `${insight.model} carried ${compact(insight.average)} tool-definition tokens per measured request, accounting for ${number(insight.share)}% of input. Measured on ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    action: 'Inspect current context below. If a large tool set is unrelated to your next task, disable that integration for the task and compare input on similar requests.',
+    caveat: 'Definitions describe available tools. This does not measure tool results, and those tools may be necessary.',
+    compare: 'Compare tool-definition tokens per request and verify that the agent still has the tools it needs.',
+  };
   if (insight.kind === 'growth') return {
     title: 'Inspect larger input later in a session',
     evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${compact(insight.early)} to ${compact(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
     action: 'Review the context attached to those later requests. For a different task or phase, start a fresh conversation with a concise handoff; keep related follow-ups together.',
+    caveat: 'Larger input can be necessary as a task develops. Growth alone does not mean wasted tokens.',
+    compare: 'On comparable work, compare input per request before and after a phase handoff; check that important context was retained.',
   };
   if (insight.kind === 'cache') return {
     title: 'Check opportunities to reuse context',
     evidence: `${insight.model} reused ${number(insight.rate)}% of ${compact(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
     action: 'Keep related work in one conversation and avoid unnecessary model changes within it. A cold start or expired cache can also explain low reuse.',
+    caveat: 'Low reuse does not identify its cause or prove that you are switching chats too often.',
+    compare: 'Compare cache reuse within the same model on similar follow-ups. Keep the workflow only if it still fits the task.',
   };
   return {
     title: 'Start a model comparison where credits concentrate',
     evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
     action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
+    caveat: 'Credit concentration may reflect the volume or difficulty of work rather than the model being inefficient.',
+    compare: 'Compare credits per completed task and the quality of the result, including any retries you needed.',
   };
 }
 function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
   const { summary, models, insights } = efficiency;
+  const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
-  $('efficiency-summary').innerHTML = efficiencyMeasures.map(metric => `<div class="tile"><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count])} of ${number(summary.requests)} requests</span></div>`).join('');
+  const rangeName = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' }[state.report.query.range];
+  $('efficiency-scope').textContent = `${number(summary.requests)} recorded requests · ${rangeName} · applied model, project, and session filters`;
+  renderEfficiencyFlow(summary);
+  $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);
-    return `<section class="efficiency-insight"><h3>${copy.title}</h3><p class="muted">${esc(copy.evidence)}</p><p>${copy.action}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></section>`;
-  }).join('') : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${index + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
+  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  if (failedServer) {
+    const completed = failedServer.failures + failedServer.successes;
+    $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
+  }
+  $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0)} patterns to review`;
   $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
@@ -1095,6 +1213,12 @@ async function inspectEfficiency(target) {
   if (JSON.stringify(query()) !== state.filterKey) await load();
 }
 $('efficiency-insights').onclick = event => {
+  if (event.target.closest('[data-efficiency-mcp]')?.dataset.efficiencyMcp) {
+    showView('breakdown');
+    $('breakdown-sections').onclick({ target: { dataset: { section: 'mcp' } } });
+    $('mcp-sort').focus({ preventScroll: true });
+    return;
+  }
   const index = event.target.closest('[data-efficiency-insight]')?.dataset.efficiencyInsight;
   if (index !== undefined) return inspectEfficiency(state.report?.efficiency?.insights[Number(index)]);
 };
@@ -1109,6 +1233,7 @@ function render() {
 function renderContent() {
   const r = state.report;
   if (!r) return;
+  $('tiles').hidden = state.view === 'efficiency';
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;

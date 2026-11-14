@@ -70,6 +70,7 @@ test('concurrent canvas opens share one server; final close disposes it and reop
   const session = { sessionId: 'current-session', rpc: { canvas: { open: async input => { opened = input; } },
     mcp: { listConfigured: async () => ({ servers: [{ name: 'test', enabled: true, live: { status: 'connected' } }] }) },
     plugins: { list: async () => ({ plugins: [] }) },
+    metadata: { getContextAttribution: async () => ({ contextAttribution: { totalTokens: 100, categories: {} } }) },
   } };
   const registration = await registerCanvas({
     createCanvas: c => c,
@@ -82,9 +83,25 @@ test('concurrent canvas opens share one server; final close disposes it and reop
   const inventory = await serverOptions.readIntegrations();
   assert.equal(inventory.mcp.sessionId, 'current-session');
   assert.equal(inventory.mcp.rows[0].status, 'connected');
+  assert.equal((await serverOptions.readContext()).totalTokens, 100);
   await canvas.onClose({ instanceId: 'a' }); assert.equal(stops, 0);
   await canvas.onClose({ instanceId: 'b' }); assert.equal(stops, 1);
   await canvas.open({ instanceId: 'c' }); assert.equal(starts, 2);
   await config.tools[0].handler({}); assert.equal(opened.canvasId, 'usage-insights');
   await registration.dispose(); assert.equal(stops, 2);
+});
+
+test('context endpoint is protected, rejects arbitrary options and never scans history', async t => {
+  let calls = 0;
+  const server = await startServer({ html: '<title>Test</title>',
+    scanner: { scan: async () => { throw new Error('Unexpected scan'); } },
+    readContext: async () => { calls++; return { available: true, totalTokens: 100 }; } });
+  t.after(() => server.close());
+  const request = (input = {}, origin = new URL(server.url).origin) => fetch(server.url + 'api', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify({ method: 'efficiency.context', input }) });
+  assert.equal((await request({}, 'https://example.com')).status, 403);
+  assert.equal((await request({ sessionId: 'other-session' })).status, 400);
+  assert.equal(calls, 0);
+  assert.equal((await (await request()).json()).totalTokens, 100);
+  assert.equal(calls, 1);
 });

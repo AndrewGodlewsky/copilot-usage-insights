@@ -1,10 +1,16 @@
-const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, creditRequests: 0, creditNano: 0n });
+const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, creditRequests: 0, creditNano: 0n,
+  pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, reasoningRequests: 0, reasoningTokens: 0 });
 const known = value => Number.isFinite(value) && value >= 0;
 function addMeasurement(b, r) {
   b.requests++;
   if (known(r.inputTotal)) { b.inputRequests++; b.inputTokens += r.inputTotal; }
   if (known(r.output)) { b.outputRequests++; b.outputTokens += r.output; }
-  if (known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
+  if (known(r.inputTotal) && known(r.output)) { b.pairedRequests++; b.pairedInput += r.inputTotal; b.pairedOutput += r.output; }
+  if (known(r.toolTokenCount) && known(r.inputTotal) && r.toolTokenCount <= r.inputTotal) {
+    b.toolRequests++; b.toolTokens += r.toolTokenCount; b.toolInput += r.inputTotal;
+  }
+  if (known(r.reasoning) && known(r.output) && r.reasoning <= r.output) { b.reasoningRequests++; b.reasoningTokens += r.reasoning; }
+  if (r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
     b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead;
   }
   if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') { b.creditRequests++; b.creditNano += BigInt(r.nanoAiu); }
@@ -15,6 +21,8 @@ function finishMeasurement(b) {
   return { ...rest, credits: b.creditRequests ? credits : null,
     averageInput: b.inputRequests ? b.inputTokens / b.inputRequests : null,
     averageOutput: b.outputRequests ? b.outputTokens / b.outputRequests : null,
+    averageToolTokens: b.toolRequests ? b.toolTokens / b.toolRequests : null,
+    toolShare: b.toolInput > 0 ? b.toolTokens / b.toolInput * 100 : null,
     cacheHitRate: b.cacheInput > 0 ? b.cacheRead / b.cacheInput * 100 : null,
     averageCredits: b.creditRequests ? credits / b.creditRequests : null };
 }
@@ -54,6 +62,9 @@ export function createEfficiencyAccumulator() {
           sessionName: sessionLabels.get(g.session) || 'Unnamed session', initiator: g.initiator, early, late, increase, multiple: late / early, samples: g.inputRequests, requests: g.requests };
       }
       if (growth) insights.push(growth);
+      const toolHeavy = rows.filter(r => r.toolRequests >= 5 && r.toolRequests / r.requests >= .8 && r.toolShare >= 10 && r.averageToolTokens >= 1000)
+        .sort((a, b) => b.toolTokens - a.toolTokens || a.name.localeCompare(b.name))[0];
+      if (toolHeavy) insights.push({ kind: 'tools', model: toolHeavy.name, average: toolHeavy.averageToolTokens, share: toolHeavy.toolShare, samples: toolHeavy.toolRequests, requests: toolHeavy.requests });
       const lowCache = rows.filter(r => r.cacheRequests >= 5 && r.cacheRequests / r.requests >= .8 && r.cacheInput >= 50000 && r.cacheHitRate < 50)
         .sort((a, b) => (b.cacheInput - b.cacheRead) - (a.cacheInput - a.cacheRead) || a.name.localeCompare(b.name))[0];
       if (lowCache) insights.push({ kind: 'cache', model: lowCache.name, rate: lowCache.cacheHitRate, input: lowCache.cacheInput, cached: lowCache.cacheRead, samples: lowCache.cacheRequests, requests: lowCache.requests });

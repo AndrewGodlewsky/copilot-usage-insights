@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEfficiencyAccumulator } from '../src/core/efficiency.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
+import { normalizeUsage } from '../src/core/copilot.mjs';
 
 const now = new Date(2026, 10, 14, 12);
 const record = (i, extra = {}) => ({ key: `r${i}`, sessionId: 's1', sessionName: 'Work', project: 'Project', model: 'Model A', initiator: 'user',
@@ -13,6 +14,33 @@ function analyze(records) {
   for (const r of records) analysis.add(r);
   return analysis.finish(new Map([['s1', 'Work']]));
 }
+
+test('context overhead uses matched samples, excludes invalid subsets and preserves missing cache details', () => {
+  const normalized = normalizeUsage({ provider: { kind: 'copilot' }, inputTokens: 10000, outputTokens: 500,
+    cacheReadTokens: 0, cacheWriteTokens: 0, cacheDetailsReported: false, toolTokenCount: 2500, availableToolCount: 12 },
+    { key: 'r', timestamp: now.toISOString(), sessionId: 's' }).record;
+  assert.equal(normalized.cacheRead, null);
+  assert.equal(normalized.toolTokenCount, 2500);
+  assert.equal(normalized.availableToolCount, 12);
+  const { summary } = analyze([
+    record(0, { inputTotal: 100, output: 50, reasoning: 20, toolTokenCount: 25 }),
+    record(1, { inputTotal: 900, output: null, reasoning: 400, toolTokenCount: 75 }),
+    record(2, { inputTotal: null, output: 100, reasoning: 200, toolTokenCount: 200 }),
+    record(3, { inputTotal: 100, output: 100, reasoning: null, toolTokenCount: 101 }),
+  ]);
+  assert.equal(summary.toolRequests, 2);
+  assert.equal(summary.averageToolTokens, 50);
+  assert.equal(summary.toolShare, 10);
+  assert.equal(summary.pairedRequests, 2);
+  assert.equal(summary.pairedInput, 200);
+  assert.equal(summary.pairedOutput, 150);
+  assert.equal(summary.reasoningRequests, 1);
+  assert.equal(summary.reasoningTokens, 20);
+  assert.equal(analyze([record(0)]).summary.averageToolTokens, null);
+  const records = Array.from({ length: 5 }, (_, i) => record(i, { toolTokenCount: 2000 }));
+  assert.equal(analyze(records).insights.find(i => i.kind === 'tools').share, 20);
+  assert.equal(analyze(records.slice(0, 4)).insights.some(i => i.kind === 'tools'), false);
+});
 
 test('efficiency denominators match known measurements and exclude partial charges without losing zeros', () => {
   const { summary } = analyze([

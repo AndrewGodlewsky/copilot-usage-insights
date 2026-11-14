@@ -10,9 +10,10 @@ import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
+import { createContextReader } from './context.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
@@ -79,6 +80,9 @@ export async function startServer({ settings = createSettings(), scanner = creat
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
         result = { version, runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() };
+      } else if (message.method === 'efficiency.context') {
+        if (Object.keys(input).length) throw new TypeError('Context inspection does not accept options.');
+        result = await diagnostics.measure('context.read', {}, readContext);
       } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {

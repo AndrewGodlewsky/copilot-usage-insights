@@ -2,6 +2,7 @@ import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageV
 import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
+import { buildEfficiencyReview } from './efficiency.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -313,38 +314,118 @@ function renderBreakdownContent() {
 const efficiencyMeasures = [
   { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => compact(value), hint: 'Input includes cached context.' },
   { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => compact(value), hint: 'Output includes reasoning when reported.' },
+  { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => compact(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
   { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => value.toLocaleString(undefined, { maximumSignificantDigits: 4 }), hint: 'Only complete credit charges are included.' },
 ];
 const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
 const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? row[metric.key].toLocaleString(undefined, { maximumSignificantDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+function renderEfficiencyFlow(s) {
+  const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
+  const share = total > 0 ? s.pairedInput / total * 100 : null;
+  $('efficiency-flow').innerHTML = share === null
+    ? '<p class="muted">Input and output counts from the same requests are needed to show where tokens go. Try a wider range if these records are incomplete.</p>'
+    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${compact(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${compact(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
+  $('efficiency-cache').innerHTML = s.cacheHitRate == null
+    ? `<strong>Cache reuse is not measurable here.</strong><p class="muted">${number(s.cacheRequests ?? 0)} of ${number(s.requests)} requests have a complete cache split. Missing cache detail is not zero reuse.</p>`
+    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${compact(s.cacheRead)} of ${compact(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
+}
+
+let efficiencyContextSnapshot;
+$('efficiency-context-read').onclick = async () => {
+  const button = $('efficiency-context-read');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Inspecting current context…</p>';
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    efficiencyContextSnapshot = await request('efficiency.context', {}, false, controller.signal);
+    renderEfficiencyContext();
+  } catch (error) {
+    efficiencyContextSnapshot = undefined;
+    clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
+    $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical measures above are still available.</p>';
+  } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; }
+};
+function renderEfficiencyContext() {
+  const c = efficiencyContextSnapshot;
+  if (!c?.available) {
+    const message = c?.reason === 'empty' ? 'This conversation has no context snapshot yet. Make a request in Copilot, then inspect again.'
+      : c?.reason === 'timeout' ? 'Copilot did not return a context snapshot in time. Try again later, or use /context in Copilot.'
+        : 'Context attribution is not available in this host session. Try /context in Copilot to inspect it there.';
+    $('efficiency-context-result').innerHTML = `<p class="footnote integration-note">${message} Historical measures above are still available.</p>`;
+    return;
+  }
+  const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
+  const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${compact(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${compact(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : compact(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${compact(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details><p class="footnote integration-note">Start with the largest contributor you control. Shorten repeated instructions, move task-specific detail into a skill or reference loaded when needed, or remove unrelated tool definitions for a focused task. Then inspect again and verify the agent still has the context it needs.</p>`;
+}
+$('efficiency-review-open').onclick = () => {
+  if (!state.report) return;
+  $('efficiency-review-output').value = buildEfficiencyReview(state.report, efficiencyContextSnapshot, JSON.parse(state.filterKey || '{}'));
+  $('efficiency-review-status').textContent = 'Snapshot ready. Review the data before copying.';
+  $('efficiency-review-dialog').showModal();
+};
+$('efficiency-review-close').onclick = () => $('efficiency-review-dialog').close();
+$('efficiency-review-copy').onclick = async () => {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await navigator.clipboard.writeText($('efficiency-review-output').value);
+    $('efficiency-review-status').textContent = 'Copied. Paste into a Copilot conversation when you want a review.';
+  } catch {
+    $('efficiency-review-output').focus(); $('efficiency-review-output').select();
+    $('efficiency-review-status').textContent = 'Clipboard access is unavailable. The report is selected; copy it manually.';
+  }
+};
 function efficiencyDirection(insight) {
+  if (insight.kind === 'tools') return {
+    title: 'Tools take context before they do any work',
+    evidence: `${insight.model} carried ${compact(insight.average)} tool-definition tokens per measured request, accounting for ${number(insight.share)}% of input. Measured on ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    action: 'Inspect current context below. If a large tool set is unrelated to your next task, disable that integration for the task and compare input on similar requests.',
+    caveat: 'Definitions describe available tools. This does not measure tool results, and those tools may be necessary.',
+    compare: 'Compare tool-definition tokens per request and verify that the agent still has the tools it needs.',
+  };
   if (insight.kind === 'growth') return {
     title: 'Inspect larger input later in a session',
     evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${compact(insight.early)} to ${compact(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
     action: 'Review the context attached to those later requests. For a different task or phase, start a fresh conversation with a concise handoff; keep related follow-ups together.',
+    caveat: 'Larger input can be necessary as a task develops. Growth alone does not mean wasted tokens.',
+    compare: 'On comparable work, compare input per request before and after a phase handoff; check that important context was retained.',
   };
   if (insight.kind === 'cache') return {
     title: 'Check opportunities to reuse context',
     evidence: `${insight.model} reused ${number(insight.rate)}% of ${compact(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
     action: 'Keep related work in one conversation and avoid unnecessary model changes within it. A cold start or expired cache can also explain low reuse.',
+    caveat: 'Low reuse does not identify its cause or prove that you are switching chats too often.',
+    compare: 'Compare cache reuse within the same model on similar follow-ups. Keep the workflow only if it still fits the task.',
   };
   return {
     title: 'Start a model comparison where credits concentrate',
     evidence: `${insight.model} used ${number(insight.credits)} credits, or ${number(insight.share)}% of complete recorded charges. ${number(insight.samples)} of ${number(insight.requests)} requests had complete charges.`,
     action: 'On your next routine, well-scoped task, test a lighter model. Compare similar work and check the result before adopting it.',
+    caveat: 'Credit concentration may reflect the volume or difficulty of work rather than the model being inefficient.',
+    compare: 'Compare credits per completed task and the quality of the result, including any retries you needed.',
   };
 }
 function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
   const { summary, models, insights } = efficiency;
+  const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
-  $('efficiency-summary').innerHTML = efficiencyMeasures.map(metric => `<div class="tile"><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count])} of ${number(summary.requests)} requests</span></div>`).join('');
+  const rangeName = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' }[state.report.query.range];
+  $('efficiency-scope').textContent = `${number(summary.requests)} recorded requests · ${rangeName} · applied model, project, and session filters`;
+  renderEfficiencyFlow(summary);
+  $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);
-    return `<section class="efficiency-insight"><h3>${copy.title}</h3><p class="muted">${esc(copy.evidence)}</p><p>${copy.action}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></section>`;
-  }).join('') : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${index + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
+  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Compare model averages below or try a wider date range.'}</p>`;
+  if (failedServer) {
+    const completed = failedServer.failures + failedServer.successes;
+    $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
+  }
+  $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0)} patterns to review`;
   $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
@@ -363,6 +444,12 @@ async function inspectEfficiency(target) {
   if (JSON.stringify(query()) !== state.filterKey) await load();
 }
 $('efficiency-insights').onclick = event => {
+  if (event.target.closest('[data-efficiency-mcp]')?.dataset.efficiencyMcp) {
+    showView('breakdown');
+    $('breakdown-sections').onclick({ target: { dataset: { section: 'mcp' } } });
+    $('mcp-sort').focus({ preventScroll: true });
+    return;
+  }
   const index = event.target.closest('[data-efficiency-insight]')?.dataset.efficiencyInsight;
   if (index !== undefined) return inspectEfficiency(state.report?.efficiency?.insights[Number(index)]);
 };
@@ -377,6 +464,7 @@ function render() {
 function renderContent() {
   const r = state.report;
   if (!r) return;
+  $('tiles').hidden = state.view === 'efficiency';
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
   renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;

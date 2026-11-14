@@ -38,6 +38,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
       if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
+      if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
       if (message.method === 'settings.set') {
         if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
         server.config = { ...server.config, ...message.input };
@@ -380,6 +381,49 @@ test('Efficiency distinguishes empty data and tiny credit values and preserves f
   assert.match(get('efficiency-summary').innerHTML, /0\.000000001/);
   assert.match(get('efficiency-summary').innerHTML, /Unavailable/);
   assert.match(get('efficiency-models').innerHTML, /title="0\.000000001/);
+});
+
+test('efficiency context is explicit, escaped and independent of refresh; review stays frozen with copy fallback', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, requests, server } = await mountPanel(report);
+  assert.equal(requests.some(r => r.method === 'efficiency.context'), false);
+  await get('efficiency-context-read').onclick();
+  assert.match(get('efficiency-context-result').innerHTML, /not available|unavailable/i);
+  server.contextSnapshot = { available: true, checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, limit: 10000,
+    categories: { customInstructions: 100, messages: 900 }, entries: [{ id: 's', kind: 'skill', label: '<PRIVATE>', tokens: 100 }], omitted: 0 };
+  await get('efficiency-context-read').onclick();
+  assert.match(get('efficiency-context-result').innerHTML, /&lt;PRIVATE&gt;/);
+  assert.doesNotMatch(get('efficiency-context-result').innerHTML, /<PRIVATE>/);
+  get('project').value = 'new filter not yet loaded';
+  get('efficiency-review-open').onclick();
+  const frozen = get('efficiency-review-output').value;
+  assert.match(frozen, /"projectFiltered": false/);
+  assert.doesNotMatch(frozen, /PRIVATE/);
+  report.efficiency.summary.requests = 50;
+  await get('refresh').onclick();
+  assert.equal(requests.filter(r => r.method === 'efficiency.context').length, 2);
+  assert.equal(get('efficiency-review-output').value, frozen);
+  await get('efficiency-review-copy').onclick();
+  assert.equal(server.copied.at(-1), frozen);
+  server.clipboardError = true;
+  await get('efficiency-review-copy').onclick();
+  assert.equal(get('efficiency-review-output').selected, true);
+});
+
+test('MCP efficiency findings use known outcomes and open the existing filtered MCP panel', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  report.mcp.rows = [{ name: '<server>', calls: 55, failures: 3, successes: 2, unknown: 50, successRate: 40, lastUsed: null, status: 'unavailable' }];
+  const { get, requests } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('tiles').hidden, true);
+  assert.match(get('efficiency-insights').innerHTML, /3 of 5.*60%.*50 outcomes/);
+  assert.doesNotMatch(get('efficiency-insights').innerHTML, /More recorded requests|<server>/);
+  const before = requests.length;
+  get('efficiency-insights').onclick({ target: { closest: () => ({ dataset: { efficiencyMcp: 'true' } }) } });
+  assert.equal(get('breakdown-view').hidden, false);
+  assert.equal(get('mcp-panel').hidden, false);
+  assert.equal(get('tiles').hidden, false);
+  assert.equal(requests.length, before);
 });
 
 test('header credits follow filtered totals, keep fractions, and preserve unavailable or partial coverage', async () => {

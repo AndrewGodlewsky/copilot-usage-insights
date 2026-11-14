@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.29** adds an Efficiency tab with model resource comparisons and evidence-backed directions for investigating input growth, cache reuse, and concentrated credit spend. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.30** redesigns Efficiency with a token-flow explanation, tool-definition overhead, evidence-backed experiments, MCP failure insights, on-demand current-context inspection, and a copyable AI review report. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -169,36 +169,41 @@ Opening or reloading logs does not rescan usage history. Dashboard logs are imme
 
 ## Efficiency
 
-The **Efficiency** tab helps you investigate model resource use. It measures context, cache reuse, and recorded charges; it cannot determine task success, output quality, or the value of your work. There is no overall score or projected savings figure.
+The **Efficiency** tab explains where tokens go and turns measured patterns into experiments you can try. It cannot judge the quality or value of your work. There is no efficiency score, projected savings, or assumption that large context is waste.
 
-Four measures appear for the selected date, model, project, and session filters, followed by the same comparison per model:
+**Where your tokens go** shows the input/output split using requests with both counts recorded. The large percentage is the share of measured token volume that was input, including cached input; it is not a share of credits. A separate cache explanation shows how much measured input was reused.
 
 | Measure | Calculation |
 | --- | --- |
-| Input / request | Total input, including cached context, divided by requests with a recorded input count |
-| Output / request | Recorded output divided by requests with an output count; reasoning remains part of output |
-| Cache reuse | Cache-read tokens divided by input tokens from the same requests with a complete, valid cache split; cache writes are not reads |
-| Credits / request | Complete recorded credit charges divided by requests with complete charges; zero charges count, missing and partial charges do not |
+| Input / request | Inclusive input divided by requests with an input count |
+| Output / request | Output divided by requests with an output count; reasoning remains part of output |
+| Tool definitions / request | Recorded `toolTokenCount` divided by requests with valid tool-definition and input counts; definitions must not exceed input |
+| Cache reuse | Cache-read tokens divided by inclusive input from the same requests with a valid, complete cache split |
+| Credits / request | Complete recorded charges divided by requests with complete charges; includes zero charges and excludes partial/missing charges |
 
-Every measure has its own coverage count. Summary counts are visible beneath the values; hover over a model measurement for its count and fuller value. Missing measurements show **Unavailable**. Different workloads make direct model rankings unreliable: compare similar work, and check its results yourself. Rows are ordered by request count, not an efficiency score.
+Coverage is visible under summary values and in model-value tooltips. Missing data shows **Unavailable**, not zero. Explicit `cacheDetailsReported: false` is treated as missing cache detail even if placeholder zero counts exist. Older records may lack tool-definition counts. Definitions describe available tools; they are already part of input and do not measure tool-result size or per-skill cost.
 
-**Where to look next** shows up to three directions when the data meets these review rules:
+**Worth a closer look** pairs each qualifying observation with evidence, an alternative explanation, one experiment, and a follow-up comparison. At most one finding of each kind is shown:
 
-| Pattern | Evidence required | Direction |
+| Pattern | Review threshold | Experiment |
 | --- | --- | --- |
-| Larger later input | Same project, session, model, and initiator; at least 6 input measurements and 80% coverage. The last three requests' median input is at least twice the first three's and at least 10,000 tokens larger. The sample timestamps must not overlap. | Inspect the later requests' context. Start fresh with a concise handoff for a different task or phase, keeping related follow-ups together. |
-| Low cache reuse | A model has at least 5 requests with complete cache counts, 50,000 measured input tokens, 80% coverage, and less than 50% cache reuse. | Keep related work together and avoid unnecessary model changes within it. Cold starts and cache expiry can also explain this pattern. |
-| Concentrated credits | At least two models have 5 complete charges each; at least 80% of requests have complete charges; one model accounts for at least 60% of those charges. | Try a lighter model on the next routine, well-scoped task, then compare similar work and check the result. |
+| Growing input | Same project, session, model and initiator; 6 measurements, 80% coverage; last-three median at least 2? and 10k above first-three median | For a new phase, try a fresh conversation with a concise handoff; verify retained context |
+| Tool-definition overhead | A model has 5 matched samples, 80% coverage, at least 1k definition tokens per request and 10% definition share of input | Inspect context; remove an unrelated integration for a focused task and compare |
+| Low cache reuse | 5 complete samples, 80% coverage, 50k input tokens and less than 50% reused | Keep related follow-ups together and avoid unnecessary model switches; cold starts and expiry can also explain low reuse |
+| Concentrated credits | Two models have 5 complete charges each; 80% overall charge coverage; one model has at least 60% of complete charges | Try a lighter model on comparable routine work, checking results and retries |
+| Repeated MCP failures | At least 3 failed tool calls for a server | Reproduce one operation and check status, authentication, permissions and arguments before retrying a larger task |
 
-These thresholds identify places to investigate, not ideal targets or proof of waste. The input comparison uses only known user-started or agent-continuation requests, separately; subagents and unknown initiators are excluded because their ordering may mix separate work. Comparisons cover the selected range, not necessarily a session's full lifetime. At most one direction of each kind is shown, prioritizing the largest absolute input increase or volume of input not read from cache where multiple candidates qualify. If no direction qualifies, the model comparison remains available.
+Growth comparisons exclude subagents, unknown initiators, and overlapping sample timestamps. MCP failure percentages use known successful/failed outcomes only and display unknown counts separately; a failed tool call does not establish a connectivity problem. These thresholds select places to investigate, not ideal targets. **Inspect usage** opens the filtered model breakdown (also selecting the session/project for a growth finding). **Inspect MCP activity** opens the MCP panel with the current filters. **Compare models** expands the averages table; compare similar work rather than treating it as a ranking.
 
-**Inspect usage** opens Breakdown with the relevant model selected, and also selects the project and session for a growth direction. Other active filters stay in place. Expand the model there to inspect its requests. Tab switching performs no extra API requests; inspecting a different scope uses the existing in-memory report path. No prompt text is read to generate directions, and no model call, background recorder, new database, or extra filesystem scan is added.
+**What is in your context right now?** is an explicit, on-demand inspection of the Copilot conversation hosting the dashboard. It calls the host's `metadata.getContextAttribution` capability and shows estimated tokens for system instructions, custom instructions, built-in tool definitions, MCP tool definitions, and conversation/tool-result messages. Expand **Largest attributed sources** for up to 100 sources, including skills/plugins when the host attributes them. Parent and child entries can overlap: they are never added together. A parent may be outside the displayed top 100. Installed or rarely invoked skills are not proof of wasted context.
 
-Input and output measures keep their physical meaning regardless of **Include cache tokens**; that checkbox continues to control token totals elsewhere. Selecting an individual daily bar does not narrow Efficiency. **How these measures work** in the tab explains the definitions and rules. Guidance follows GitHub's [AI usage optimization](https://docs.github.com/en/copilot/tutorials/optimize-ai-usage) and [conversation context guidance](https://docs.github.com/en/copilot/tutorials/optimize-chat-usage).
+This snapshot is separate from history filters, carries its own timestamp, and updates only on **Inspect context / Inspect again**. It is an estimate of current context, not a bill or a historical average of instruction/skill overhead. Unsupported, uninitialized, or timed-out hosts show a useful fallback to Copilot's `/context`. No extra history scan is performed; calls are single-flight and the UI has a bounded wait. The installed SDK contract is covered by tests; live availability depends on the Copilot build/session.
 
-The [Efficiency research index](docs/research/README.md) preserves the findings and proposed next steps: **24 techniques** organized into simple, intermediate, and advanced practices; a **38-scenario catalogue**; a review of **Copilot's stored data and SDK capabilities**; and a design for turning observations into useful directions. Each technique includes counterexamples, evidence limits, required data, and an experiment. These are research proposals, not additional shipped features. Low cache reuse does not prove excessive chat switching, and few skill uses do not prove inefficiency. The next priorities are measured tool-definition overhead, repeated execution failures, comparable interaction trends, and a separately scoped view of current context attribution.
+**Prepare AI review** opens a frozen, previewable report and review prompt. **Copy review prompt** copies it for you to paste into a Copilot conversation; sending it there may use credits. Nothing is sent automatically, and no background subagent is launched. Model/server names are aliased; the report contains only allowlisted measurements, coverage, filter flags, and optional numeric current-context categories. It excludes prompts, paths, session IDs/names, skill contents, raw logs, and source labels. It includes up to 20 models and 20 active MCP servers and states omitted counts. Clipboard failure selects the text for manual copying. Reopen the dialog to create a new snapshot.
 
-The [optional analysis proposal](docs/research/2026-11-14-efficiency-analysis-proposal.md) explores context-overhead statistics, MCP reliability findings, and an **Analyze My Usage** action that would review a bounded report on request. It distinguishes current context contributions from historical averages and records the host capabilities that still need live verification. This action is not implemented yet.
+Historical measures follow the selected date, model, project and session. **Include cache tokens** does not change Efficiency's inclusive input definitions, and selecting a daily bar does not narrow this tab. Switching tabs and refreshing history do not inspect context or invoke AI. Existing scanning/reporting is reused; there is no new database, recorder, dependency, or prompt scan for Efficiency.
+
+The [research index](docs/research/README.md) preserves the techniques, scenarios, data inventory, and inference limits behind this design. The [analysis proposal](docs/research/2026-11-14-efficiency-analysis-proposal.md) explains why the review currently uses an explicit report handoff: isolated, tool-restricted in-app agent execution still needs live verification. Guidance follows GitHub's [AI usage optimization](https://docs.github.com/en/copilot/tutorials/optimize-ai-usage) and [conversation context guidance](https://docs.github.com/en/copilot/tutorials/optimize-chat-usage).
 
 ## Skills
 

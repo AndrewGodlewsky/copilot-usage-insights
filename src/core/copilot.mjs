@@ -12,7 +12,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
   if (!key || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) return { reason: 'invalid' };
   const inputTotal = count(usage.inputTokens), output = count(usage.outputTokens);
   const cacheRead = count(usage.cacheReadTokens), cacheWrite = count(usage.cacheWriteTokens);
-  const cacheKnown = cacheRead !== null && cacheWrite !== null && inputTotal !== null && cacheRead + cacheWrite <= inputTotal;
+  const cacheKnown = usage.cacheDetailsReported !== false && cacheRead !== null && cacheWrite !== null && inputTotal !== null && cacheRead + cacheWrite <= inputTotal;
   const reported = count(usage.copilotUsage?.totalNanoAiu);
   const nanoAiu = usage.aiCreditsStatus === 'unavailable' ? null : reported;
   const creditStatus = nanoAiu === null ? 'unavailable' : usage.aiCreditsStatus && usage.aiCreditsStatus !== 'complete' ? 'partial' : 'complete';
@@ -25,6 +25,8 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
     initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? usage.initiator : '',
     isAuto: typeof usage.isAuto === 'boolean' ? usage.isAuto : null,
     duration: Number.isFinite(usage.duration) && usage.duration >= 0 ? usage.duration : null,
+    toolTokenCount: count(usage.toolTokenCount), availableToolCount: count(usage.availableToolCount),
+    cacheDetailsReported: typeof usage.cacheDetailsReported === 'boolean' ? usage.cacheDetailsReported : null,
     inputTotal, input: cacheKnown ? inputTotal - cacheRead - cacheWrite : null,
     cacheRead: cacheKnown ? cacheRead : null, cacheWrite: cacheKnown ? cacheWrite : null,
     output, reasoning: count(usage.reasoningTokens),
