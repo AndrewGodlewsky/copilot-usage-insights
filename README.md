@@ -1,6 +1,6 @@
 # Copilot Usage Insights
 
-A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, skill activations, models, projects, and sessions.
+A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, skill activations, models, projects, sessions, MCP servers, and installed plugins.
 
 ## Install in GitHub Copilot desktop
 
@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.16** picks up session renames from Copilot desktop in Usage breakdown and the Session filter. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.17** replaces Tool activity with **MCP Servers** and adds a **Plugins** inventory in Breakdown. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -147,15 +147,39 @@ The reader counts persisted `skill.invoked` and `skill.invoked_ref` events from 
 
 An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions and arguments are discarded; the dashboard keeps names, recorded file paths, current installed skill versions, and activation metadata locally. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
 
-## Tool activity
+## MCP Servers
 
-The **Tool activity** table in **Breakdown** lists calls, successes, failures, unknown outcomes, success percentage, and last use by tool. When a saved call identifies an MCP server, its server and tool names appear together; this counts actual calls, not configured servers.
+The **MCP Servers** table in **Breakdown** replaces Tool activity. It shows **Server**, **Current status**, **Calls**, **Failures**, **Success rate**, and **Last used**. Expand a server name for its configuration name, source, source plugin/version, enabled state, whether tools have loaded, any reported connection error, and success/unknown-outcome counts. Names and details wrap; metric columns have dotted dividers and centered values.
 
-The reader pairs persisted `tool.execution_start` and `tool.execution_complete` events by session and tool-call ID. A recorded `success: true` counts as success; `success: false` counts as failure. Missing or invalid outcomes remain **Unknown**, including calls still running. **Success rate = successes / (successes + failures) x 100**; unknown outcomes are excluded, and no known outcomes means **Unavailable**. These are tool outcomes, not proof that a skill or the overall task succeeded.
+**Current status** comes from the session hosting the dashboard, using Copilot's passive [`session.rpc.mcp.listConfigured()`](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/mcp#inspect-configuration-and-lifecycle) API. This read does not start, restart, or authenticate servers. Status can be Connected, Connecting, Needs sign-in, Failed, Disabled, Stopped, or Not started. Enabled configuration and an established connection are separate facts. A connected server can still be loading its tools. A historical server absent from the current configuration shows **Not in this session**. Live status is independent of the date, project, session, and model filters; it does not describe a session selected in the usage filter.
 
-Date filters use the call's start time, with its latest recorded outcome. Project and session filters apply; model filters use the model explicitly recorded on the start event and exclude calls with no matching model. As with skills, calls from sessions with missing or mixed provider attribution are omitted, with coverage notices. A completion without a saved start cannot be identified as a table row. Copied logs and replayed calls are deduplicated.
+**Calls**, **Failures**, **Success rate**, and **Last used** come from persisted `tool.execution_start` / `tool.execution_complete` pairs that explicitly identify an MCP server. Calls are grouped by the configured server name (`mcpConfigServerName`, falling back to `mcpServerName`), across its tools. The history and current inventory are matched by that name; reusing a name for a different configuration does not establish that older calls reached the same endpoint. Ordinary shell/file tools are excluded. A server may be listed with zero calls because it is configured but has no matching recorded activity.
 
-Skill trigger counts, tool outcomes, and request metrics are reconstructed from Copilot's existing local records when the dashboard refreshes. No background recorder, new history database, or per-skill token estimates are introduced. Tool arguments, results, and error-message contents are discarded.
+Date filters use each call's start time and its latest recorded outcome. Project and session filters apply; model filters require a matching recorded model. Mixed or missing provider attribution is omitted with a coverage count. Copied logs and replayed calls are deduplicated. Success rate is **successes / (successes + failures) x 100**; unknown outcomes are excluded. A dash means no known outcomes or no recorded last use. A failed tool call does not necessarily mean its server disconnected.
+
+Connection status changes are live-only events, so this release does not calculate historical uptime, disconnections, or connection success percentages. No background recorder or new database is added. The inventory APIs are experimental: older hosts, failed requests, and timeouts show **Unavailable** while recorded usage stays visible. Both live inventories refresh with the dashboard; a read waits at most three seconds and does not launch another copy of an already pending request. Browser-only previews cannot query the hosting Copilot session.
+
+### Optional local MCP test server
+
+The repository includes [a small stdio MCP server](scripts/mcp-test-server.mjs) with two tools: `hello` returns a greeting; `intentional_failure` returns a deliberate tool error. Neither tool reads files, changes data, or contacts a network service. It needs Node.js 24 or later and is **not automatically installed** with the dashboard.
+
+From a local checkout, register the server using its absolute path:
+
+```text
+copilot mcp add usage-insights-test -- node "/absolute/path/to/copilot-usage-insights/scripts/mcp-test-server.mjs"
+```
+
+On Windows, use the full Windows path in quotes. This uses Copilot's [supported MCP configuration command](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers), which preserves other server entries. Start a new desktop session (restart Copilot if needed), then send:
+
+> Call hello on the usage-insights-test MCP server twice, then call intentional_failure once. The failure is deliberate; do not retry it. Then open Usage Insights.
+
+After refreshing, those calls should contribute **3 calls, 1 failure, and 66.7% success** in the matching date range. The connection can remain **Connected** despite the intentional tool failure. These are actual Copilot calls and may consume AI credits; no fake usage receipts are inserted. To remove the optional server, use `copilot mcp remove usage-insights-test`.
+
+## Plugins
+
+The **Plugins** table shows Copilot's current inventory: **Plugin**, **Installed version**, **State**, **Marketplace**, and **Management**. State distinguishes Enabled, Disabled, and Not installed (a managed desired plugin whose installation has not completed). Built-in and direct/local sources are labeled when there is no marketplace. **Managed** means an organization controls the plugin; a dash means no managed flag was reported. Missing versions show a dash.
+
+This uses the hosting session's `session.rpc.plugins.list()` API, with its current account, working directory, and policy. Date and usage filters do not apply. Enabled means available under that configuration, not proof it was used, and an installed version is not a historical version at the time of a skill activation. The dashboard does not enable, disable, update, or uninstall plugins. Unsupported or failed inventory reads display Unavailable independently of MCP status and usage totals.
 
 ## Possible next additions
 
@@ -172,6 +196,8 @@ GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/c
 ## Privacy and runtime
 
 The extension reads local usage metadata, saved session names, and a bounded prefix of recorded local `SKILL.md` files to extract installed versions. Session workspace metadata reads are limited to 64 KiB. Desktop titles are looked up read-only by session ID in `data.db`, only for sessions already represented in usage records; conversation content and desktop token totals are not queried. All retained session names are capped at 256 characters. It never modifies Copilot's records or skill files. Conversation message bodies are discarded while parsing and are not retained in the in-memory usage index or sent to the dashboard; session names are displayed locally. Nothing is uploaded. The canvas uses a random-token URL on `127.0.0.1`, validates request origins, and shuts down its server when the last canvas closes. Treat its URL as private while it is open.
+
+Live MCP and plugin inventories are read through the existing local Copilot session. The dashboard retains only the displayed metadata; it does not keep configuration URLs, credentials, environment variables, or plugin installation paths. Connection errors are limited to 512 characters with URLs and common credential fields removed. Recorded tool arguments, results, and tool-error payloads are discarded.
 
 ## Development and distribution
 

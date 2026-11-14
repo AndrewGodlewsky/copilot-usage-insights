@@ -11,7 +11,9 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .card header label{white-space:nowrap}
 .skill-actions{display:inline-flex;align-items:center;gap:6px;max-width:100%}.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}.skill-link:hover{background:transparent;color:var(--fg)}.skill-copy{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--muted-fg)}.skill-copy:hover{color:var(--fg);border-color:var(--border)}#skills th,#skills td,#breakdown th,#breakdown td{text-align:center;padding-inline:7px}#skills th+th,#skills td+td,#breakdown th+th,#breakdown td+td{border-left:1px dotted var(--border)}#breakdown th:first-child,#breakdown td:first-child{text-align:left}#skills th:first-child,#skills td:first-child{width:14%;min-width:calc(120px * var(--text-scale));text-align:left;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 
-.tool-note,#tools-coverage{margin-top:12px}
+.integration-note,#mcp-coverage{margin-top:12px}
+#mcp th,#mcp td,#plugins th,#plugins td{text-align:center}#mcp th+th,#mcp td+td,#plugins th+th,#plugins td+td{border-left:1px dotted var(--border)}#mcp th:first-child,#mcp td:first-child,#plugins th:first-child,#plugins td:first-child{text-align:left}
+.server-details{border:0;padding:0}.server-details summary{display:list-item;list-style-position:inside;font-size:inherit;color:var(--fg)}.server-info{max-width:42ch;white-space:normal;overflow-wrap:anywhere;color:var(--muted-fg)}.server-info p{margin:6px 0}.connection-status{display:inline-flex;align-items:center;gap:6px}.connection-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--muted-fg)}.connection-status.ok::before{background:var(--s3)}.connection-status.attention::before{background:var(--s4)}
 
 .settings-section-title{margin:20px 0 8px}
 
@@ -51,7 +53,8 @@ td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{d
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
       <p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p>
       <article class="card" aria-labelledby="skills-title"><header><h2 id="skills-title">Skills used</h2><span id="skills-summary" class="muted"></span></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p id="skills-coverage" class="footnote"></p></article>
-      <article class="card" aria-labelledby="tools-title"><header><h2 id="tools-title">Tool activity</h2><span id="tools-summary" class="muted"></span></header><div id="tools" class="table-wrap"></div><p class="footnote tool-note">Success rate uses calls with recorded outcomes. Unknown outcomes are excluded. Tool outcomes do not indicate skill success.</p><p id="tools-coverage" class="footnote" hidden></p></article>
+      <article class="card" aria-labelledby="mcp-title"><header><h2 id="mcp-title">MCP Servers</h2><span id="mcp-summary" class="muted"></span></header><div id="mcp" class="table-wrap"></div><p id="mcp-note" class="footnote integration-note"></p><p id="mcp-coverage" class="footnote" hidden></p></article>
+      <article class="card" aria-labelledby="plugins-title"><header><h2 id="plugins-title">Plugins</h2><span id="plugins-summary" class="muted"></span></header><div id="plugins" class="table-wrap"></div><p class="footnote integration-note">Current inventory reported by Copilot for this account and session. Date and usage filters do not apply. Enabled does not mean used.</p></article>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
@@ -748,15 +751,31 @@ function skillTriggerSummary(skill) {
   const triggers = skill.triggers || { manual: 0, agent: 0, preloaded: 0, unknown: skill.invocations };
   return `By user: ${number(triggers.manual)}; By agent: ${number(triggers.agent)}; Preloaded: ${number(triggers.preloaded)}; Unknown: ${number(triggers.unknown)}`;
 }
-function renderTools(report) {
-  const tools = report.tools;
-  $('tools-summary').textContent = `${number(tools.calls)} call${tools.calls === 1 ? '' : 's'}`;
-  $('tools').innerHTML = tools.rows.length ? `<table><thead><tr><th>Tool</th><th>Calls</th><th>Successes</th><th>Failures</th><th title="No valid completion outcome recorded; may still be running.">Unknown</th><th title="Successes divided by successes plus failures. Unknown outcomes are excluded.">Success rate</th><th>Last used</th></tr></thead><tbody>${tools.rows.map(t => `<tr>${textCell(t.server ? `${t.server} / ${t.mcpTool || t.name}` : t.name)}<td>${number(t.calls)}</td><td>${number(t.successes)}</td><td>${number(t.failures)}</td><td>${number(t.unknown)}</td><td>${t.successRate === null ? 'Unavailable' : `${t.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${esc(new Date(t.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded tool calls match these filters.</p>';
+function renderIntegrations(report) {
+  const mcp = report.mcp || { rows: [], calls: 0, available: false };
+  const statusLabels = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
+  const openDetails = new Set([...$('mcp').querySelectorAll('details[open]')].map(node => node.dataset.server));
+  $('mcp-summary').textContent = `${number(mcp.rows.length)} servers · ${number(mcp.calls)} calls`;
+  $('mcp').innerHTML = mcp.rows.length ? `<table><thead><tr><th>Server</th><th title="Live status in the session hosting this dashboard, independent of date filters.">Current status</th><th>Calls</th><th>Failures</th><th title="Successful calls divided by calls with known outcomes; this is not connection uptime.">Success rate</th><th>Last used</th></tr></thead><tbody>${mcp.rows.map(row => {
+    const details = [`Server: ${row.name}`, `Successes: ${number(row.successes)}`, `Unknown outcomes: ${number(row.unknown)}`];
+    if (row.enabled !== undefined && row.enabled !== null) details.push(`Enabled: ${row.enabled ? 'Yes' : 'No'}`);
+    if (row.source) details.push(`Source: ${row.source}`);
+    if (row.plugin) details.push(`Source plugin: ${row.plugin}`);
+    if (row.version) details.push(`Plugin version: ${row.version}`);
+    if (row.toolsLoaded !== undefined && row.toolsLoaded !== null) details.push(`Tools loaded: ${row.toolsLoaded ? 'Yes' : 'No'}`);
+    if (row.error) details.push(`Connection error: ${row.error}`);
+    const tone = row.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(row.status) ? 'attention' : 'neutral';
+    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${row.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
+  }).join('')}</tbody></table>` : `<p class="muted">${mcp.available ? 'No configured MCP servers or recorded MCP calls match this view.' : 'No recorded MCP calls match these filters. Live inventory is unavailable; open this dashboard in an updated Copilot session.'}</p>`;
+  $('mcp-note').textContent = `Status: current session${mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
   const coverage = [];
-  if (tools.omitted) coverage.push(`${number(tools.omitted)} calls omitted because their sessions have missing or mixed provider attribution.`);
+  if (mcp.omitted) coverage.push(`${number(mcp.omitted)} MCP calls omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidTools) coverage.push(`${number(report.coverage.invalidTools)} malformed tool events skipped across scanned sources.`);
-  $('tools-coverage').hidden = !coverage.length;
-  $('tools-coverage').textContent = coverage.join(' ');
+  $('mcp-coverage').hidden = !coverage.length;
+  $('mcp-coverage').textContent = coverage.join(' ');
+  const plugins = report.plugins || { available: false, rows: [] };
+  $('plugins-summary').textContent = plugins.available ? `${number(plugins.rows.filter(p => p.installed).length)} installed` : 'Inventory unavailable';
+  $('plugins').innerHTML = !plugins.available ? '<p class="muted">Plugin inventory is unavailable. Open this dashboard in an updated Copilot session.</p>' : plugins.rows.length ? `<table><thead><tr><th>Plugin</th><th>Installed version</th><th>State</th><th>Marketplace</th><th>Management</th></tr></thead><tbody>${[...plugins.rows].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<tr>${textCell(p.name)}${textCell(p.version || '—')}${textCell(!p.installed ? 'Not installed' : p.enabled === null ? 'Unknown' : p.enabled ? 'Enabled' : 'Disabled')}${textCell(p.marketplace || (p.source === 'builtin' ? 'Built-in' : 'Direct / local'))}${textCell(p.managed ? 'Managed' : '—')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No plugins reported by Copilot.</p>';
 }
 function renderBreakdown() {
   const report = state.report;
@@ -773,7 +792,7 @@ function renderBreakdown() {
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
   $('skills-coverage').hidden = !coverage.length;
   $('skills-coverage').textContent = coverage.join(' ');
-  renderTools(report);
+  renderIntegrations(report);
 }
 function render() {
   const r = state.report;

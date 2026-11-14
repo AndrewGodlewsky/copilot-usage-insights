@@ -9,7 +9,9 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .card header label{white-space:nowrap}
 .skill-actions{display:inline-flex;align-items:center;gap:6px;max-width:100%}.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}.skill-link:hover{background:transparent;color:var(--fg)}.skill-copy{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--muted-fg)}.skill-copy:hover{color:var(--fg);border-color:var(--border)}#skills th,#skills td,#breakdown th,#breakdown td{text-align:center;padding-inline:7px}#skills th+th,#skills td+td,#breakdown th+th,#breakdown td+td{border-left:1px dotted var(--border)}#breakdown th:first-child,#breakdown td:first-child{text-align:left}#skills th:first-child,#skills td:first-child{width:14%;min-width:calc(120px * var(--text-scale));text-align:left;white-space:normal;overflow:visible;overflow-wrap:anywhere}
 
-.tool-note,#tools-coverage{margin-top:12px}
+.integration-note,#mcp-coverage{margin-top:12px}
+#mcp th,#mcp td,#plugins th,#plugins td{text-align:center}#mcp th+th,#mcp td+td,#plugins th+th,#plugins td+td{border-left:1px dotted var(--border)}#mcp th:first-child,#mcp td:first-child,#plugins th:first-child,#plugins td:first-child{text-align:left}
+.server-details{border:0;padding:0}.server-details summary{display:list-item;list-style-position:inside;font-size:inherit;color:var(--fg)}.server-info{max-width:42ch;white-space:normal;overflow-wrap:anywhere;color:var(--muted-fg)}.server-info p{margin:6px 0}.connection-status{display:inline-flex;align-items:center;gap:6px}.connection-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--muted-fg)}.connection-status.ok::before{background:var(--s3)}.connection-status.attention::before{background:var(--s4)}
 
 .settings-section-title{margin:20px 0 8px}
 

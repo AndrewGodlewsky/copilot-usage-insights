@@ -66,16 +66,22 @@ test('dashboard API requires the instance token and same origin, and validates r
   assert.match(response.headers.get('cache-control'), /no-store/);
 });
 test('concurrent canvas opens share one server; final close disposes it and reopening works', async () => {
-  let config, starts = 0, stops = 0, opened;
-  const session = { rpc: { canvas: { open: async input => { opened = input; } } } };
+  let config, starts = 0, stops = 0, opened, serverOptions;
+  const session = { sessionId: 'current-session', rpc: { canvas: { open: async input => { opened = input; } },
+    mcp: { listConfigured: async () => ({ servers: [{ name: 'test', enabled: true, live: { status: 'connected' } }] }) },
+    plugins: { list: async () => ({ plugins: [] }) },
+  } };
   const registration = await registerCanvas({
     createCanvas: c => c,
     joinSession: async c => { config = c; return session; },
-    startServer: async () => { starts++; return { url: 'http://127.0.0.1:1/token/', close: async () => { stops++; } }; },
+    startServer: async options => { serverOptions = options; starts++; return { url: 'http://127.0.0.1:1/token/', close: async () => { stops++; } }; },
   });
   const canvas = config.canvases[0];
   await Promise.all([canvas.open({ instanceId: 'a' }), canvas.open({ instanceId: 'b' })]);
   assert.equal(starts, 1);
+  const inventory = await serverOptions.readIntegrations();
+  assert.equal(inventory.mcp.sessionId, 'current-session');
+  assert.equal(inventory.mcp.rows[0].status, 'connected');
   await canvas.onClose({ instanceId: 'a' }); assert.equal(stops, 0);
   await canvas.onClose({ instanceId: 'b' }); assert.equal(stops, 1);
   await canvas.open({ instanceId: 'c' }); assert.equal(starts, 2);

@@ -6,9 +6,11 @@ import { createSettings, copilotHome } from './settings.mjs';
 import { buildReport } from '../core/copilot-report.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
+import { createIntegrationReader } from './integrations.mjs';
+import { mergeMcpInventory } from '../core/integrations.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined) } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
@@ -55,6 +57,9 @@ export async function startServer({ settings = createSettings(), scanner = creat
         const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes, force: message.method === 'usage.refresh' });
         result = { ...buildReport(scan.records, input, now(), scan), sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small' } };
         await addInstalledSkillVersions(result.skills.rows);
+        const inventory = await readIntegrations();
+        result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
+        result.plugins = inventory.plugins;
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();

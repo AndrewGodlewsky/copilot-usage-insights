@@ -1,4 +1,5 @@
 import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
+import { mcpHistory } from './integrations.mjs';
 
 const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
@@ -51,7 +52,7 @@ function toolReport(records, activity, input, start, end, now) {
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), projectOptions = new Set();
   // The selector uses display labels; tool events carry raw model IDs.
   const modelIds = new Set(records.filter(r => r.ms <= now.getTime() && r.modelId && input.models?.includes(r.model)).map(r => JSON.stringify([r.sessionId, r.modelId])));
-  let calls = 0, omitted = 0;
+  let calls = 0, omitted = 0, mcpOmitted = 0;
   for (const tool of activity.tools || []) {
     if (tool.ms > now.getTime()) continue;
     const attributed = copilotSessions.has(tool.sessionId) && !excluded.has(tool.sessionId);
@@ -59,7 +60,7 @@ function toolReport(records, activity, input, start, end, now) {
     const day = localDay(new Date(tool.ms));
     const matchingModel = !input.models || input.models.includes(tool.model) || modelIds.has(JSON.stringify([tool.sessionId, tool.model]));
     if (day < start || day > end || input.project && input.project !== tool.project || input.session && input.session !== tool.sessionId || !matchingModel) continue;
-    if (!attributed) { omitted++; continue; }
+    if (!attributed) { omitted++; if (tool.server) mcpOmitted++; continue; }
     const key = JSON.stringify([tool.name, tool.server, tool.mcpTool]);
     if (!groups.has(key)) groups.set(key, { name: tool.name, server: tool.server, mcpTool: tool.mcpTool, calls: 0, successes: 0, failures: 0, unknown: 0, lastUsed: tool.ts });
     const row = groups.get(key);
@@ -70,7 +71,7 @@ function toolReport(records, activity, input, start, end, now) {
   }
   const rows = [...groups.values()].map(row => ({ ...row, successRate: row.successes + row.failures ? row.successes / (row.successes + row.failures) * 100 : null }))
     .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name) || a.server.localeCompare(b.server));
-  return { rows, calls, omitted, projectOptions: [...projectOptions] };
+  return { rows, calls, omitted, mcpOmitted, projectOptions: [...projectOptions] };
 }
 
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
@@ -116,7 +117,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
     rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions).map(s => ({ ...s, id: s.name, name: sessionLabels.get(s.name) })),
-    skills, tools,
+    skills, tools, mcp: mcpHistory(tools),
     options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

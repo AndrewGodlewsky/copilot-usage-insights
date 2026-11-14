@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
+import { mergeMcpInventory } from '../src/core/integrations.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
   const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -40,7 +41,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server };
 }
 
-test('dashboard shows skill versions and separate trigger counts, with last use last and request/tool metrics separate', async () => {
+test('dashboard keeps skill and request metrics separate from MCP activity', async () => {
   const now = new Date(2026, 10, 13, 22, 49, 37), timestamp = now.toISOString();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
   const events = [
@@ -72,12 +73,8 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   assert.match(get('skills').innerHTML, /Source plugin/);
   assert.match(get('breakdown').innerHTML, /Reasoning/);
   assert.match(get('breakdown').innerHTML, /Avg\. tokens \/ request/);
-  assert.match(get('tools').innerHTML, /Failures/);
-  assert.match(get('tools').innerHTML, /Success rate/);
-  assert.match(get('tools').innerHTML, /Unknown/);
-  assert.match(get('tools').innerHTML, /50%/);
-  assert.match(get('tools').innerHTML, /&lt;view&gt;/);
-  assert.doesNotMatch(get('tools').innerHTML, /<view>/);
+  assert.ok(!nodes.has('tools'));
+  assert.doesNotMatch(get('mcp').innerHTML, /&lt;view&gt;/);
   assert.match(get('session').innerHTML, /value="s1"[^>]*>&lt;Planning &quot;work&quot;&gt;<\/option>/);
   get('group').value = 'sessions';
   get('group').onchange();
@@ -90,6 +87,40 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   await get('refresh').onclick();
   assert.equal(get('session').value, 's1');
   assert.match(get('session').innerHTML, />Renamed session<\/option>/);
+});
+
+test('MCP and plugin tables distinguish live inventory from filtered usage and escape metadata', async () => {
+  const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {} };
+  const history = { calls: 3, omitted: 0, rows: [{ name: '<server>', calls: 3, successes: 1, failures: 1, unknown: 1, successRate: 50, lastUsed: '2026-11-14T03:00:00Z' }] };
+  report.mcp = mergeMcpInventory(history, { available: true, sessionId: 'current', rows: [
+    { name: '<server>', status: 'failed', error: '<connection failed>', source: 'plugin', plugin: '<supplier>', version: '1.0' },
+    { name: 'unused', status: 'connected' },
+  ] });
+  report.plugins = { available: true, rows: [
+    { name: '<test-plugin>', version: '1.0', marketplace: '<marketplace>', enabled: true, installed: true, managed: false },
+    { name: 'Disabled plugin', enabled: false, installed: true },
+    { name: 'Managed pending', enabled: true, installed: false, managed: true },
+  ] };
+  const { get } = await mountPanel(report);
+  assert.match(get('mcp').innerHTML, /&lt;server&gt;/);
+  assert.match(get('mcp').innerHTML, /50%/);
+  assert.match(get('mcp').innerHTML, /Connected/);
+  assert.match(get('mcp').innerHTML, /&lt;connection failed&gt;/);
+  assert.match(get('mcp').innerHTML, /&lt;supplier&gt;/);
+  assert.match(get('mcp').innerHTML, /Unknown outcomes: 1/);
+  assert.match(get('mcp-note').textContent, /current session/);
+  assert.match(get('plugins').innerHTML, /&lt;test-plugin&gt;/);
+  assert.match(get('plugins').innerHTML, /&lt;marketplace&gt;/);
+  assert.match(get('plugins').innerHTML, /Disabled/);
+  assert.match(get('plugins').innerHTML, /Not installed/);
+  assert.match(get('plugins').innerHTML, /Managed/);
+  assert.doesNotMatch(get('mcp').innerHTML + get('plugins').innerHTML, /<server>|<supplier>|<test-plugin>|<marketplace>/);
+  report.mcp = mergeMcpInventory(history, { available: false, rows: [] });
+  report.plugins = { available: false, rows: [] };
+  await get('refresh').onclick();
+  assert.match(get('mcp').innerHTML, /Unavailable/);
+  assert.match(get('mcp').innerHTML, /50%/);
+  assert.match(get('plugins').innerHTML, /unavailable/i);
 });
 
 test('long selected filter names remain readable in full and keep their original filter IDs', async () => {
