@@ -22,10 +22,17 @@ The marketplace name is **`copilot-usage-insights`**. This repository hosts its 
 
 ### 2. Install and enable the plugin
 
-1. Return to **Customize → Browse**.
-2. Select the **copilot-usage-insights** marketplace.
-3. Search for **`copilot-usage-insights`** and click **Install**.
-4. Open **Customize → Installed** and make sure the plugin's toggle is **on**.
+1. Open **Customize → Installed** and click **Add plugin**.
+2. In the **Install plugin** dialog, paste this exact value into **Name**:
+
+   ```text
+   copilot-usage-insights@copilot-usage-insights
+   ```
+
+3. Click **Install**.
+4. Make sure the plugin's toggle under **Customize → Installed** is **on**.
+
+The Name field uses `plugin@marketplace`: the first part identifies the plugin and the second identifies the marketplace you added in step 1. You can also install it from **Customize → Browse** by selecting the **copilot-usage-insights** marketplace and searching for the plugin.
 
 Adding the marketplace makes the plugin available to browse. Installing and enabling the plugin makes its canvas available to sessions. The marketplace and plugin both use the name `copilot-usage-insights`.
 
