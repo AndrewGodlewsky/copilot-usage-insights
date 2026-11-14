@@ -48,7 +48,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.46** orders **Tokens by type** as uncached input, cache read, cache write, then output, with percentage callouts alternating above and below the bar. Labels stay separated even for tiny segments and follow your text-size setting. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.47** fixes chart tooltips near the canvas edges: popups keep their width and move left or above the pointer when needed. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -91,7 +91,7 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 
 ## What is counted
 
-The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible. The token total card shows **Tokens** above the value and the selected date range underneath, including custom dates, and respects the model, project, session, and cache filters.
+The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. Chart popups keep their content width as the pointer moves, flip to the left when the right edge has insufficient room, and flip above near the bottom. Only the viewport itself limits their width on narrow canvases; long text still wraps within that limit. The **AI credits** selector changes the daily chart; the token summary remains visible. The token total card shows **Tokens** above the value and the selected date range underneath, including custom dates, and respects the model, project, session, and cache filters.
 
 **Tokens by type** and its legend read **Uncached input → Cache read → Cache write → Output**. Input with an unknown cache split appears before Output when present; reasoning remains part of Output and is not counted again. Percentage labels alternate above and below the bar, with brackets pointing to their segments and extra spacing for clustered small shares. Shares use recorded token counts for the current filters or selected daily bar, not the minimum visual width used to keep tiny segments visible. Positive shares below 0.1% show **<0.1%**; rounded percentages can differ slightly from 100% in total. Missing tokens cannot contribute to these percentages. Turning off **Include cache tokens** leaves only uncached input and output in the bar.
 

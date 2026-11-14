@@ -64,8 +64,62 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts };
+  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
 }
+
+test('shared chart tooltips keep their width and flip away from viewport edges', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, listeners, document, viewport, requests } = await mountPanel(report);
+  const popup = get('tip');
+  popup.style = {};
+  const built = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
+  assert.match(built, /\.tip\{[^}]*\bwidth:max-content(?:;|})/, 'popup width must not depend on its positioned left edge');
+  assert.match(built, /max-width:min\(260px,calc\(100% - 16px\)\)/, 'width cap excludes the scrollbar just like placement');
+  Object.defineProperty(popup, 'offsetWidth', { get: () => Math.min(240, (document.documentElement.clientWidth || viewport.innerWidth) - 16) });
+  Object.defineProperty(popup, 'offsetHeight', { get: () => 110 });
+  const move = (x, y, title = 'Output') => listeners.get('pointermove')({ clientX: x, clientY: y, target: { closest: () => ({ dataset: { tip: JSON.stringify({ title, rows: [['Tokens', 4400], ['Share of recorded tokens', '0.4%']] }) } }) } });
+  const before = requests.length;
+  move(100, 100);
+  assert.equal(popup.hidden, false);
+  assert.equal(popup.style.left, '112px');
+  assert.equal(popup.style.top, '112px');
+  move(1180, 100);
+  assert.equal(popup.style.left, '928px', 'whole popup moves left of the pointer with a gap');
+  assert.equal(popup.style.top, '112px');
+  move(1180, 790, '<Daily tokens>');
+  assert.equal(popup.style.left, '928px');
+  assert.equal(popup.style.top, '668px', 'popup flips above the pointer near the bottom');
+  assert.match(popup.innerHTML, /&lt;Daily tokens&gt;/);
+  assert.match(popup.innerHTML, /4\.4K/);
+  move(0, 0);
+  assert.equal(popup.style.left, '12px');
+  assert.equal(popup.style.top, '12px');
+  document.documentElement.clientWidth = 1185;
+  move(940, 100);
+  assert.equal(popup.style.left, '688px', 'placement excludes the scrollbar area');
+  delete document.documentElement.clientWidth;
+  viewport.innerWidth = 240;
+  for (const x of [0, 120, 239]) {
+    move(x, 100);
+    assert.equal(popup.style.left, '8px', 'clamp within a viewport too narrow to fit on either side');
+    assert.equal(popup.offsetWidth, 224, 'pointer movement does not change the width');
+  }
+  document.documentElement.clientWidth = 225;
+  move(220, 100);
+  assert.equal(popup.offsetWidth, 209, 'narrow canvas cap also excludes the scrollbar');
+  assert.equal(popup.style.left, '8px');
+  assert.equal(parseFloat(popup.style.left) + popup.offsetWidth, 217, 'right edge retains an eight-pixel margin before the scrollbar');
+  delete document.documentElement.clientWidth;
+  viewport.innerWidth = 1200;
+  move(1180, 100, 'A different chart');
+  assert.equal(popup.style.left, '928px', 'restored viewport uses the same shared placement');
+  listeners.get('pointermove')({ target: { closest: () => null } });
+  assert.equal(popup.hidden, true);
+  move(100, 100);
+  listeners.get('pointerleave')();
+  assert.equal(popup.hidden, true);
+  assert.equal(requests.length, before, 'hover and repositioning never fetch data');
+});
 
 test('footer actions share controls and logs copy safely with offline and clipboard fallbacks', async () => {
   const report = { ...buildReport([], { range: '7d' }), sources: [], coverage: {} };
