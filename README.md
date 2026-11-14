@@ -48,7 +48,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.37** moves Refresh and Settings together to the right side of the toolbar. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.38** replaces the streak and model-count cards with credits per request and credits per million tokens, and shows the selected date range beneath the Tokens value. Refresh and Settings remain together at the right side of the toolbar. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -91,7 +91,9 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 
 ## What is counted
 
-The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible. The token total card uses the selected range's label and total, including custom dates, and respects the model, project, session, and cache filters.
+The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible. The token total card shows **Tokens** above the value and the selected date range underneath, including custom dates, and respects the model, project, session, and cache filters.
+
+The summary cards also show **Credits / request** (complete recorded credit charges divided by the number of requests with those charges) and **Credits / 1M tokens** (complete recorded charges divided by input plus output tokens from the same requests, multiplied by one million). The latter includes cached input unless **Include cache tokens** is turned off; reasoning tokens are already part of output and are not added again. Both cards follow the date, model, project, and session filters and the **Simplify numbers** setting. Missing or partial charges are excluded from both averages; incomplete token counts are also excluded from the per-million calculation. An asterisk and request counts identify partial coverage. Zero charges display as **0**, while no eligible requests or a zero token denominator display as **Unavailable**. Hover over a rate for its calculation and coverage. These are observed credit rates from the existing report, with no additional scan or pricing lookup.
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
 

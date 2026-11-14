@@ -126,6 +126,65 @@ test('reasoning stays within output and token averages use only complete request
   assert.equal(buildReport([], { range: '1d' }, now).totals.averageTokens, null);
 });
 
+test('credit rates use complete charges and matched tokens instead of incomplete report totals', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const records = parse([receipt(), receipt({ inputTokens: 880, outputTokens: 0, copilotUsage: { totalNanoAiu: 750000000 } }, 'large'),
+    receipt({ aiCreditsStatus: 'partial', copilotUsage: { totalNanoAiu: 100000000000 } }, 'partial'),
+    receipt({ copilotUsage: undefined, aiCreditsStatus: undefined }, 'unknown'),
+    receipt({ outputTokens: undefined, copilotUsage: { totalNanoAiu: 500000000 } }, 'missing-output')]).records;
+  const report = buildReport(records, { range: '1d' }, now), t = report.totals;
+  assert.equal(t.requests, 5);
+  assert.equal(t.completeCreditRequests, 3);
+  assert.equal(t.averageCredits, 0.5);
+  assert.equal(t.averageCredits, report.efficiency.summary.averageCredits);
+  assert.equal(t.creditTokenRequests, 2);
+  assert.equal(t.creditsPerMillionTokens, 1000, 'ratio of summed charges to summed tokens, not an average of individual ratios');
+  assert.doesNotThrow(() => JSON.stringify(report), 'internal BigInt accumulators stay out of the report');
+  const noCache = buildReport(records, { range: '1d', includeCache: false }, now).totals;
+  assert.equal(noCache.averageCredits, 0.5);
+  assert.equal(noCache.creditsPerMillionTokens, 1 / 860 * 1e6);
+});
+
+test('credit rates distinguish zero charges, zero tokens, missing data, and unknown cache splits', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const totals = (events, query = {}) => buildReport(parse(events).records, { range: '1d', ...query }, now).totals;
+  const free = totals([receipt({ copilotUsage: { totalNanoAiu: 0 } })]);
+  assert.equal(free.averageCredits, 0);
+  assert.equal(free.creditsPerMillionTokens, 0);
+  const noTokens = receipt({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, 'zero-tokens');
+  assert.equal(totals([noTokens]).averageCredits, 0.25);
+  assert.equal(totals([noTokens]).creditsPerMillionTokens, null);
+  assert.equal(totals([noTokens, receipt()]).creditsPerMillionTokens, 0.5 / 120 * 1e6, 'charged zero-token requests remain in the numerator');
+  for (const events of [[], [receipt({ aiCreditsStatus: 'partial' })], [receipt({ copilotUsage: undefined })]]) {
+    const t = totals(events);
+    assert.equal(t.averageCredits, null);
+    assert.equal(t.creditsPerMillionTokens, null);
+  }
+  const unknownCache = [receipt({ cacheReadTokens: undefined })];
+  assert.equal(totals(unknownCache).creditsPerMillionTokens, 0.25 / 120 * 1e6);
+  assert.equal(totals(unknownCache, { includeCache: false }).creditsPerMillionTokens, null);
+  assert.equal(totals(unknownCache, { includeCache: false }).averageCredits, 0.25);
+});
+
+test('credit rates follow date, model, project, and session filters', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const records = parse([receipt(), receipt({ model: 'second', inputTokens: 3000, outputTokens: 0, copilotUsage: { totalNanoAiu: 1500000000 } }, 'second'),
+    receipt({ model: 'second', inputTokens: 8000, outputTokens: 0, copilotUsage: { totalNanoAiu: 500000000 } }, 'past')]).records;
+  records[0].project = 'A';
+  Object.assign(records[1], { project: 'B', sessionId: 's2' });
+  Object.assign(records[2], { project: 'A', sessionId: 's3', ms: new Date(2026, 10, 12, 10).getTime() });
+  for (const [query, selected] of [[{ range: '1d' }, [0, 1]], [{ range: '7d' }, [0, 1, 2]],
+    [{ range: '7d', models: ['second'] }, [1, 2]], [{ range: '7d', project: 'A' }, [0, 2]],
+    [{ range: '7d', session: 's2' }, [1]], [{ range: 'custom', startDate: '2026-11-12', endDate: '2026-11-12' }, [2]]]) {
+    const t = buildReport(records, query, now).totals;
+    const charges = selected.reduce((sum, i) => sum + records[i].nanoAiu, 0) / 1e9;
+    const tokens = selected.reduce((sum, i) => sum + records[i].inputTotal + records[i].output, 0);
+    assert.equal(t.averageCredits, charges / selected.length, JSON.stringify(query));
+    assert.equal(t.creditsPerMillionTokens, charges / tokens * 1e6, JSON.stringify(query));
+    assert.equal(t.creditTokenRequests, selected.length);
+  }
+});
+
 test('project session totals stay scoped to their project and follow every usage filter', () => {
   const now = new Date(2026, 10, 13, 12);
   const base = parse([receipt(), receipt({ inputTokens: 200, outputTokens: 40 }, 'second'),

@@ -545,13 +545,18 @@ function renderContent() {
   if (r.sources.some(s => ['error', 'warning', 'missing'].includes(s.state))) warnings.push('Some sources could not be fully read; see Local data sources');
   $('coverage').hidden = !warnings.length;
   $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
+  const rateValue = (value, samples) => creditNumber(value) + (value != null && samples < t.requests ? ' *' : '');
+  const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
+  const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
-    [RANGE_LABELS[r.query.range], usageValue(t, 'total', number), 'Tokens · current filters', 'tokens'],
-    ['Current streak', `${number(r.streak.current)} days`, 'Days with recorded requests'],
-    ['Models', number(r.models.length), 'Used through GitHub Copilot'],
+    ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
+    ['Credits / request', rateValue(t.averageCredits, t.completeCreditRequests), t.completeCreditRequests === t.requests && t.requests ? 'Average recorded charge' : `${creditSamples(t.completeCreditRequests)} with complete charges`, 'credits',
+      `Recorded credits divided by requests with complete charges. ${creditSamples(t.completeCreditRequests)} included.`],
+    ['Credits / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), `${t.creditTokenRequests === t.requests && t.requests ? 'Input + output' : creditSamples(t.creditTokenRequests)} · ${cacheContext}`, 'credits',
+      `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
-  $('tiles').innerHTML = tiles.map(([label, value, sub, measure]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
+  $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
   $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
   $('token-total').textContent = usageValue(scope, 'total', number);
   $('token-total').title = usageValue(scope, 'total', number);

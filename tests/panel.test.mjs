@@ -473,7 +473,8 @@ test('token total card follows the loaded date range and filters instead of toda
   for (const [range, label, total] of [['1d', 'Today', '3.4K'], ['7d', 'Last 7 days', '6.7K'], ['30d', 'Last 30 days', '6.7K'], ['90d', 'Last 90 days', '6.7K'], ['all', 'All history', '6.7K'], ['custom', 'Custom dates', '3.4K']]) {
     Object.assign(report, buildReport(history, { range, ...(range === 'custom' ? { startDate: '2026-11-13', endDate: '2026-11-13' } : {}) }, now));
     await get('refresh').onclick();
-    assert.ok(tile().includes(`>${label}</span>`), range);
+    assert.ok(tile().includes('<span class="label">Tokens</span>'), range);
+    assert.ok(tile().includes(`<span class="sub">${label}</span>`), range);
     assert.ok(tile().includes(`>${total}</strong>`), range);
   }
   Object.assign(report, buildReport(history, { range: '7d', project: 'Earlier project', includeCache: false }, now));
@@ -481,6 +482,39 @@ test('token total card follows the loaded date range and filters instead of toda
   assert.ok(tile().includes('>1.4K</strong>'), 'project and cache filters apply to the total');
   get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
   assert.ok(tile().includes('>1.4K</strong>'), 'daily chart selection does not narrow the filter total');
+});
+
+test('credit rate cards replace streak and models, preserve coverage, and follow number settings', async () => {
+  const { get, report, records, now } = await requestPanel();
+  const card = index => get('tiles').innerHTML.split('<div class="tile">')[index + 1].split('</div>')[0];
+  assert.equal(get('tiles').innerHTML.match(/class="tile"/g).length, 4);
+  assert.doesNotMatch(get('tiles').innerHTML, /Current streak|>Models</);
+  assert.match(card(2), /<span class="label">Credits \/ request<\/span>.*>0\.25<\/strong>/);
+  assert.match(card(3), /<span class="label">Credits \/ 1M tokens<\/span>.*>2\.1K<\/strong>/);
+  assert.match(card(3), /Input \+ output · including cache/);
+  await get('settings-open').onclick();
+  get('simplify-numbers').checked = false;
+  await get('settings-save').onclick();
+  await new Promise(setImmediate);
+  assert.ok(card(3).includes(`>${(7 / 3360 * 1e6).toLocaleString(undefined, { maximumFractionDigits: 9 })}</strong>`));
+  Object.assign(report, buildReport(records, { range: '7d', includeCache: false }, now));
+  await get('refresh').onclick();
+  assert.ok(card(3).includes(`>${(5000).toLocaleString()}</strong>`));
+  assert.match(card(3), /excluding cache/);
+  const incomplete = [{ ...records[0], nanoAiu: null, creditStatus: 'unavailable' }, records[1], { ...records[2], output: null }];
+  Object.assign(report, buildReport(incomplete, { range: '7d' }, now));
+  await get('refresh').onclick();
+  assert.match(card(2), />0\.25 \*<\/strong>.*2 of 3 requests with complete charges/);
+  assert.match(card(3), /\*<\/strong>.*1 of 3 requests · including cache/);
+  Object.assign(report, buildReport([incomplete[0]], { range: '7d' }, now));
+  await get('refresh').onclick();
+  for (const index of [2, 3]) assert.match(card(index), />Unavailable<\/strong>.*0 of 1 requests/);
+  Object.assign(report, buildReport([{ ...records[0], nanoAiu: 0 }], { range: '7d' }, now));
+  await get('refresh').onclick();
+  for (const index of [2, 3]) assert.match(card(index), /data-measure="credits".*>0<\/strong>/);
+  Object.assign(report, buildReport([], { range: '1d' }, now));
+  await get('refresh').onclick();
+  for (const index of [2, 3]) assert.match(card(index), />Unavailable<\/strong>/);
 });
 
 test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {

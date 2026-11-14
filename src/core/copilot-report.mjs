@@ -3,7 +3,7 @@ import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 
 const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
-const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
+const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, completeCreditRequests: 0, completeCreditNano: 0n, creditTokenRequests: 0, creditTokens: 0, creditTokenNano: 0n, sessions: new Set() });
 const knownTokens = (r, includeCache) => ((includeCache ? r.inputTotal : r.input) ?? 0) + (r.output ?? 0);
 function add(b, r, includeCache) {
   b.requests++; b.sessions.add(r.sessionId);
@@ -17,10 +17,18 @@ function add(b, r, includeCache) {
   if (r.nanoAiu === null) b.missingCredits++;
   else { b.nano += BigInt(r.nanoAiu); b.chargedRequests++; }
   if (r.creditStatus === 'partial') b.partialCredits++;
+  if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') {
+    b.completeCreditRequests++; b.completeCreditNano += BigInt(r.nanoAiu);
+    if (input != null && r.output != null) {
+      b.creditTokenRequests++; b.creditTokens += input + r.output; b.creditTokenNano += BigInt(r.nanoAiu);
+    }
+  }
 }
 function finish(b) {
-  const { nano, sessions, completeTokens, ...rest } = b;
-  return { ...rest, sessions: sessions.size, averageTokens: b.completeTokenRequests ? completeTokens / b.completeTokenRequests : null, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9 };
+  const { nano, sessions, completeTokens, completeCreditNano, creditTokens, creditTokenNano, ...rest } = b;
+  return { ...rest, sessions: sessions.size, averageTokens: b.completeTokenRequests ? completeTokens / b.completeTokenRequests : null, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9,
+    averageCredits: b.completeCreditRequests ? Number(completeCreditNano) / 1e9 / b.completeCreditRequests : null,
+    creditsPerMillionTokens: creditTokens > 0 ? Number(creditTokenNano) / 1e9 / creditTokens * 1e6 : null };
 }
 function skillReport(records, activity, input, start, end, now) {
   const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
