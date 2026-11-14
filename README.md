@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.12** adds **Small**, **Medium**, and **Large** text sizes in Settings. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.13** tightens the Skills used table, centers details under their headers, and adds faint dotted column dividers. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -114,7 +114,7 @@ In **Settings → Text size**, choose **Small** (the original size, and the defa
 
 ## Skills used
 
-Open **Breakdown** to see **Skills used** below the token table. Its columns are **Skill** (with folder actions), **Activations**, **By user**, **By agent**, **Sessions**, **Projects**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. All columns are always visible; scroll horizontally on narrower screens. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
+Open **Breakdown** to see **Skills used** below the token table. Its columns are **Skill** (with folder actions), **Activations**, **By user**, **By agent**, **Sessions**, **Projects**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. Skill names stay left-aligned, while the remaining headers and values are centered with faint dotted column dividers. The skill column narrows as space becomes limited, and long names wrap. All columns remain available; scroll horizontally when they no longer fit. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
 
 **By user** counts events whose `data.trigger` is `user-invoked` (a slash command or explicit UI action); **By agent** counts `agent-invoked`. **Activations** includes those plus **Preloaded** (`context-load`) and **Unknown** (missing or unrecognized triggers). Hover over an activation count to see all four counts. Preloaded and unknown activations are not assigned to either trigger column, so **By user** plus **By agent** can be less than **Activations**. A replayed event is counted once; a prompt that reuses an already loaded skill is not necessarily another activation.
 
