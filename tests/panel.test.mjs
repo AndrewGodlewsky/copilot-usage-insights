@@ -326,6 +326,43 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
   assert.doesNotMatch(html(), /id="project-sessions"/);
 });
 
+test('header credits follow filtered totals, keep fractions, and preserve unavailable or partial coverage', async () => {
+  const { get, report, records, now, server } = await requestPanel();
+  const earlier = new Date(2026, 10, 13, 12);
+  const history = [...records, { ...records[0], key: 'earlier', ms: earlier.getTime(), ts: earlier.toISOString(), project: 'Another project' }];
+  Object.assign(report, buildReport(history, { range: '7d' }, now));
+  await get('refresh').onclick();
+  assert.equal(get('hero-credits').textContent, '7.25');
+  get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
+  assert.equal(get('hero-credits').textContent, '7.25', 'daily selection does not replace the filter total');
+  get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.equal(get('hero-credits').textContent, '7.25');
+  Object.assign(report, buildReport(history, { range: '7d', project: 'Another project' }, now));
+  get('project').value = 'Another project'; await get('project').onchange();
+  assert.equal(get('hero-credits').textContent, '0.25');
+  Object.assign(report, buildReport(history, { range: '1d', project: 'Another project' }, now));
+  get('range').value = '1d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(get('hero-credits').textContent, '0', 'no matching usage shows zero');
+  Object.assign(report.totals, { requests: 2, credits: null, missingCredits: 2 });
+  await get('refresh').onclick();
+  assert.equal(get('hero-credits').textContent, 'Unavailable');
+  Object.assign(report.totals, { credits: 0.25, missingCredits: 1 });
+  await get('refresh').onclick();
+  assert.equal(get('hero-credits').textContent, '0.25 *');
+  assert.match(get('hero-credits').title, /incomplete credit coverage/);
+  server.transportError = true;
+  get('project').value = 'Unloaded project'; await get('project').onchange();
+  assert.equal(get('hero-credits').textContent, 'Unavailable');
+  assert.match(get('hero-credits').title, /could not be loaded/);
+  get('view').onclick({ target: { dataset: { view: 'usage' } } });
+  assert.equal(get('hero-credits').textContent, 'Unavailable', 'switching tabs does not restore stale credits');
+  server.transportError = false;
+  Object.assign(report.totals, { credits: 1.5, missingCredits: 0 });
+  await get('refresh').onclick();
+  assert.equal(get('hero-credits').textContent, '1.5');
+});
+
 test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
   const { get, requests, intervals, listeners, document } = await requestPanel();
   assert.equal(intervals.length, 1);

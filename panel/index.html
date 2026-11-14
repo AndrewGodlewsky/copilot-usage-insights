@@ -17,6 +17,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .server-details{border:0;padding:0}.server-details summary{display:list-item;list-style-position:inside;font-size:inherit;color:var(--fg)}.server-info{max-width:42ch;white-space:normal;overflow-wrap:anywhere;color:var(--muted-fg)}.server-info p{margin:6px 0}.connection-status{display:inline-flex;align-items:center;gap:6px}.connection-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--muted-fg)}.connection-status.ok::before{background:var(--s3)}.connection-status.attention::before{background:var(--s4)}
 
 .settings-section-title{margin:20px 0 8px}
+.hero-copy .hero-credits{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin-top:12px;opacity:1}.hero-credits strong{font-size:calc(22px * var(--text-scale));line-height:1.2;font-variant-numeric:tabular-nums}.hero-credits span{font-size:calc(12px * var(--text-scale))}
 
 td.text-cell{white-space:normal;overflow:visible;text-overflow:clip}.cell-text{display:block;min-width:12ch;max-width:30ch;margin-inline:auto;white-space:normal;overflow-wrap:anywhere}td:first-child .cell-text{margin-inline:0}.filter-grid>label{min-width:0}.filter-grid select{max-width:100%;text-overflow:ellipsis}.tip{max-width:min(260px,calc(100vw - 16px))}.tip p>span{min-width:0}
 
@@ -29,7 +30,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 .support-footer{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px 8px;padding:10px 0;color:var(--muted-fg);font-size:calc(11px * var(--text-scale))}.support-footer button,.support-footer a{font:inherit;border:0;background:transparent;padding:2px 0;color:var(--s1);text-decoration:none}.support-footer button:hover,.support-footer a:hover{color:var(--fg);text-decoration:underline}.support-footer a:focus-visible{outline:2px solid var(--s1);outline-offset:3px}.support-footer button:disabled{cursor:default}#logs-dialog{width:min(900px,calc(100% - 32px))}#logs-output{font-family:ui-monospace,Consolas,monospace;font-size:calc(11px * var(--text-scale));white-space:pre;overflow:auto}#logs-dialog footer{display:flex;justify-content:flex-end;gap:8px}#logs-status{min-height:1.7em}
 </style></head>
 <body><main id="app">
-  <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
+  <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p><p class="hero-credits"><strong id="hero-credits">—</strong><span>Copilot credits</span></p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
   <nav class="controls" aria-label="Dashboard controls">
     <div class="seg" id="view"><button data-view="usage" aria-pressed="true">Usage</button><button data-view="breakdown" aria-pressed="false">Breakdown</button></div>
     <label class="sr-only" for="range">Date range</label><select id="range"><option value="1d">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="all">All history</option><option value="custom">Custom dates</option></select>
@@ -69,13 +70,13 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompts are read locally when you expand an individual request; nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.27</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.28</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.27";
+const BUILD_VERSION = "0.1.28";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -735,7 +736,7 @@ $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VER
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -820,6 +821,7 @@ async function load(force = false, refresh = false) {
         if (version !== state.version) continue;
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
+        state.creditsUnavailable = false;
         state.report = report;
         render();
         if (state.requestView) loadRequestPage(state.requestView.offset);
@@ -827,6 +829,8 @@ async function load(force = false, refresh = false) {
       } catch (e) {
         if (version !== state.version) continue;
         state.requestView = null;
+        state.creditsUnavailable = true;
+        renderHeaderCredits();
         $('status').hidden = false;
         $('status').textContent = `Could not update usage: ${e.message}`;
         $('content').hidden = true;
@@ -846,6 +850,11 @@ function options(id, values, all) {
 }
 function creditLabel(row) {
   return usageValue(row, 'credits', number);
+}
+function renderHeaderCredits() {
+  const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
+  $('hero-credits').textContent = totals ? creditLabel(totals) : 'Unavailable';
+  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' An asterisk marks incomplete credit coverage.' : '') : 'Credits could not be loaded for the current filters.';
 }
 function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
@@ -1032,6 +1041,7 @@ function renderContent() {
   const r = state.report;
   if (!r) return;
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
+  renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
   const selected = r.daily.find(d => d.day === state.selectedDay);
   if (!selected) state.selectedDay = null;

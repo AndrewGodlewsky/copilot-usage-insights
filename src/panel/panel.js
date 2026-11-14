@@ -12,7 +12,7 @@ $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VER
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -97,6 +97,7 @@ async function load(force = false, refresh = false) {
         if (version !== state.version) continue;
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
+        state.creditsUnavailable = false;
         state.report = report;
         render();
         if (state.requestView) loadRequestPage(state.requestView.offset);
@@ -104,6 +105,8 @@ async function load(force = false, refresh = false) {
       } catch (e) {
         if (version !== state.version) continue;
         state.requestView = null;
+        state.creditsUnavailable = true;
+        renderHeaderCredits();
         $('status').hidden = false;
         $('status').textContent = `Could not update usage: ${e.message}`;
         $('content').hidden = true;
@@ -123,6 +126,11 @@ function options(id, values, all) {
 }
 function creditLabel(row) {
   return usageValue(row, 'credits', number);
+}
+function renderHeaderCredits() {
+  const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
+  $('hero-credits').textContent = totals ? creditLabel(totals) : 'Unavailable';
+  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' An asterisk marks incomplete credit coverage.' : '') : 'Credits could not be loaded for the current filters.';
 }
 function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
@@ -309,6 +317,7 @@ function renderContent() {
   const r = state.report;
   if (!r) return;
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
+  renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
   const selected = r.daily.find(d => d.day === state.selectedDay);
   if (!selected) state.selectedDay = null;

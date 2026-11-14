@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.27** combines the Project and Session breakdowns: expand a project to see its sessions in a shaded table with the same usage columns. Expansion and session paging reuse loaded data. The Model view and 60-second automatic refresh are unchanged. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.28** adds a Copilot credits total beneath the header subtitle, following the active date, model, project, and session filters. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -92,6 +92,8 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible.
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
+
+**Copilot credits** beneath the header subtitle shows recorded credits for the active date, model, project, and session filters on both tabs. It uses the same total as the AI credits card, including fractional credits, an asterisk for incomplete coverage, and Unavailable when charges are missing. Selecting an individual daily bar changes the token detail only; the header keeps the overall filtered credit total. This is usage, not an account balance, and uses the loaded report without another lookup.
 
 The decorative header has four buildings with fixed sizes and positions for the date-range presets:
 
