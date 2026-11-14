@@ -41,7 +41,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
 }
 
 test('dashboard shows skill versions and separate trigger counts, with last use last and request/tool metrics separate', async () => {
-  const now = new Date(2026, 10, 13, 12), timestamp = now.toISOString();
+  const now = new Date(2026, 10, 13, 22, 49, 37), timestamp = now.toISOString();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
   const events = [
     { type: 'session.usage_record', id: 'u1', timestamp, data: { usage: { provider: { kind: 'copilot' }, model: 'model-a', inputTokens: 100, outputTokens: 20, reasoningTokens: 5, cacheReadTokens: 60, cacheWriteTokens: 10 } } },
@@ -60,10 +60,11 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
   assert.deepEqual(headers, ['Skill', 'Activations', 'By user', 'By agent', 'Sessions', 'Projects', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
-  const cells = [...get('skills').innerHTML.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(([, value]) => value);
+  const cells = [...get('skills').innerHTML.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(([, value]) => value.replace(/<\/?span[^>]*>/g, ''));
   assert.equal(cells.length, headers.length);
   assert.deepEqual(cells.slice(1, 9), ['5', '2', '1', '1', '1', '&lt;team-tools&gt;', '2.0', '1.0.1']);
-  assert.equal(cells.at(-1), now.toLocaleString());
+  assert.equal(cells.at(-1), '11/13/26, 10:49 PM');
+  assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
   assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 1; Unknown: 1"/);
   assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|Failures|<hello-test>/);
   assert.ok(!nodes.has('skill-details'));
@@ -80,7 +81,7 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   assert.match(get('session').innerHTML, /value="s1"[^>]*>&lt;Planning &quot;work&quot;&gt;<\/option>/);
   get('group').value = 'sessions';
   get('group').onchange();
-  assert.match(get('breakdown').innerHTML, />&lt;Planning &quot;work&quot;&gt;<\/td>/);
+  assert.match(get('breakdown').innerHTML, />&lt;Planning &quot;work&quot;&gt;<\//);
   assert.match(get('breakdown').innerHTML, /title="[^"]*s1[^"]*"/);
   get('session').value = 's1';
   await get('session').onchange();
@@ -89,6 +90,26 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   await get('refresh').onclick();
   assert.equal(get('session').value, 's1');
   assert.match(get('session').innerHTML, />Renamed session<\/option>/);
+});
+
+test('long selected filter names remain readable in full and keep their original filter IDs', async () => {
+  const name = 'Planning <release> ' + 'LongUnbrokenName'.repeat(30);
+  const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {} };
+  report.options.sessions = [{ id: 'session-long', name }];
+  report.options.projects = [name];
+  report.options.models = [name];
+  const { get, requests } = await mountPanel(report);
+  for (const id of ['session', 'project', 'model']) {
+    get(id).value = id === 'session' ? 'session-long' : name;
+    await get(id).onchange();
+    assert.equal(get(id).title, id === 'session' ? `${name} — session-long` : name);
+    assert.ok(get(id).innerHTML.includes(name.replace('<release>', '&lt;release&gt;')));
+    assert.ok(!get(id).innerHTML.includes('<release>'));
+  }
+  assert.equal(requests.at(-1).input.session, 'session-long');
+  get('clear-filters').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('session').title, 'All sessions');
 });
 
 test('settings restore saved text size and apply changes only after a successful save', async () => {

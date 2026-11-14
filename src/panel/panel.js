@@ -5,6 +5,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
+const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small' };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
@@ -56,18 +57,24 @@ function options(id, values, all) {
   const select = $(id), selected = select.value;
   const choices = values.map(v => typeof v === 'string' ? { id: v, name: v } : v);
   const available = selected && !choices.some(v => v.id === selected) ? [{ id: selected, name: selected }, ...choices] : choices;
-  select.innerHTML = `<option value="">${all}</option>` + available.map(v => `<option value="${esc(v.id)}" title="${esc(v.id)}">${esc(v.name)}</option>`).join('');
+  const title = choice => choice.name === choice.id ? choice.name : `${choice.name} — ${choice.id}`;
+  select.innerHTML = `<option value="">${all}</option>` + available.map(v => `<option value="${esc(v.id)}" title="${esc(title(v))}">${esc(v.name)}</option>`).join('');
   select.value = selected;
+  const active = available.find(v => v.id === selected);
+  select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
   return usageValue(row, 'credits', number);
+}
+function textCell(value, title = value) {
+  return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
 }
 function table(rows, heading, details = false) {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.id ? `${r.name} — ${r.id}` : r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${textCell(r.name, r.id ? `${r.name} — ${r.id}` : r.name)}<td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 function skillFolder(file) {
   const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
@@ -86,7 +93,7 @@ function skillTriggerSummary(skill) {
 function renderTools(report) {
   const tools = report.tools;
   $('tools-summary').textContent = `${number(tools.calls)} call${tools.calls === 1 ? '' : 's'}`;
-  $('tools').innerHTML = tools.rows.length ? `<table><thead><tr><th>Tool</th><th>Calls</th><th>Successes</th><th>Failures</th><th title="No valid completion outcome recorded; may still be running.">Unknown</th><th title="Successes divided by successes plus failures. Unknown outcomes are excluded.">Success rate</th><th>Last used</th></tr></thead><tbody>${tools.rows.map(t => `<tr><td title="${esc(t.name)}">${esc(t.server ? `${t.server} / ${t.mcpTool || t.name}` : t.name)}</td><td>${number(t.calls)}</td><td>${number(t.successes)}</td><td>${number(t.failures)}</td><td>${number(t.unknown)}</td><td>${t.successRate === null ? 'Unavailable' : `${t.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${esc(new Date(t.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded tool calls match these filters.</p>';
+  $('tools').innerHTML = tools.rows.length ? `<table><thead><tr><th>Tool</th><th>Calls</th><th>Successes</th><th>Failures</th><th title="No valid completion outcome recorded; may still be running.">Unknown</th><th title="Successes divided by successes plus failures. Unknown outcomes are excluded.">Success rate</th><th>Last used</th></tr></thead><tbody>${tools.rows.map(t => `<tr>${textCell(t.server ? `${t.server} / ${t.mcpTool || t.name}` : t.name)}<td>${number(t.calls)}</td><td>${number(t.successes)}</td><td>${number(t.failures)}</td><td>${number(t.unknown)}</td><td>${t.successRate === null ? 'Unavailable' : `${t.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${esc(new Date(t.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded tool calls match these filters.</p>';
   const coverage = [];
   if (tools.omitted) coverage.push(`${number(tools.omitted)} calls omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidTools) coverage.push(`${number(report.coverage.invalidTools)} malformed tool events skipped across scanned sources.`);
@@ -101,7 +108,7 @@ function renderBreakdown() {
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="All recorded activations, including preloaded and unknown triggers. Hover over a count for its breakdown.">Activations</th><th title="Activations explicitly requested by the user.">By user</th><th title="Activations requested by the agent.">By agent</th><th>Sessions</th><th>Projects</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '\u2014')}</td><td>${esc(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="All recorded activations, including preloaded and unknown triggers. Hover over a count for its breakdown.">Activations</th><th title="Activations explicitly requested by the user.">By user</th><th title="Activations requested by the agent.">By agent</th><th>Sessions</th><th>Projects</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td class="text-cell" title="${esc(s.name)}"><span class="cell-text">${skillName(s)}</span></td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td>${textCell(s.plugin || 'No plugin recorded')}${textCell(s.version || '\u2014')}${textCell(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(s.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(s.lastUsed)))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
   if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);

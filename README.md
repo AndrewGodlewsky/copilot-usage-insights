@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.13** tightens the Skills used table, centers details under their headers, and adds faint dotted column dividers. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.14** wraps long names and version strings, adds full-name filter tooltips, and shortens skill timestamps. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -106,6 +106,8 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 
 **Group by → Session** and the **Session** filter show Copilot's saved session names. The reader uses `name` from `session-state/<session>/workspace.yaml` when available, then falls back to `summary` in the existing `session-store.db` sessions table. Names refresh with the report, including when usage logs have not changed. Missing names fall back to the project and the date/time of the earliest available usage record; duplicate names also include that date/time. Session IDs remain the grouping and filter keys, so identically named sessions stay separate. Hover over a session name to see its ID.
 
+Long model, project, session, skill, tool/server, plugin, and version names wrap within bounded table columns, including names without spaces. The full text is retained; numeric columns stay on one line and tables scroll horizontally when needed. Filter controls stay within their columns; hover over a selected filter to read its full name (and the session ID for sessions). Chart model labels remain shortened to fit, with the full name in the chart tooltip. Source paths, notices, and tooltip text also wrap.
+
 Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources are scanned incrementally while the canvas is visible. **Refresh** forces a complete reread. Source diagnostics explain missing homes, unsupported schemas, and skipped records. Copilot's local event format and canvas APIs are experimental; app updates can require a reader update.
 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
@@ -115,6 +117,8 @@ In **Settings → Text size**, choose **Small** (the original size, and the defa
 ## Skills used
 
 Open **Breakdown** to see **Skills used** below the token table. Its columns are **Skill** (with folder actions), **Activations**, **By user**, **By agent**, **Sessions**, **Projects**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. Skill names stay left-aligned, while the remaining headers and values are centered with faint dotted column dividers. The skill column narrows as space becomes limited, and long names wrap. All columns remain available; scroll horizontally when they no longer fit. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
+
+**Last used** in Skills used displays local time in a compact month/day/year format, such as **11/13/26, 10:49 PM**. Hover over it for the full timestamp, including seconds.
 
 **By user** counts events whose `data.trigger` is `user-invoked` (a slash command or explicit UI action); **By agent** counts `agent-invoked`. **Activations** includes those plus **Preloaded** (`context-load`) and **Unknown** (missing or unrecognized triggers). Hover over an activation count to see all four counts. Preloaded and unknown activations are not assigned to either trigger column, so **By user** plus **By agent** can be less than **Activations**. A replayed event is counted once; a prompt that reuses an already loaded skill is not necessarily another activation.
 
