@@ -19,7 +19,31 @@ function finish(b) {
   const { nano, sessions, ...rest } = b;
   return { ...rest, sessions: sessions.size, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9 };
 }
-export function buildReport(records, input = {}, now = new Date()) {
+function skillReport(records, activity, input, start, end, now) {
+  const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
+  const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
+  let invocations = 0, omitted = 0;
+  for (const skill of activity.skills || []) {
+    if (skill.ms > now.getTime()) continue;
+    const attributed = copilotSessions.has(skill.sessionId) && !excluded.has(skill.sessionId);
+    if (attributed) projectOptions.add(skill.project);
+    const day = localDay(new Date(skill.ms));
+    if (day < start || day > end || input.project && input.project !== skill.project || input.session && input.session !== skill.sessionId) continue;
+    // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
+    if (!attributed) { omitted++; continue; }
+    const key = JSON.stringify([skill.name, skill.plugin, skill.version]);
+    if (!groups.has(key)) groups.set(key, { name: skill.name, plugin: skill.plugin, version: skill.version, invocations: 0, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
+    const row = groups.get(key);
+    row.invocations++; row.sessions.add(skill.sessionId); row.projects.add(skill.project);
+    if (skill.ts > row.lastUsed) row.lastUsed = skill.ts;
+    sessions.add(skill.sessionId); invocations++;
+  }
+  const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size }))
+    .sort((a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name));
+  return { rows, invocations, sessions: sessions.size, omitted, projectOptions: [...projectOptions] };
+}
+
+export function buildReport(records, input = {}, now = new Date(), activity = {}) {
   const q = normalizeQuery(input, now), today = localDay(now);
   for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
   const history = records.filter(r => r.ms <= now.getTime() && (!q.models || q.models.includes(r.model)) && (!input.project || r.project === input.project) && (!input.session || r.sessionId === input.session));
@@ -41,11 +65,13 @@ export function buildReport(records, input = {}, now = new Date()) {
   const ranked = map => [...map].map(([name, b]) => ({ name, ...finish(b) })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   let current = 0;
   for (let d = calendar.has(today) ? today : today - 1; calendar.has(d); d--) current++;
+  const { projectOptions, ...skills } = skillReport(records, activity, input, q.range === 'all' ? -Infinity : start, end, now);
   return {
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
     rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions),
-    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set(records.map(r => r.project))].sort(), sessions: [...new Set(records.map(r => r.sessionId))].sort() },
+    skills,
+    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions])].sort(), sessions: [...new Set(records.map(r => r.sessionId))].sort() },
   };
 }

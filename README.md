@@ -1,6 +1,6 @@
 # Copilot Usage Insights
 
-A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, activity, models, projects, and sessions.
+A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a canvas to explore token usage, recorded AI credits, skill activations, models, projects, and sessions.
 
 ## Install in GitHub Copilot desktop
 
@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.2** adds the token overview below and includes the plugin icon. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.3** adds clickable daily bars and recorded skill activity under Breakdown. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -91,6 +91,8 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 
 The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible.
 
+Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
+
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks a known subtotal with incomplete coverage. Missing counts show **Unavailable**.
 
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
@@ -104,20 +106,27 @@ Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources 
 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
 
+## Skills used
+
+Open **Breakdown** to see **Skills used** below the token table. It shows skill name, recorded plugin and version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
+
+The reader counts persisted `skill.invoked` events from local session logs, deduplicating replayed events and copied homes. It includes sessions with Copilot-attributed requests and omits activations in sessions with mixed or missing provider attribution, with the omitted count shown. This conservative rule can omit genuine Copilot activations in mixed-provider sessions. A skill-only session can appear once Copilot request accounting is available.
+
+An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions, arguments, and paths are discarded; the dashboard keeps names and activation metadata. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
+
 ## Possible next additions
 
 These are supported by Copilot event metadata but are **not implemented in this release**:
 
 | Capability | What could be shown |
 | --- | --- |
-| Skills | Recorded activations by skill, originating plugin, and session |
 | MCP servers | Servers and tools actually called, call counts, and last use |
 | Tool reliability | Successful and failed calls; elapsed time when start and completion events can be paired |
 | Subagents | Agent names, selected models, durations, and reported tool counts |
 | Response performance | Request duration and time to first token where recorded |
 | Reasoning | Recorded reasoning tokens as a subset of output, never added to the total again |
 
-GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events). Historical coverage depends on which events the app persisted. A skill activation does not prove how closely its instructions were followed; a configured MCP server is not evidence it was used. Session token totals cannot reliably be assigned to an individual skill or MCP call without explicit accounting links. Any activity view should retain names and counts, without retaining skill bodies, tool arguments, or tool output.
+GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events). Historical coverage depends on which events the app persisted. A configured MCP server is not evidence it was used. Session token totals cannot reliably be assigned to an individual skill or MCP call without explicit accounting links. Any further activity view should retain names and counts, without retaining tool arguments or output.
 
 ## Privacy and runtime
 

@@ -32,6 +32,23 @@ test('usage displays preserve unavailable and partial credits and token categori
   assert.equal(usageValue({ total: 0, requests: 1, knownTokenRequests: 0, missingTokens: 1 }, 'total'), 'Unavailable');
 });
 
+test('selectable daily bars expose date buttons and selection, including zero days', () => {
+  const s = stackedBars([day('2026-11-12', 100), day('2026-11-13', 0)], { selectable: true, selectedDay: '2026-11-13' });
+  wellFormed(s);
+  assert.match(s, /role="group"/);
+  assert.equal((s.match(/role="button"/g) || []).length, 2);
+  assert.equal((s.match(/tabindex="0"/g) || []).length, 2);
+  assert.match(s, /data-day="2026-11-13"[^>]*aria-pressed="true"/);
+  assert.match(stackedBars([day('2026-11-13', 0)], { selectable: true }), /data-day="2026-11-13"/);
+});
+
+test('dense daily bars stay inside their selectable day slots', () => {
+  const days = Array.from({ length: 500 }, (_, i) => day(new Date(2025, 0, i + 1).toLocaleDateString('en-CA'), 10));
+  const s = stackedBars(days, { width: 360, selectable: true });
+  const barWidth = Number(s.match(/<clipPath[^>]*><rect[^>]*width="([^"]+)"/)[1]);
+  assert.ok(barWidth <= 360 / days.length, 'a neighboring day must not cover the clicked bar');
+});
+
 test('calendarHeatmap places every day and uses quantile levels', () => {
   const cal = Array.from({ length: 182 }, (_, i) => ({ day: new Date(2026, 4, 5 + i).toLocaleDateString('en-CA'), total: i % 3 ? i : 0 }))
   const s = calendarHeatmap(cal)

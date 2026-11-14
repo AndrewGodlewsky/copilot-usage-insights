@@ -51,7 +51,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
         buildReport([], input, now());
         const config = await settings.get();
         const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes, force: message.method === 'usage.refresh' });
-        result = { ...buildReport(scan.records, input, now()), sources: scan.sources, coverage: scan.coverage };
+        result = { ...buildReport(scan.records, input, now(), scan), sources: scan.sources, coverage: scan.coverage };
       } else throw new TypeError('Unknown dashboard method');
       json(res, 200, result);
     } catch (e) { json(res, e instanceof TypeError || e instanceof RangeError || e instanceof SyntaxError ? 400 : 500, { error: e.message }); }

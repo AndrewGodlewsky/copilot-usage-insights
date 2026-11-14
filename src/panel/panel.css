@@ -5,3 +5,5 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 @media(max-width:650px){main{padding:10px;gap:12px}.grid-2,.overview-grid{grid-template-columns:1fr}.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.filter-grid{grid-template-columns:1fr}.hero{min-height:130px}.hero-copy{padding:20px}.card{padding:12px}.controls{gap:6px}button,select{padding:7px 8px}.mix{justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 .chart .track{stroke:var(--muted)}.chart .bar{fill:var(--s1)}.chart .t-strong{font-size:20px;font-weight:600}
+.chart [data-day]{cursor:pointer;outline:none}.chart [data-day]:hover>.hit{fill:var(--s1);fill-opacity:.08}.chart [data-day][aria-pressed=true]>.hit{fill:var(--s1);fill-opacity:.15;stroke:var(--s1);stroke-width:1}.chart [data-day]:focus-visible>.hit{stroke:var(--fg);stroke-width:2}.selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
+.card header label{white-space:nowrap}

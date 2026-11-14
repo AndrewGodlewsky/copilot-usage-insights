@@ -89,22 +89,24 @@ export function createScanner() {
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
-    const records = new Map();
-    const coverage = { excluded: 0, unclassified: 0, invalid: 0, aggregateOnly: 0, fallbackRequests: 0 };
+    const records = new Map(), skills = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
+    const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
     for (const s of snapshots) {
       for (const r of s.records) if (!records.has(r.key)) { records.set(r.key, r); s.source.records++; }
-      for (const k of ['excluded', 'unclassified', 'invalid']) coverage[k] += s[k];
+      for (const skill of s.skills) if (!skills.has(skill.key)) skills.set(skill.key, skill);
+      for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills']) coverage[k] += s[k];
       if (s.aggregateOnly) coverage.aggregateOnly++;
     }
     for (const { db, source } of databases) {
       try {
         const result = readUsageDatabase(db, receiptSessions, source.path);
+        for (const session of result.skillExcludedSessions) skillExcludedSessions.add(session);
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
         for (const r of result.records) if (!records.has(r.key)) { records.set(r.key, r); source.records++; coverage.fallbackRequests++; }
       } catch (e) { source.state = 'warning'; source.message = e.message; }
     }
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    return { records: [...records.values()], sources, coverage };
+    return { records: [...records.values()], skills: [...skills.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }

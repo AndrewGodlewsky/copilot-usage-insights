@@ -47,8 +47,8 @@ function shortDay(day) {
   return `${MONTHS[Number(m) - 1]} ${Number(d)}`
 }
 
-function svg(w, h, body, label) {
-  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+function svg(w, h, body, label, role = 'img') {
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="${role}" aria-label="${esc(label)}" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
 function empty(w, h, label) {
@@ -57,7 +57,7 @@ function empty(w, h, label) {
 
 // Daily stacked bars. Segments stack bottom-up in `keys` order with a 2px surface gap,
 // the bar's top is rounded via a clip path, and every bar carries a tooltip payload.
-export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null } = {}) {
+export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null } = {}) {
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
@@ -66,10 +66,10 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   const plotH = height - top - bottom
   const totals = daily.map((d) => keys.reduce((s, k) => s + (d[k] || 0), 0))
   const max = Math.max(...totals)
-  if (max <= 0) return empty(width, height, label)
+  if (max <= 0 && !selectable) return empty(width, height, label)
   const slot = width / daily.length
   // Bars take most of their slot so few-day ranges don't look sparse; capped so 1–2 days stay sane.
-  const barW = Math.max(2, Math.min(96, slot * (slot > 40 ? 0.62 : 0.72)))
+  const barW = Math.min(slot, Math.max(2, Math.min(96, slot * (slot > 40 ? 0.62 : 0.72))))
   const radius = Math.min(6, barW / 2)
   let defs = ''
   let body = `<line x1="0" x2="${width}" y1="${top + plotH + 0.5}" y2="${top + plotH + 0.5}" class="axis"/>`
@@ -77,14 +77,15 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   daily.forEach((d, i) => {
     const x = i * slot + (slot - barW) / 2
     const total = totals[i]
-    const h = (total / max) * plotH
+    const h = (total / (max || 1)) * plotH
     const show = (v) => (fmt ? fmt(v) : v)
     const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show)])
     if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
     if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
     if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined }))
-    body += `<g class="mark" data-tip="${tip}">`
+    const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown"` : ''
+    body += `<g class="mark" data-tip="${tip}"${selection}>`
     body += `<rect x="${x - (slot - barW) / 2}" y="${top}" width="${slot}" height="${plotH}" class="hit"/>`
     if (h > 0) {
       const cid = `${id}-c${i}`
@@ -108,7 +109,7 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   for (const i of dayTicks(daily.length, slot)) {
     body += dayLabel(daily[i].day, (i * slot + slot / 2).toFixed(1), top + plotH + 14, 'middle', withWeekday)
   }
-  return svg(width, height, `<defs>${defs}</defs>${body}`, label)
+  return svg(width, height, `<defs>${defs}</defs>${body}`, label, selectable ? 'group' : 'img')
 }
 
 // Rank-quantile buckets 1..4 over non-zero values; 0 stays level 0.

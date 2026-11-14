@@ -4,7 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '' };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -30,8 +30,10 @@ async function load(force = false) {
       version = state.version;
       const method = state.force ? 'usage.refresh' : 'usage.report'; state.force = false;
       try {
-        const report = await request(method, query());
+        const input = query(), filterKey = JSON.stringify(input);
+        const report = await request(method, input);
         if (version !== state.version) continue;
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.filterKey = filterKey; }
         state.report = report;
         render();
         $('live').textContent = 'Usage updated';
@@ -62,11 +64,24 @@ function renderBreakdown() {
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group]);
+  const skills = report.skills;
+  $('skills-summary').textContent = `${number(skills.invocations)} activations · ${number(skills.sessions)} sessions`;
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Plugin</th><th>Version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td title="${esc(s.name)}">${esc(s.name)}</td><td>${esc(s.plugin || 'Not recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  const coverage = [];
+  if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
+  if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
+  $('skills-coverage').hidden = !coverage.length;
+  $('skills-coverage').textContent = coverage.join(' ');
 }
 function render() {
   const r = state.report;
   if (!r) return;
   const t = r.totals, credits = state.metric === 'credits';
+  const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
+  const selected = r.daily.find(d => d.day === state.selectedDay);
+  if (!selected) state.selectedDay = null;
+  const scope = selected || t;
+  const scopeDate = selected ? new Date(selected.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   const keys = r.query.includeCache ? [...TOKEN_KEYS, 'unclassifiedInput'] : ['input', 'output'];
   options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); options('session', r.options.sessions, 'All sessions');
   $('content').hidden = false;
@@ -91,34 +106,48 @@ function render() {
     ['Models', number(r.models.length), 'Used through GitHub Copilot'],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
-  $('token-title').textContent = r.query.includeCache ? 'Total tokens' : 'Total tokens excluding cache';
-  $('token-total').textContent = usageValue(t, 'total');
-  $('token-total').title = usageValue(t, 'total', number);
-  $('token-context').textContent = `${number(t.sessions)} sessions · ${number(t.requests)} requests through GitHub Copilot`;
+  $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
+  $('token-total').textContent = usageValue(scope, 'total');
+  $('token-total').title = usageValue(scope, 'total', number);
+  $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
+  $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
+  $('all-days').hidden = !selected;
   const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
-  const cacheRate = t.missingCache ? 'Unavailable' : t.inputTotal ? `${number(t.cacheRead / t.inputTotal * 100)}%` : '—';
-  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(t, key, number))}">${esc(usageValue(t, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   $('banner').innerHTML = pixelBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null, selectable: true, selectedDay: state.selectedDay });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
   $('rhythm').innerHTML = punchCard(r.rhythm);
-  const segments = keys.filter(k => t[k] > 0).map(k => ({ label: labels[k], value: t[k], color: colors[k] }));
+  const segments = keys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k] }));
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth) });
-  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || t[k] > 0).map(k => `<span title="${esc(usageValue(t, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(t, k))}</b></span>`).join('');
+  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
   $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth) });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.generatedAt).toLocaleTimeString()}. Refreshes every 30 seconds while visible.`;
   renderBreakdown();
+  if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
 }
+function selectDay(day) {
+  const focusDay = day || state.selectedDay;
+  state.selectedDay = state.selectedDay === day ? null : day;
+  render();
+  $('tip').hidden = true;
+  $('live').textContent = state.selectedDay ? `Showing tokens for ${state.selectedDay}` : 'Showing tokens for all days';
+  $('daily').querySelector(`[data-day="${focusDay}"]`)?.focus({ preventScroll: true });
+}
+$('daily').onclick = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day) selectDay(day); };
+$('daily').onkeydown = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day && ['Enter', ' '].includes(e.key)) { e.preventDefault(); selectDay(day); } };
+$('all-days').onclick = () => selectDay(null);
 function selectButton(container, name, value) {
   for (const button of $(container).querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset[name] === value));
 }

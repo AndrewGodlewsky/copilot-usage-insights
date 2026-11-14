@@ -1,4 +1,4 @@
-// Only normalized accounting metadata leaves this parser; conversation text is discarded.
+// Only accounting and skill activation metadata leaves this parser; payload text is discarded.
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 
@@ -28,8 +28,8 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
 
 export function createReceiptParser({ sessionId: initialSession, source }) {
   let sessionId = initialSession, cwd = '', project = '';
-  let invalid = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
-  const records = new Map(), receiptSessions = new Set(), seen = new Set();
+  let invalid = 0, invalidSkills = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
+  const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), seen = new Set();
   return {
     push(line) {
       if (!line.trim()) return;
@@ -42,6 +42,15 @@ export function createReceiptParser({ sessionId: initialSession, source }) {
       } else if (e?.type === 'session.context_changed') {
         cwd = textValue(e.data?.cwd) || cwd;
         project = textValue(e.data?.repository) || cwd.split(/[\\/]/).filter(Boolean).at(-1) || project;
+      } else if (e?.type === 'skill.invoked') {
+        if (e.ephemeral) return;
+        const id = textValue(e.id), name = textValue(e.data?.name).trim(), ms = Date.parse(e.timestamp);
+        if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; return; }
+        const key = JSON.stringify(['skill', sessionId, id]);
+        if (!skills.has(key)) skills.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(),
+          project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', name,
+          plugin: textValue(e.data?.pluginName), version: textValue(e.data?.pluginVersion),
+        });
       } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') hasCheckpoint = true;
       else if (e?.type === 'session.usage_record') {
         receiptSessions.add(sessionId);
@@ -54,12 +63,13 @@ export function createReceiptParser({ sessionId: initialSession, source }) {
         if (key && seen.has(key)) return;
         if (key) seen.add(key);
         const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project, source });
+        if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
         if (result.record) records.set(key, result.record);
         else if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else invalid++;
       }
     },
-    snapshot: () => ({ records: [...records.values()], receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
+    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], skillExcludedSessions: [...skillExcludedSessions], invalidSkills, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };
 }

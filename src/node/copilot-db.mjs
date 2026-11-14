@@ -13,7 +13,7 @@ export function readUsageDatabase(file, receiptSessions, source) {
     let projects = new Map();
     const sc = new Set(db.prepare('PRAGMA table_info(sessions)').all().map(c => c.name));
     if (sc.has('id')) projects = new Map(db.prepare(`SELECT id, ${sc.has('cwd') ? 'cwd' : "'' AS cwd"}, ${sc.has('repository') ? 'repository' : "'' AS repository"} FROM sessions`).all().map(s => [s.id, s]));
-    const records = [], occurrences = new Map();
+    const records = [], occurrences = new Map(), skillExcludedSessions = new Set();
     let unclassified = 0, invalid = 0;
     for (const row of db.prepare(sql).iterate()) {
       if (receiptSessions.has(row.session_id)) continue;
@@ -27,7 +27,8 @@ export function readUsageDatabase(file, receiptSessions, source) {
       if (result.record) records.push(result.record);
       else if (result.reason === 'unclassified') unclassified++;
       else invalid++;
+      if (!result.record) skillExcludedSessions.add(row.session_id);
     }
-    return { records, unclassified, invalid };
+    return { records, unclassified, invalid, skillExcludedSessions: [...skillExcludedSessions] };
   } finally { db?.close(); }
 }
