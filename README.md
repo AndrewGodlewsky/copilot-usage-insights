@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.6** adds a copy-folder button beside each skill name and removes the path displayed underneath. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.7** removes the instructional footer and routine success messages beneath the skills table. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 

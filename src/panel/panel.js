@@ -179,19 +179,20 @@ $('skills').onclick = async event => {
   state.skillActionPending = true;
   button.setAttribute('aria-busy', 'true');
   const status = $('skill-folder-status');
-  status.hidden = false;
-  status.textContent = `${copy ? 'Copying folder path' : 'Opening folder'} for ${skill.name}…`;
+  status.hidden = true;
+  status.textContent = '';
+  $('live').textContent = `${copy ? 'Copying folder path' : 'Opening folder'} for ${skill.name}…`;
   try {
     if (copy) {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this window.');
       await navigator.clipboard.writeText(skillFolder(skill.path));
-      status.textContent = `Folder path copied for ${skill.name}.`;
+      $('live').textContent = `Folder path copied for ${skill.name}.`;
     } else {
       await request('skills.openFolder', { id: button.dataset.skillId });
-      status.textContent = 'Folder request sent to your file manager.';
+      $('live').textContent = 'Folder request sent to your file manager.';
     }
   }
-  catch (error) { status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
+  catch (error) { status.hidden = false; status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
   finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
