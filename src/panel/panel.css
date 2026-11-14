@@ -33,5 +33,5 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 .efficiency-navigation .seg{flex-wrap:wrap;max-width:100%}.efficiency-navigation button{white-space:normal;text-align:left}.efficiency-outcomes th,.efficiency-outcomes td{text-align:center}.efficiency-outcomes th:first-child,.efficiency-outcomes td:first-child{text-align:left}.efficiency-outcomes th+th,.efficiency-outcomes td+td{border-left:1px dotted var(--border)}.efficiency-positive{padding:16px;border-left:3px solid var(--s3);background:var(--bg);margin-top:16px}.efficiency-review p,.efficiency-review li{max-width:85ch}.efficiency-review li{margin-block:10px}#efficiency-inspect-instructions{margin-top:12px}#efficiency-reliability li{overflow-wrap:anywhere}
 
 #efficiency-tokens-panel,#efficiency-patterns-panel,#efficiency-review-panel{display:flex;flex-direction:column;gap:16px}
-#content[data-metric=tokens] [data-measure=tokens],#content[data-metric=credits] [data-measure=credits]{font-weight:650;color:var(--fg);background:color-mix(in srgb,var(--s1) 8%,transparent)}
+#content[data-metric=tokens] [data-measure=tokens],#content[data-metric=credits] [data-measure=credits]{font-weight:700}
 .toolbar-actions{display:flex;align-items:center;gap:inherit;margin-inline-start:auto;flex-shrink:0}
