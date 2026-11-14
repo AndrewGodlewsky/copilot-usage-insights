@@ -783,6 +783,53 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(report.totals.credits, 12.345678901);
 });
 
+test('Efficiency subviews switch locally, retain selection on refresh, and expose scoped habits and outcomes', async () => {
+  const { get, requests, report, server } = await requestPanel();
+  const buttons = ['tokens', 'patterns', 'review'].map(efficiencySection => ({ dataset: { efficiencySection }, setAttribute(key, value) { this[key] = value; } }));
+  get('efficiency-sections').querySelectorAll = () => buttons;
+  const choose = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('efficiency-tokens-panel').hidden, false);
+  assert.equal(get('efficiency-patterns-panel').hidden, true);
+  assert.equal(get('efficiency-review-panel').hidden, true);
+  const before = requests.length;
+  choose('patterns'); choose('review'); choose('invalid');
+  assert.equal(requests.length, before, 'subview selection never loads data or invokes AI');
+  assert.equal(get('efficiency-review-panel').hidden, false);
+  assert.equal(buttons[2]['aria-pressed'], 'true');
+  await get('refresh').onclick();
+  assert.equal(get('efficiency-review-panel').hidden, false);
+  report.efficiency.interactions = { prompts: 6, promptSamples: 6, promptSessions: 2, averagePromptChars: 1250,
+    averagePromptsPerSession: 3, turns: 12, turnSessions: 2, averageTurnsPerSession: 6, observedSessions: 2, sessionErrors: 1 };
+  report.tools.rows = [{ name: '<private tool>', calls: 4, successes: 2, failures: 1, unknown: 1 },
+    { name: 'mcp-tool', server: '<server>', calls: 2, successes: 0, failures: 2, unknown: 0 }];
+  await get('refresh').onclick();
+  choose('patterns');
+  assert.match(get('efficiency-habits').innerHTML, /1\.3K/);
+  assert.match(get('efficiency-habits').innerHTML, /Messages \/ session|Agent turns \/ session/);
+  assert.match(get('efficiency-reliability').innerHTML, /66\.7%|0%/);
+  assert.match(get('efficiency-reliability').innerHTML, /&lt;private tool&gt;|&lt;server&gt;/);
+  assert.doesNotMatch(get('efficiency-reliability').innerHTML, /<private tool>|<server>/);
+  assert.match(get('efficiency-reliability').innerHTML, /1 recorded root-session error/);
+  get('efficiency-inspect-instructions').onclick();
+  assert.equal(get('efficiency-tokens-panel').hidden, false);
+  server.contextSnapshot = { available: true, checkedAt: new Date().toISOString(), totalTokens: 1000, categories: { customInstructions: 500 }, entries: [], omitted: 0 };
+  await get('efficiency-context-read').onclick();
+  assert.match(get('efficiency-instructions').innerHTML, /500 estimated tokens/);
+  assert.match(get('efficiency-instructions').innerHTML, /not whether the instructions were followed/);
+  report.efficiency.interactions = { observedSessions: 0, omitted: 3 };
+  await get('refresh').onclick();
+  assert.match(get('efficiency-habits').innerHTML, /3 events excluded because Copilot attribution was missing or mixed/);
+  assert.doesNotMatch(get('efficiency-habits').innerHTML, /No matching message or turn metadata was recorded/);
+  report.efficiency.interactions = { reason: 'model-filter' };
+  await get('refresh').onclick();
+  assert.match(get('efficiency-habits').innerHTML, /Clear the model filter/);
+  assert.match(get('efficiency-reliability').innerHTML, /unavailable under a model filter/);
+  choose('review'); get('efficiency-review-open').onclick();
+  assert.match(get('efficiency-review-output').value, /"reason": "model-filter"/);
+  assert.match(get('efficiency-review-output').value, /Planning versus coding cannot be inferred/);
+});
+
 test('settings restore saved text size and apply changes only after a successful save', async () => {
   const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {}, preferences: { textSize: 'large' } };
   const { get, requests, rootStyle, server } = await mountPanel(report, { textSize: 'large', extraHomes: ['/backup'], disabledHomes: ['/disabled'] });

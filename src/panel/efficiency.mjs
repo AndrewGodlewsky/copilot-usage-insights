@@ -2,6 +2,16 @@ const reviewMetricKeys = ['requests', 'inputRequests', 'inputTokens', 'outputReq
 const reviewNumbers = (row, keys) => Object.fromEntries(keys.map(key => [key, Number.isFinite(row?.[key]) && row[key] >= 0 ? row[key] : null]));
 const reviewDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z)?$/.test(value) ? value : null;
 
+export function toolOutcomeSummary(tools) {
+  return [false, true].map(mcp => {
+    const rows = (tools?.rows || []).filter(row => Boolean(row.server) === mcp);
+    const sum = key => rows.reduce((total, row) => total + (Number.isFinite(row[key]) && row[key] >= 0 ? row[key] : 0), 0);
+    const successes = sum('successes'), failures = sum('failures');
+    return { name: mcp ? 'MCP tools' : 'Other tools', calls: sum('calls'), successes, failures, unknown: sum('unknown'),
+      successRate: successes + failures ? successes / (successes + failures) * 100 : null };
+  });
+}
+
 export function buildEfficiencyReview(report, context, scope = {}) {
   const e = report.efficiency, models = e.models.slice(0, 20);
   const modelAlias = name => { const index = models.findIndex(row => row.name === name); return index < 0 ? 'Other model' : `Model ${index + 1}`; };
@@ -23,10 +33,16 @@ export function buildEfficiencyReview(report, context, scope = {}) {
       'Historical filters apply to history only. Current context is a separate, on-demand snapshot of the conversation hosting the dashboard.',
       'Input includes cache. Tool definitions are a subset of input, not tool results. Reasoning is a subset of output. Do not add these subsets to totals.',
       'Averages use only known samples. Paired input/output uses the same requests; cache/tool shares use their own matched denominators.',
-      'No prompts, outcomes of the actual work, installed-skill usage ratio, per-skill tokens, or historical context-source attribution are available here.',
+      'No prompt text, outcomes of the actual work, installed-skill usage ratio, per-skill tokens, or historical context-source attribution are available here.',
       'Low cache reuse does not prove chat switching. Large context does not prove waste. MCP tool failures do not prove connectivity failures.',
-      'Model and server names are aliases. Workloads can differ. Current context is an estimate, not a historical bill.'
+      'Model and server names are aliases. Workloads can differ. Current context is an estimate, not a historical bill.',
+      'Conversation averages use only sessions with observed relevant events in the date/project/session scope; they are not full lifetime session lengths. Model filters make these session-wide measures unavailable.',
+      'Prompt length counts displayed text characters, not tokens, completeness, detail, or quality. Attachments and injected prompts are excluded. Agent turns, user messages, and model requests are different units.',
+      'Session errors are recorded incidents, not failed model-request counts. Failed tools can recover; no wasted-call or wasted-token estimate is justified. Planning versus coding cannot be inferred from these statistics.'
     ]
   };
-  return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + JSON.stringify(data, null, 2);
+  data.history.interactions = e.interactions?.reason === 'model-filter' ? { available: false, reason: 'model-filter' }
+    : reviewNumbers(e.interactions, ['prompts', 'promptSamples', 'promptSessions', 'averagePromptChars', 'averagePromptsPerSession', 'turns', 'turnSessions', 'averageTurnsPerSession', 'sessionErrors', 'observedSessions', 'omitted']);
+  data.history.tools = toolOutcomeSummary(report.tools);
+  return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations, including a pattern working well when the evidence supports it. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + JSON.stringify(data, null, 2);
 }

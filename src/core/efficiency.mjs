@@ -1,3 +1,31 @@
+import { localDay } from './query.mjs';
+
+export function summarizeInteractions(records, activity, query, start, end, now) {
+  const result = { prompts: 0, promptSamples: 0, promptSessions: 0, averagePromptChars: null, averagePromptsPerSession: null,
+    turns: 0, turnSessions: 0, averageTurnsPerSession: null, sessionErrors: 0, observedSessions: 0, omitted: 0 };
+  if (query.models) return { ...result, reason: 'model-filter' };
+  const eligible = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId)), excluded = new Set(activity.skillExcludedSessions || []);
+  const promptSessions = new Set(), turnSessions = new Set(), observed = new Set(), seen = new Set();
+  let chars = 0;
+  for (const event of activity.interactions || []) {
+    if (seen.has(event.key) || !Number.isFinite(event.ms) || event.ms > now.getTime()) continue;
+    seen.add(event.key);
+    const day = localDay(new Date(event.ms));
+    if (day < start || day > end || query.project && query.project !== event.project || query.session && query.session !== event.sessionId) continue;
+    if (!eligible.has(event.sessionId) || excluded.has(event.sessionId)) { result.omitted++; continue; }
+    observed.add(event.sessionId);
+    if (event.kind === 'prompt') {
+      result.prompts++; promptSessions.add(event.sessionId);
+      if (Number.isSafeInteger(event.chars) && event.chars >= 0) { result.promptSamples++; chars += event.chars; }
+    } else if (event.kind === 'turn') { result.turns++; turnSessions.add(event.sessionId); }
+    else if (event.kind === 'error') result.sessionErrors++;
+  }
+  return { ...result, observedSessions: observed.size, promptSessions: promptSessions.size, turnSessions: turnSessions.size,
+    averagePromptChars: result.promptSamples ? chars / result.promptSamples : null,
+    averagePromptsPerSession: promptSessions.size ? result.prompts / promptSessions.size : null,
+    averageTurnsPerSession: turnSessions.size ? result.turns / turnSessions.size : null };
+}
+
 const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, creditRequests: 0, creditNano: 0n,
   pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, reasoningRequests: 0, reasoningTokens: 0 });
 const known = value => Number.isFinite(value) && value >= 0;

@@ -1,6 +1,6 @@
 import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
 import { mcpHistory } from './integrations.mjs';
-import { createEfficiencyAccumulator } from './efficiency.mjs';
+import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 
 const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
@@ -149,7 +149,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       const [project, id] = JSON.parse(s.name);
       return { ...s, project, id, name: sessionLabels.get(id) };
     }),
-    skills, tools, mcp: mcpHistory(tools), efficiency: efficiency.finish(sessionLabels),
+    skills, tools, mcp: mcpHistory(tools), efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now) },
     options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

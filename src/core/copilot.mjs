@@ -39,7 +39,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
   let sessionId = initialSession, cwd = '', project = '';
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), seen = new Set();
-  const toolStarts = new Map(), toolOutcomes = new Map();
+  const toolStarts = new Map(), toolOutcomes = new Map(), interactions = new Map();
   return {
     push(line) {
       if (!line.trim()) return;
@@ -52,6 +52,16 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       } else if (e?.type === 'session.context_changed') {
         cwd = textValue(e.data?.cwd) || cwd;
         project = textValue(e.data?.repository) || cwd.split(/[\\/]/).filter(Boolean).at(-1) || project;
+      } else if (['user.message', 'assistant.turn_start', 'session.error'].includes(e?.type)) {
+        if (e.ephemeral || e.checkpoint || e.agentId || e.data?.parentToolCallId) return;
+        const kind = e.type === 'user.message' ? 'prompt' : e.type === 'assistant.turn_start' ? 'turn' : 'error';
+        if (kind === 'prompt' && (e.data?.isAutopilotContinuation || e.data?.source && e.data.source !== 'user')) return;
+        const id = textValue(kind === 'turn' ? e.data?.turnId : kind === 'prompt' ? e.data?.messageId || e.id : e.id), ms = Date.parse(e.timestamp);
+        if (!id || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) return;
+        const key = JSON.stringify(['interaction', kind, sessionId, id]);
+        if (!interactions.has(key)) interactions.set(key, { key, kind, sessionId, ms,
+          project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project',
+          chars: kind === 'prompt' && typeof e.data?.content === 'string' ? e.data.content.length : null });
       } else if (e?.type === 'tool.execution_start' || e?.type === 'tool.execution_complete') {
         if (e.ephemeral) return;
         const id = textValue(e.id), callId = textValue(e.data?.toolCallId), ms = Date.parse(e.timestamp);
@@ -96,7 +106,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         else invalid++;
       }
     },
-    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()],
+    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()],
       tools: [...toolStarts.values()].map(tool => ({ ...tool, success: null, completedMs: null, ...toolOutcomes.get(tool.key) })),
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };

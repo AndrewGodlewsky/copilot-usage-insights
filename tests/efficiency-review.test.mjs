@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildEfficiencyReview } from '../src/panel/efficiency.mjs';
+import { buildEfficiencyReview, toolOutcomeSummary } from '../src/panel/efficiency.mjs';
 
 test('AI review exports bounded, aliased measurements with scope and no identifying payloads', () => {
   const report = { generatedAt: '2026-11-14T12:00:00Z', query: { range: '7d' },
@@ -10,6 +10,8 @@ test('AI review exports bounded, aliased measurements with scope and no identify
     mcp: { rows: [{ name: 'SECRET-server', calls: 3, failures: 2, successes: 1, unknown: 0, error: 'SECRET' }] },
     skills: { invocations: 2, rows: [{ name: 'SECRET' }] }, sources: ['SECRET'] };
   const context = { available: true, checkedAt: report.generatedAt, totalTokens: 1000, categories: { messages: 800, secret: 'SECRET' }, entries: [{ label: 'SECRET' }] };
+  report.efficiency.interactions = { prompts: 5, averagePromptChars: 500, content: 'SECRET', sessionId: 'SECRET' };
+  report.tools = { rows: [{ name: 'SECRET', calls: 5, successes: 3, failures: 1, unknown: 1, arguments: 'SECRET' }] };
   const result = buildEfficiencyReview(report, context, { models: ['SECRET-0'], project: 'SECRET', session: 'SECRET' });
   assert.doesNotMatch(result, /SECRET|sessionName|"path"/);
   assert.match(result, /Model 1|Server 1/);
@@ -19,7 +21,17 @@ test('AI review exports bounded, aliased measurements with scope and no identify
   assert.equal(data.scope.projectFiltered, true);
   assert.equal(data.history.summary.toolShare, 20);
   assert.equal(data.currentContext.totalTokens, 1000);
+  assert.equal(data.history.interactions.averagePromptChars, 500);
+  assert.equal(data.history.tools[0].successRate, 75);
   report.efficiency.summary.requests = 100;
   assert.equal(data.history.summary.requests, 12, 'export is a frozen snapshot');
   assert.ok(result.length < 16000);
+});
+
+test('tool outcome summaries distinguish unknown results and preserve zero success rates', () => {
+  const rows = toolOutcomeSummary({ rows: [{ calls: 2, successes: 0, failures: 0, unknown: 2 },
+    { server: 'private-server', calls: 1, successes: 0, failures: 1, unknown: 0 }] });
+  assert.equal(rows[0].successRate, null);
+  assert.equal(rows[1].successRate, 0);
+  assert.doesNotMatch(JSON.stringify(rows), /private-server/);
 });
