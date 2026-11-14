@@ -2,6 +2,8 @@
 
 Research date: November 14, 2026. Baseline: Usage Insights 0.1.29, commit `519ff23`. This is a researched proposal, not a description of additional shipped detectors.
 
+Expanded research is collected in the [research index](README.md). The later [stored-data inventory](2026-11-14-copilot-data-inventory.md) and [SDK audit](2026-11-14-copilot-sdk-surfaces.md) add current per-source context attribution and potential existing context-history samples. These refine the capability summary below without establishing historical per-skill execution costs.
+
 The best next step is to explain *where resources went*, show repeated patterns, and offer one specific experiment. The available data cannot measure how much useful work a token produced. It can identify expensive mechanisms and operational friction without assigning blame or a personal efficiency score.
 
 The most promising additions are tool-definition overhead, cache behavior around known events, repeated tool failures, input growth, and resource trends within comparable work. Repository navigation, prompt completeness, and memory quality need additional evidence; accounting totals alone cannot diagnose them.

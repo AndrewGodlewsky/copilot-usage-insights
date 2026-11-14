@@ -1,5 +1,7 @@
 # Context, instructions, memory, and tool efficiency
 
+See the [research index](README.md) for the expanded technique catalogue and the later stored-data/SDK audits, including current context attribution. This note preserves the earlier context and memory investigation; current context occupancy remains distinct from historical charges or evidence of usefulness.
+
 Research checked 2026-11-14 for Copilot Usage Insights. This note proposes investigations, not diagnoses of the user's sessions. Its recommendation is to show a measured pattern, explain competing interpretations, and offer one controlled experiment. The current data does not establish task correctness, unnecessary work, or the cause of input growth: the parser retains accounting and activity metadata, while original prompt text is fetched separately for an explicitly expanded request. [Receipt parser](../../src/core/copilot.mjs), [prompt lookup](../../src/node/request-prompts.mjs), [request handler](../../src/node/canvas-server.mjs).
 
 **Verified Copilot desktop capabilities.** GitHub's app-specific documentation confirms global app instructions, repository instructions, relevant skill loading, MCP servers, custom agents, and plugins. Repository or CLI skills and MCP configurations are available in the app. This establishes supported customization mechanisms, not whether a particular session loaded an instruction, memory, or tool schema. [Customizing the GitHub Copilot app](https://docs.github.com/en/copilot/how-tos/github-copilot-app/customize-github-copilot-app).
