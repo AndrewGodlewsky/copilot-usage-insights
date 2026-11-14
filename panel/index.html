@@ -1,4 +1,30 @@
 <!doctype html>
+<!--
+Derived from Orca Usage Insights by Etherll:
+https://github.com/Etherll/orca-usage-insights
+
+MIT License
+
+Copyright (c) 2026 Etherll
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Copilot Usage Insights</title><style>:root{--text-scale:1;--bg:#111111;--fg:#ececec;--card:#181818;--muted-fg:#a0a0a0;--muted:#262626;--border:#303030;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#9b72d9;--s6:#d4609c;--q1:#184f95;--q2:#256abf;--q3:#3987e5;--q4:#86b6ef;color-scheme:dark}
 html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eeeeec;--border:#d8d8d8;--q1:#b7d3f6;--q2:#6da7ec;--q3:#2a78d6;--q4:#184f95;color-scheme:light}
@@ -118,14 +144,14 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.53</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><span>Usage Insights</span><span aria-hidden="true">·</span><span id="plugin-version">v0.1.54</span><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent errors and timings from this run. Copy these into your GitHub issue along with what happened. Logs are kept in memory for this run.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-copy">Copy logs</button></footer></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled Copilot homes<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
   <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview and copy this snapshot, then paste it into a Copilot conversation to ask for a review. Nothing is sent automatically. Sending it to a model may use Copilot credits.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.53";
+const BUILD_VERSION = "0.1.54";
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.

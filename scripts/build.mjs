@@ -9,7 +9,8 @@ if (!/^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version)) throw new Error('Invalid p
 const flatten = src => src.replace(/^import [^\n]*\n/gm, '').replace(/^export \{[^\n]*\n/gm, '').replace(/^export (?=(const|function|let|class) )/gm, '');
 const modules = ['src/core/query.mjs', 'src/core/format.mjs', 'src/core/provider-names.mjs', 'src/core/diagnostics.mjs', 'src/panel/charts.mjs', 'src/panel/art.mjs', 'src/panel/efficiency.mjs', 'src/panel/token-topics.mjs', 'src/panel/panel.js'];
 const script = modules.map(p => `// ${p}\n${flatten(read(p))}`).join('\n');
-const html = read('src/panel/panel.html').replaceAll('{{PLUGIN_VERSION}}', version).replace('/* PANEL_STYLES */', () => read('src/panel/panel.css')).replace('/* PANEL_SCRIPT */', () => `;(() => {\n'use strict'\nconst BUILD_VERSION = ${JSON.stringify(version)};\n${script}\n})()`);
+const notice = `<!--\nDerived from Orca Usage Insights by Etherll:\nhttps://github.com/Etherll/orca-usage-insights\n\n${read('LICENSE').trim()}\n-->`;
+const html = read('src/panel/panel.html').replace('<!doctype html>', () => `<!doctype html>\n${notice}`).replaceAll('{{PLUGIN_VERSION}}', version).replace('/* PANEL_STYLES */', () => read('src/panel/panel.css')).replace('/* PANEL_SCRIPT */', () => `;(() => {\n'use strict'\nconst BUILD_VERSION = ${JSON.stringify(version)};\n${script}\n})()`);
 const out = process.argv[2] ? pathToFileURL(path.resolve(process.argv[2])) : new URL('panel/index.html', root);
 mkdirSync(new URL('.', out), { recursive: true });
 writeFileSync(out, html);

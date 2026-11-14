@@ -14,6 +14,10 @@ test('marketplace package has a runnable desktop entry and self-contained dashbo
   assert.equal(entry.source, './');
   assert.match(plugin.$schema, /agent-plugins\.org\/schemas\/1\.0\.0\/plugin\.schema\.json$/);
   const html = await read('panel/index.html');
+  const license = (await read('LICENSE')).trim();
+  assert.match(license, /Copyright \(c\) 2026 Etherll/);
+  assert.ok(html.includes(license), 'standalone dashboard retains the full upstream MIT notice');
+  assert.ok(html.includes('https://github.com/Etherll/orca-usage-insights'));
   assert.ok(html.includes(`<span id="plugin-version">v${plugin.version}</span>`));
   assert.ok(html.includes(`const BUILD_VERSION = ${JSON.stringify(plugin.version)};`));
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]);
