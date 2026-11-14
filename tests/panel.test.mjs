@@ -18,6 +18,7 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   ];
   events.forEach(e => parser.push(JSON.stringify(e)));
   const snapshot = parser.snapshot();
+  snapshot.records[0].sessionName = '<Planning "work">';
   const report = { ...buildReport(snapshot.records, { range: '1d' }, now, snapshot), sources: [], coverage: {} };
   report.skills.rows[0].installedVersion = { value: '1.0.1', status: 'available' };
   const html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -29,10 +30,11 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   }));
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
   get('cache').checked = true; get('group').value = 'models'; get('sort').value = 'total';
+  const requests = [];
   const context = createContext({
     document: { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: { classList: { toggle() {} } } },
     window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval() {},
-    fetch: async () => ({ ok: true, json: async () => report }),
+    fetch: async (url, options) => { requests.push(JSON.parse(options.body)); return { ok: true, json: async () => report }; },
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
@@ -56,4 +58,16 @@ test('dashboard shows skill versions and separate trigger counts, with last use 
   assert.match(get('tools').innerHTML, /50%/);
   assert.match(get('tools').innerHTML, /&lt;view&gt;/);
   assert.doesNotMatch(get('tools').innerHTML, /<view>/);
+  assert.match(get('session').innerHTML, /value="s1"[^>]*>&lt;Planning &quot;work&quot;&gt;<\/option>/);
+  get('group').value = 'sessions';
+  get('group').onchange();
+  assert.match(get('breakdown').innerHTML, />&lt;Planning &quot;work&quot;&gt;<\/td>/);
+  assert.match(get('breakdown').innerHTML, /title="[^"]*s1[^"]*"/);
+  get('session').value = 's1';
+  await get('session').onchange();
+  assert.equal(requests.at(-1).input.session, 's1');
+  report.sessions[0].name = report.options.sessions[0].name = 'Renamed session';
+  await get('refresh').onclick();
+  assert.equal(get('session').value, 's1');
+  assert.match(get('session').innerHTML, />Renamed session<\/option>/);
 });

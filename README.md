@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.10** counts reference-format skill activations and shows separate **By user** and **By agent** columns. Source plugin, plugin version, and installed skill version are always visible, with **Last used** at the far right. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.11** shows readable session names in the usage breakdown and session filter, and enlarges the GitHub Copilot label at the top. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -103,6 +103,8 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 - Date ranges use local calendar days. Activity and streak show filtered history; the daily chart and breakdown use the selected dates. Excluding cache changes token totals, not credit charges.
 
 **Usage breakdown** includes **Reasoning** and **Avg. tokens / request** for each model, project, or session. Reasoning is reported separately but remains part of output, so it is not added to totals again. The average uses only requests whose input and output counts are both known, follows **Include cache tokens**, and shows an asterisk when some requests are excluded for incomplete counts. Hover over an average to see how many requests contributed; if none have complete counts, it shows **Unavailable**. These are request metrics, not token charges assigned to individual skills.
+
+**Group by → Session** and the **Session** filter show Copilot's saved session names. The reader uses `name` from `session-state/<session>/workspace.yaml` when available, then falls back to `summary` in the existing `session-store.db` sessions table. Names refresh with the report, including when usage logs have not changed. Missing names fall back to the project and the date/time of the earliest available usage record; duplicate names also include that date/time. Session IDs remain the grouping and filter keys, so identically named sessions stay separate. Hover over a session name to see its ID.
 
 Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources are scanned incrementally while the canvas is visible. **Refresh** forces a complete reread. Source diagnostics explain missing homes, unsupported schemas, and skipped records. Copilot's local event format and canvas APIs are experimental; app updates can require a reader update.
 
@@ -163,7 +165,7 @@ GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/c
 
 ## Privacy and runtime
 
-The extension reads local usage metadata and a bounded prefix of recorded local `SKILL.md` files to extract installed versions. It never modifies Copilot's records or skill files. Conversation text is discarded while parsing and is not retained in the in-memory usage index or sent to the dashboard. Nothing is uploaded. The canvas uses a random-token URL on `127.0.0.1`, validates request origins, and shuts down its server when the last canvas closes. Treat its URL as private while it is open.
+The extension reads local usage metadata, saved session names, and a bounded prefix of recorded local `SKILL.md` files to extract installed versions. Session workspace metadata reads are limited to 64 KiB, and only the name is retained, capped at 256 characters. It never modifies Copilot's records or skill files. Conversation message bodies are discarded while parsing and are not retained in the in-memory usage index or sent to the dashboard; session names are displayed locally. Nothing is uploaded. The canvas uses a random-token URL on `127.0.0.1`, validates request origins, and shuts down its server when the last canvas closes. Treat its URL as private while it is open.
 
 ## Development and distribution
 

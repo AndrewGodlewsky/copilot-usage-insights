@@ -1,6 +1,7 @@
 // Only accounting and activity metadata leaves this parser; payload text is discarded.
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
+export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
 
 export function normalizeUsage(usage, { key, timestamp, sessionId, project = '', cwd = '', source = '' }) {
   if (!usage || typeof usage !== 'object') return { reason: 'invalid' };

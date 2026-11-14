@@ -75,6 +75,19 @@ function toolReport(records, activity, input, start, end, now) {
 
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
   const q = normalizeQuery(input, now), today = localDay(now);
+  const sessionInfo = new Map();
+  for (const r of records) {
+    const previous = sessionInfo.get(r.sessionId);
+    if (!previous || r.ms < previous.ms) sessionInfo.set(r.sessionId, { ms: r.ms, project: r.project, name: r.sessionName || previous?.name || '' });
+    else if (!previous.name && r.sessionName) previous.name = r.sessionName;
+  }
+  const nameCounts = new Map();
+  for (const s of sessionInfo.values()) if (s.name) nameCounts.set(s.name, (nameCounts.get(s.name) || 0) + 1);
+  const sessionLabels = new Map([...sessionInfo].map(([id, s]) => {
+    const name = s.name || (s.project === 'Unknown project' ? 'Session' : s.project);
+    const dated = !s.name || nameCounts.get(s.name) > 1;
+    return [id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name];
+  }));
   for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
   const history = records.filter(r => r.ms <= now.getTime() && (!q.models || q.models.includes(r.model)) && (!input.project || r.project === input.project) && (!input.session || r.sessionId === input.session));
   const first = history.reduce((min, r) => Math.min(min, localDay(new Date(r.ms))), today);
@@ -102,8 +115,8 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
-    rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions),
+    rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions).map(s => ({ ...s, id: s.name, name: sessionLabels.get(s.name) })),
     skills, tools,
-    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...new Set(records.map(r => r.sessionId))].sort() },
+    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

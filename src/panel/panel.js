@@ -48,8 +48,9 @@ async function load(force = false) {
 }
 function options(id, values, all) {
   const select = $(id), selected = select.value;
-  const available = selected && !values.includes(selected) ? [selected, ...values] : values;
-  select.innerHTML = `<option value="">${all}</option>` + available.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  const choices = values.map(v => typeof v === 'string' ? { id: v, name: v } : v);
+  const available = selected && !choices.some(v => v.id === selected) ? [{ id: selected, name: selected }, ...choices] : choices;
+  select.innerHTML = `<option value="">${all}</option>` + available.map(v => `<option value="${esc(v.id)}" title="${esc(v.id)}">${esc(v.name)}</option>`).join('');
   select.value = selected;
 }
 function creditLabel(row) {
@@ -60,7 +61,7 @@ function table(rows, heading, details = false) {
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.id ? `${r.name} — ${r.id}` : r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 function skillFolder(file) {
   const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));

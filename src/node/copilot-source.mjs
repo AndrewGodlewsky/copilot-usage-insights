@@ -1,11 +1,25 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { createReceiptParser } from '../core/copilot.mjs';
+import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
 import { readUsageDatabase } from './copilot-db.mjs';
+import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024;
 const absent = e => e?.code === 'ENOENT' || e?.code === 'ENOTDIR';
+async function workspaceName(file, sessionId) {
+  let handle;
+  try {
+    handle = await fs.open(file, 'r');
+    if (!(await handle.stat()).isFile()) return '';
+    const buffer = Buffer.alloc(64 * 1024 + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead === buffer.length) return '';
+    const data = load(buffer.toString('utf8', 0, bytesRead), { schema: CORE_SCHEMA, maxDepth: 20, maxAliases: 50 });
+    return data?.id && data.id !== sessionId ? '' : normalizeSessionName(data?.name);
+  } catch { return ''; }
+  finally { await handle?.close(); }
+}
 async function hashPrefix(handle, length) {
   const hash = createHash('sha256'), buffer = Buffer.alloc(256 * 1024);
   for (let position = 0; position < length;) {
@@ -19,7 +33,7 @@ export function createScanner() {
   const files = new Map();
   let queue = Promise.resolve();
   async function scan(roots, { force = false, disabled = [] } = {}) {
-    const seenRoots = new Set(), seenFiles = new Set(), sources = [], snapshots = [], databases = [];
+    const seenRoots = new Set(), seenFiles = new Set(), sources = [], snapshots = [], databases = [], sessionNames = new Map();
     for (const root of roots) {
       let real;
       try { real = await fs.realpath(root); }
@@ -39,6 +53,8 @@ export function createScanner() {
         if (!dir.isDirectory() || dir.name.startsWith('.')) continue;
         const file = path.join(stateDir, dir.name, 'events.jsonl');
         try {
+          const name = await workspaceName(path.join(stateDir, dir.name, 'workspace.yaml'), dir.name);
+          if (name) sessionNames.set(JSON.stringify([real, dir.name]), name);
           const stat = await fs.stat(file);
           if (!stat.isFile()) continue;
           seenFiles.add(file); source.files++;
@@ -104,13 +120,18 @@ export function createScanner() {
     for (const { db, source } of databases) {
       try {
         const result = readUsageDatabase(db, receiptSessions, source.path);
+        if (result.warning) { source.state = 'warning'; source.message = result.warning; }
+        for (const [id, name] of result.sessionNames) {
+          const key = JSON.stringify([source.path, id]);
+          if (name && !sessionNames.has(key)) sessionNames.set(key, name);
+        }
         for (const session of result.skillExcludedSessions) skillExcludedSessions.add(session);
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
         for (const r of result.records) if (!records.has(r.key)) { records.set(r.key, r); source.records++; coverage.fallbackRequests++; }
       } catch (e) { source.state = 'warning'; source.message = e.message; }
     }
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    return { records: [...records.values()], skills: [...skills.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
+    return { records: [...records.values()].map(r => ({ ...r, sessionName: sessionNames.get(JSON.stringify([r.source, r.sessionId])) || '' })), skills: [...skills.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }
