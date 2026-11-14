@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.30** redesigns Efficiency with a token-flow explanation, tool-definition overhead, evidence-backed experiments, MCP failure insights, on-demand current-context inspection, and a copyable AI review report. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.31** adds a saved Simplify numbers setting, enabled by default, for consistent K/M/B/T formatting throughout the dashboard. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -140,6 +140,18 @@ Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
 
 In **Settings → Text size**, choose **Small** (the original size, and the default), **Medium** (15% larger), or **Large** (30% larger), then click **Save settings**. The same proportional scale applies to headings, tables, controls, chart labels, tooltips, and the Settings dialog. Charts allow more room for larger labels, and wide tables can scroll horizontally. The choice is saved locally with your source settings and restored when you reopen the dashboard. Closing Settings without saving leaves the current size unchanged.
+
+In **Settings**, **Simplify numbers** is on by default, including for existing installations. Click **Save settings** to apply your choice throughout Usage, Breakdown, Efficiency, charts, tooltips, request details, and current-context snapshots. Turn it off for full numbers with locale-aware digit grouping. Numbers below 1,000 retain useful decimal precision; missing values remain unavailable and small nonzero credits are not rounded to zero.
+
+| Full number | Simplified |
+| --- | --- |
+| 2,131 | 2.1K |
+| 42,244,916 | 42.2M |
+| 2,131,000,000 | 2.1B |
+| 2,131,000,000,000 | 2.1T |
+
+Simplified magnitudes use at most one decimal place, omit a trailing `.0`, and round across boundaries (for example, 999,950 becomes 1M). This is a display preference: calculations, filters, sorting, diagnostic logs, and copied AI review data retain their original values. Dates, version strings, and navigation positions are not abbreviated. Closing Settings without saving, or a failed save, leaves the current display unchanged. Display-only changes reuse cached history; changing source folders still forces a reread.
+
 
 ## Loading and refresh performance
 

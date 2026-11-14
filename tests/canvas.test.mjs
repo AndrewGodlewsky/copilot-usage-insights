@@ -17,7 +17,7 @@ test('settings validate paths, persist atomic changes, and never replace corrupt
   const dir = await fixture(t), settings = createSettings(dir);
   await settings.set({ extraHomes: [dir] });
   await Promise.all([settings.set({ disabledHomes: [dir] }), settings.set({ extraHomes: [] })]);
-  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small' });
+  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true });
   await assert.rejects(settings.set({ extraHomes: ['relative'] }), /absolute/);
   await assert.rejects(settings.set({ unexpected: true }), /Unknown/);
   await fs.writeFile(path.join(dir, 'settings.json'), '{bad');
@@ -32,11 +32,25 @@ test('text size defaults to small and persists only supported choices without ch
   assert.equal((await settings.get()).textSize, 'small');
   for (const textSize of ['large', 'medium', 'small']) {
     await settings.set({ textSize });
-    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize });
+    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true });
   }
   for (const textSize of ['huge', '', 1, null, {}]) await assert.rejects(settings.set({ textSize }), /textSize/);
   assert.equal((await settings.get()).textSize, 'small');
 });
+test('number simplification defaults on for existing settings, validates booleans and persists without changing sources', async t => {
+  const dir = await fixture(t), settings = createSettings(dir);
+  assert.equal((await settings.get()).simplifyNumbers, true);
+  await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ extraHomes: [dir], textSize: 'large' }));
+  assert.equal((await settings.get()).simplifyNumbers, true);
+  await settings.set({ simplifyNumbers: false });
+  const saved = await createSettings(dir).get();
+  assert.equal(saved.simplifyNumbers, false);
+  assert.equal(saved.textSize, 'large');
+  assert.deepEqual(saved.extraHomes, [dir]);
+  for (const simplifyNumbers of ['false', 0, 1, null, {}, []]) await assert.rejects(settings.set({ simplifyNumbers }), /simplifyNumbers/);
+  assert.equal((await settings.get()).simplifyNumbers, false);
+});
+
 test('dashboard API requires the instance token and same origin, and validates requests', async t => {
   const dir = await fixture(t);
   const server = await startServer({ settings: createSettings(dir), defaultHome: dir, html: '<!doctype html><title>Usage Insights</title>', scanner: { scan: async () => ({ records: [], sources: [], coverage: {} }) } });
@@ -47,6 +61,9 @@ test('dashboard API requires the instance token and same origin, and validates r
   const request = (body, headers = {}) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin, ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) });
   assert.equal((await request({ method: 'usage.report', input: { range: '7d' } })).status, 200);
   assert.equal((await (await request({ method: 'usage.report' })).json()).preferences.textSize, 'small');
+  assert.equal((await (await request({ method: 'usage.report' })).json()).preferences.simplifyNumbers, true);
+  assert.equal((await request({ method: 'settings.set', input: { simplifyNumbers: false } })).status, 200);
+  assert.equal((await (await request({ method: 'usage.report' })).json()).preferences.simplifyNumbers, false);
   assert.equal((await request({ method: 'settings.set', input: { textSize: 'medium' } })).status, 200);
   assert.equal((await (await request({ method: 'usage.refresh' })).json()).preferences.textSize, 'medium');
   assert.equal((await request({ method: 'settings.set', input: { textSize: 'huge' } })).status, 400);

@@ -28,6 +28,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
   const context = createContext({
+    innerWidth: 1200, innerHeight: 800,
     document,
     window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
@@ -42,7 +43,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (message.method === 'settings.set') {
         if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
         server.config = { ...server.config, ...message.input };
-        report.preferences = { textSize: server.config.textSize };
+        report.preferences = { textSize: server.config.textSize, simplifyNumbers: server.config.simplifyNumbers ?? true };
         return { ok: true, json: async () => server.config };
       }
       if (message.method === 'usage.requests') {
@@ -694,6 +695,73 @@ test('long selected filter names remain readable in full and keep their original
   assert.equal(get('session').title, 'All sessions');
 });
 
+test('simplified numbers apply across views and context, persist, and only change after saving', async () => {
+  const { get, report, records, now, requests, server, click, listeners } = await requestPanel();
+  const large = [{ ...records[0], inputTotal: 42_242_785, input: 42_242_785, cacheRead: 0, cacheWrite: 0, output: 2131,
+    reasoning: 1000, toolTokenCount: 2131, nanoAiu: 2_131_000_000_000 }];
+  Object.assign(report, buildReport(large, {}, now));
+  report.skills = { invocations: 2131, sessions: 1, rows: [{ id: 'skill', name: 'Skill', invocations: 2131, sessions: 1, projects: 1, lastUsed: now.toISOString(), version: '1.2.3' }] };
+  report.mcp.rows = [{ name: 'Server', calls: 2131, failures: 0, successes: 2131, unknown: 0, successRate: 100, lastUsed: null, status: 'unavailable' }];
+  report.sources = [{ state: 'ok', path: '/fixture', records: 2131, files: 1_000_000 }];
+  server.requestPage = input => buildRequestPage(large, input, now);
+  server.contextSnapshot = { available: true, checkedAt: now.toISOString(), totalTokens: 2_131_000_000_000, limit: null,
+    categories: { messages: 2_131_000_000_000 }, entries: [], omitted: 0 };
+  await get('refresh').onclick();
+  await get('efficiency-context-read').onclick();
+  const snapshot = JSON.stringify(report);
+  assert.equal(get('hero-credits').textContent, '2.1K');
+  assert.equal(get('token-total').textContent, '42.2M');
+  for (const id of ['breakdown', 'token-stats', 'token-legend', 'efficiency-summary', 'mcp', 'sources']) assert.match(get(id).innerHTML, /2\.1K/, id);
+  for (const id of ['daily', 'models-summary']) assert.match(get(id).innerHTML, /42\.2M/, id);
+  assert.match(get('skills').innerHTML, /2\.1K/);
+  assert.match(get('skills').innerHTML, /1\.2\.3/, 'versions remain intact');
+  assert.match(get('efficiency-context-result').innerHTML, /2\.1T/);
+  get('tip').style = {};
+  const tooltip = total => listeners.get('pointermove')({ clientX: 0, clientY: 0, target: { closest: () => ({ dataset: { tip: JSON.stringify({ title: 'Tokens', rows: [['Input', 2131]], total }) } }) } });
+  tooltip('42.2M');
+  assert.match(get('tip').innerHTML, /2\.1K/);
+  assert.match(get('tip').innerHTML, /42\.2M/);
+  assert.doesNotMatch(get('tip').innerHTML, /Unavailable/);
+  await click({ requestModel: '<Sonnet>' });
+  await click({ requestId: large[0].key });
+  assert.match(get('breakdown').innerHTML, /<dt>Output<\/dt><dd>2\.1K<\/dd>/);
+  await get('settings-open').onclick();
+  assert.equal(get('simplify-numbers').checked, true);
+  get('simplify-numbers').checked = false;
+  get('settings-close').onclick();
+  assert.equal(get('token-total').textContent, '42.2M', 'cancel does not apply a draft');
+  await get('settings-open').onclick();
+  get('simplify-numbers').checked = false;
+  server.saveError = 'Could not save';
+  await get('settings-save').onclick();
+  assert.equal(get('token-total').textContent, '42.2M', 'failure does not apply a draft');
+  server.saveError = '';
+  const beforeSave = requests.length;
+  await get('settings-save').onclick();
+  await new Promise(setImmediate);
+  assert.equal(server.config.simplifyNumbers, false);
+  assert.ok(!requests.slice(beforeSave).some(r => r.method === 'usage.refresh'), 'display-only settings do not force a rescan');
+  assert.equal(get('hero-credits').textContent, (2131).toLocaleString());
+  assert.equal(get('token-total').textContent, (42_244_916).toLocaleString());
+  for (const id of ['daily', 'models-summary']) assert.ok(get(id).innerHTML.includes((42_244_916).toLocaleString()), id);
+  for (const id of ['breakdown', 'skills', 'efficiency-summary', 'mcp', 'sources']) assert.ok(get(id).innerHTML.includes((2131).toLocaleString()), id);
+  tooltip(42_244_916);
+  assert.ok(get('tip').innerHTML.includes((2131).toLocaleString()));
+  assert.ok(get('tip').innerHTML.includes((42_244_916).toLocaleString()));
+  assert.ok(get('efficiency-context-result').innerHTML.includes((2_131_000_000_000).toLocaleString()));
+  assert.equal(requests.filter(r => r.method === 'efficiency.context').length, 1, 'formatting reuses the captured context');
+  const { preferences, ...after } = report;
+  assert.deepEqual(after, JSON.parse(snapshot), 'formatting leaves raw measurements intact');
+  const reopened = await mountPanel(report, server.config);
+  assert.equal(reopened.get('token-total').textContent, (42_244_916).toLocaleString());
+  await get('settings-open').onclick();
+  assert.equal(get('simplify-numbers').checked, false);
+  get('simplify-numbers').checked = true;
+  await get('settings-save').onclick();
+  assert.equal(get('token-total').textContent, '42.2M');
+  assert.match(get('efficiency-context-result').innerHTML, /2\.1T/);
+});
+
 test('settings restore saved text size and apply changes only after a successful save', async () => {
   const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {}, preferences: { textSize: 'large' } };
   const { get, requests, rootStyle, server } = await mountPanel(report, { textSize: 'large', extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
@@ -707,7 +775,7 @@ test('settings restore saved text size and apply changes only after a successful
   await get('settings-open').onclick();
   get('text-size').value = 'medium';
   await get('settings-save').onclick();
-  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
   assert.equal(rootStyle.get('--text-scale'), '1.15');
   assert.equal(get('settings-dialog').open, false);
   await get('settings-open').onclick();

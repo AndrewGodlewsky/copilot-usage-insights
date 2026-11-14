@@ -1,22 +1,28 @@
 // Pure number formatting shared by the dashboard and charts.
-// scripts/build.mjs bundles this file first, so the panel can use compact() without an import.
-
-// Compact magnitude: 950 -> '950', 114500 -> '114.5k', 999999 -> '1M', 999950000 -> '1B'.
+// Compact magnitude: 2131 -> '2.1K', 999999 -> '1M', 2131000000000 -> '2.1T'.
 export function compact(n) {
-  const v = Number(n) || 0;
-  const units = [[1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
+  if (!Number.isFinite(n)) return 'Unavailable';
+  const v = Math.abs(n), sign = n < 0 ? '-' : '';
+  const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
   for (let i = 0; i < units.length; i++) {
     const [size, suffix] = units[i];
-    if (Math.abs(v) >= size * 0.99995) {
-      const text = trim(v / size);
-      // 999.96k rounds to "1000k": promote to the next unit instead.
-      if (Math.abs(Number(text)) >= 1000 && i > 0) return trim(v / units[i - 1][0]) + units[i - 1][1];
-      return text + suffix;
+    if (v >= size) {
+      const rounded = Math.round(v / size * 10) / 10;
+      if (rounded >= 1000 && i > 0) return sign + trim(v / units[i - 1][0]) + units[i - 1][1];
+      return sign + trim(rounded) + suffix;
     }
   }
-  return String(Math.round(v));
+  return formatNumber(n, { simplify: false });
 }
 
 function trim(x) {
   return x.toFixed(1).replace(/\.0$/, '');
+}
+
+export function formatNumber(value, { simplify = true, ...options } = {}) {
+  if (!Number.isFinite(value)) return 'Unavailable';
+  if (simplify && Math.abs(value) >= 1000) return compact(value);
+  // Small nonzero charges must not round down to a misleading zero.
+  const precision = value !== 0 && Math.abs(value) < .001 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 3 };
+  return value.toLocaleString(undefined, { ...precision, ...options });
 }

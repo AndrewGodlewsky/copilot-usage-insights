@@ -224,6 +224,9 @@ export function donut(segments, { size = 132, thickness = 16, centerLabel = 'tok
 export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW = Math.min(180 * textScale, Math.max(110 * textScale, width * 0.3)), valueW = 64 * textScale } = {}) {
   const label = 'Ranking'
   if (!items?.length) return empty(width, row * 2, label)
+  valueW = Math.max(valueW, ...items.map(it => (String(it.note ?? compact(it.value)).length * 6.6 + 12) * textScale))
+  labelW = Math.min(labelW, Math.max(70 * textScale, width - valueW - 30 * textScale))
+  width = Math.max(width, labelW + valueW + 30 * textScale)
   const max = Math.max(...items.map((i) => i.value), 0)
   const barMax = width - labelW - valueW
   let body = ''

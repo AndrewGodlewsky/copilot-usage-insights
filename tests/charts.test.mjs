@@ -81,6 +81,20 @@ test('hBars truncates long labels and escapes', () => {
   assert.ok(!s.includes('<x>'))
 })
 
+test('ranking bars reserve room for full trillion-scale values at every text size', () => {
+  const note = (42_244_916_000_000).toLocaleString();
+  for (const textScale of [1, 1.15, 1.3]) {
+    const s = hBars([{ label: 'Long model name', value: 42_244_916_000_000, note }], { width: 280, textScale });
+    wellFormed(s);
+    const width = Number(s.match(/viewBox="0 0 ([\d.]+)/)[1]);
+    const bar = s.match(/<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"[^>]+class="bar"/);
+    const valueSpace = width - Number(bar[1]) - Number(bar[2]);
+    assert.ok(valueSpace >= note.length * 6 * textScale, 'full number does not overlap the bar');
+    assert.ok(Number(bar[2]) > 0);
+    assert.ok(s.includes(note));
+  }
+});
+
 test('sparkline handles short series', () => {
   wellFormed(sparkline([1]))
   wellFormed(sparkline([1, 4, 2]))

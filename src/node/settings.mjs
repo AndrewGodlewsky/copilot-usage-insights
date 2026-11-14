@@ -14,6 +14,11 @@ function validate(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Settings must be an object');
   const result = {};
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'simplifyNumbers') {
+      if (typeof value !== 'boolean') throw new TypeError('simplifyNumbers must be a boolean');
+      result.simplifyNumbers = value;
+      continue;
+    }
     if (key === 'textSize') {
       if (!['small', 'medium', 'large'].includes(value)) throw new TypeError('textSize must be small, medium, or large');
       result.textSize = value;
@@ -33,8 +38,8 @@ export function createSettings(dir = configDir()) {
   const file = path.join(dir, 'settings.json');
   let queue = Promise.resolve();
   async function get() {
-    try { return { extraHomes: [], disabledHomes: [], textSize: 'small', ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
-    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], textSize: 'small' }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    try { return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
+    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
   }
   return {
     get,

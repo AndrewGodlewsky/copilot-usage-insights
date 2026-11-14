@@ -1,8 +1,9 @@
-import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, compact, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
+import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview } from './efficiency.mjs';
+import { formatNumber } from '../core/format.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -10,16 +11,23 @@ clientDiagnostics.record('info', 'ui.started');
 window.addEventListener('error', event => clientDiagnostics.record('error', 'ui.error', { ...diagnosticError(event.error), line: event.lineno, column: event.colno }));
 window.addEventListener('unhandledrejection', event => clientDiagnostics.record('error', 'ui.rejection', diagnosticError(event.reason)));
 $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VERSION}\n\nWhat happened?\n\nSteps to reproduce:\n\nExpected behavior:\n\nDiagnostic logs (Show logs > Copy logs):\n\n`);
-const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+const number = (value, options = {}) => formatNumber(value, { simplify: state.simplifyNumbers, ...options });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, projectView: null };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
 function applyTextSize(value) {
   state.textSize = typeof value === 'string' && Object.hasOwn(TEXT_SCALES, value) ? value : 'small';
   document.documentElement.style.setProperty('--text-scale', TEXT_SCALES[state.textSize]);
+}
+function applyPreferences(config = {}) {
+  applyTextSize(config.textSize);
+  const simplified = config.simplifyNumbers !== false;
+  const changed = state.simplifyNumbers !== simplified;
+  state.simplifyNumbers = simplified;
+  if (changed && efficiencyContextSnapshot && !$('efficiency-context-read').disabled) renderEfficiencyContext();
 }
 async function request(method, input = {}, refresh = false, signal) {
   const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined };
@@ -97,7 +105,7 @@ async function load(force = false, refresh = false) {
         const report = await request(method, input, rescan);
         if (version !== state.version) continue;
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.projectView = null; state.filterKey = filterKey; }
-        applyTextSize(report.preferences?.textSize);
+        applyPreferences(report.preferences);
         state.creditsUnavailable = false;
         state.report = report;
         render();
@@ -126,7 +134,7 @@ function options(id, values, all) {
   select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
-  return usageValue(row, 'credits', number);
+  return usageValue(row, 'credits', value => number(value, { maximumFractionDigits: 9 }));
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
@@ -183,7 +191,7 @@ function requestDetail(view) {
   if (!r) return '<p class="muted">This request is no longer available in the selected sources.</p>';
   const metrics = [['Input (including cache)', 'inputTotal'], ['Uncached input', 'input'], ['Output', 'output'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite'], ['Reasoning (part of output)', 'reasoning'], ['Total tokens', 'total'], ['AI credits', 'credits']];
   const context = [['Started by', initiatorLabel(r.initiator)], ['Duration', r.duration === null ? 'Unavailable' : `${number(r.duration / 1000)} s`], ['Automatic model selection', r.isAuto === null ? 'Not recorded' : r.isAuto ? 'Yes' : 'No'], ['Model ID', r.modelId || 'Not recorded'], ['Response model', r.responseModel || 'Not recorded']];
-  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? '<p class="footnote">Showing the first 12,000 characters.</p>' : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
+  return `<dl class="request-metrics">${[...metrics.map(([label, key]) => [label, usageValue(r, key, number)]), ...context].map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl><h3>Original prompt</h3>${r.prompt?.available ? `<pre class="request-prompt">${esc(r.prompt.text || '(Empty prompt)')}</pre>${r.prompt.truncated ? `<p class="footnote">Showing the first ${number(12000)} characters.</p>` : ''}` : '<p class="muted">Prompt unavailable: the local log is missing or has no reliable link to this request.</p>'}`;
 }
 function requestList() {
   const view = state.requestView;
@@ -260,7 +268,7 @@ function renderIntegrations(report) {
     if (row.toolsLoaded !== undefined && row.toolsLoaded !== null) details.push(`Tools loaded: ${row.toolsLoaded ? 'Yes' : 'No'}`);
     if (row.error) details.push(`Connection error: ${row.error}`);
     const tone = row.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(row.status) ? 'attention' : 'neutral';
-    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${row.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
+    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${number(row.successRate, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
   }).join('')}</tbody></table>` : `<p class="muted">${mcp.available ? 'No configured MCP servers or recorded MCP calls match this view.' : 'No recorded MCP calls match these filters. Live inventory is unavailable; open this dashboard in an updated Copilot session.'}</p>`;
   $('mcp-note').textContent = `Status: current session${mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
   const coverage = [];
@@ -312,23 +320,23 @@ function renderBreakdownContent() {
   renderIntegrations(report);
 }
 const efficiencyMeasures = [
-  { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => compact(value), hint: 'Input includes cached context.' },
-  { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => compact(value), hint: 'Output includes reasoning when reported.' },
-  { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => compact(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
-  { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
-  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => value.toLocaleString(undefined, { maximumSignificantDigits: 4 }), hint: 'Only complete credit charges are included.' },
+  { key: 'averageInput', label: 'Input / request', count: 'inputRequests', format: value => number(value), hint: 'Input includes cached context.' },
+  { key: 'averageOutput', label: 'Output / request', count: 'outputRequests', format: value => number(value), hint: 'Output includes reasoning when reported.' },
+  { key: 'averageToolTokens', label: 'Tool definitions / request', count: 'toolRequests', format: value => number(value), hint: 'Part of input, not tool results. Includes only requests with valid paired tool and input counts.' },
+  { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${number(value, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
+  { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: value => number(value, { maximumFractionDigits: 9 }), hint: 'Only complete credit charges are included.' },
 ];
 const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
-const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? row[metric.key].toLocaleString(undefined, { maximumSignificantDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
+const efficiencyHint = (row, metric) => `${metric.key === 'averageCredits' && row[metric.key] != null ? number(row[metric.key], { maximumFractionDigits: 12 }) : number(row[metric.key])}${metric.key === 'cacheHitRate' && row[metric.key] != null ? '%' : ''} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
 function renderEfficiencyFlow(s) {
   const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
   const share = total > 0 ? s.pairedInput / total * 100 : null;
   $('efficiency-flow').innerHTML = share === null
     ? '<p class="muted">Input and output counts from the same requests are needed to show where tokens go. Try a wider range if these records are incomplete.</p>'
-    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${compact(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${compact(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
+    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${number(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${number(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
   $('efficiency-cache').innerHTML = s.cacheHitRate == null
     ? `<strong>Cache reuse is not measurable here.</strong><p class="muted">${number(s.cacheRequests ?? 0)} of ${number(s.requests)} requests have a complete cache split. Missing cache detail is not zero reuse.</p>`
-    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${compact(s.cacheRead)} of ${compact(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
+    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${number(s.cacheRead)} of ${number(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
 }
 
 let efficiencyContextSnapshot;
@@ -359,7 +367,7 @@ function renderEfficiencyContext() {
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
   const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
-  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${compact(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${compact(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : compact(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${compact(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details><p class="footnote integration-note">Start with the largest contributor you control. Shorten repeated instructions, move task-specific detail into a skill or reference loaded when needed, or remove unrelated tool definitions for a focused task. Then inspect again and verify the agent still has the context it needs.</p>`;
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details><p class="footnote integration-note">Start with the largest contributor you control. Shorten repeated instructions, move task-specific detail into a skill or reference loaded when needed, or remove unrelated tool definitions for a focused task. Then inspect again and verify the agent still has the context it needs.</p>`;
 }
 $('efficiency-review-open').onclick = () => {
   if (!state.report) return;
@@ -381,21 +389,21 @@ $('efficiency-review-copy').onclick = async () => {
 function efficiencyDirection(insight) {
   if (insight.kind === 'tools') return {
     title: 'Tools take context before they do any work',
-    evidence: `${insight.model} carried ${compact(insight.average)} tool-definition tokens per measured request, accounting for ${number(insight.share)}% of input. Measured on ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    evidence: `${insight.model} carried ${number(insight.average)} tool-definition tokens per measured request, accounting for ${number(insight.share)}% of input. Measured on ${number(insight.samples)} of ${number(insight.requests)} requests.`,
     action: 'Inspect current context below. If a large tool set is unrelated to your next task, disable that integration for the task and compare input on similar requests.',
     caveat: 'Definitions describe available tools. This does not measure tool results, and those tools may be necessary.',
     compare: 'Compare tool-definition tokens per request and verify that the agent still has the tools it needs.',
   };
   if (insight.kind === 'growth') return {
     title: 'Inspect larger input later in a session',
-    evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${compact(insight.early)} to ${compact(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
+    evidence: `${insight.sessionName}: median input for ${insight.model} rose from ${number(insight.early)} to ${number(insight.late)} tokens (${number(insight.multiple)}×) between the first and last three measured ${insight.initiator === 'user' ? 'user-started' : 'agent-continuation'} requests. ${number(insight.samples)} of ${number(insight.requests)} requests had input counts.`,
     action: 'Review the context attached to those later requests. For a different task or phase, start a fresh conversation with a concise handoff; keep related follow-ups together.',
     caveat: 'Larger input can be necessary as a task develops. Growth alone does not mean wasted tokens.',
     compare: 'On comparable work, compare input per request before and after a phase handoff; check that important context was retained.',
   };
   if (insight.kind === 'cache') return {
     title: 'Check opportunities to reuse context',
-    evidence: `${insight.model} reused ${number(insight.rate)}% of ${compact(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
+    evidence: `${insight.model} reused ${number(insight.rate)}% of ${number(insight.input)} measured input tokens from cache. Cache counts were complete for ${number(insight.samples)} of ${number(insight.requests)} requests.`,
     action: 'Keep related work in one conversation and avoid unnecessary model changes within it. A cold start or expired cache can also explain low reuse.',
     caveat: 'Low reuse does not identify its cause or prove that you are switching chats too often.',
     compare: 'Compare cache reuse within the same model on similar follow-ups. Keep the workflow only if it still fits the task.',
@@ -412,6 +420,7 @@ function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
   const { summary, models, insights } = efficiency;
+  for (const [id, value] of [['efficiency-cache-minimum', 50000], ['efficiency-growth-minimum', 10000], ['efficiency-tools-minimum', 1000]]) $(id).textContent = number(value);
   const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
   const rangeName = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' }[state.report.query.range];
@@ -492,20 +501,20 @@ function renderContent() {
   $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges'],
-    ['Today', usageValue(r.today, 'total'), 'Tokens · current filters'],
-    ['Current streak', `${r.streak.current} days`, 'Days with recorded requests'],
+    ['Today', usageValue(r.today, 'total', number), 'Tokens · current filters'],
+    ['Current streak', `${number(r.streak.current)} days`, 'Days with recorded requests'],
     ['Models', number(r.models.length), 'Used through GitHub Copilot'],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
   $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
-  $('token-total').textContent = usageValue(scope, 'total');
+  $('token-total').textContent = usageValue(scope, 'total', number);
   $('token-total').title = usageValue(scope, 'total', number);
   $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
   $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
   $('all-days').hidden = !selected;
   const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
   const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
-  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   const banner = $('banner');
   state.buildingPatterns = nextBuildingPatterns(state.buildingPatterns, state.bannerRange, r.query.range);
@@ -515,16 +524,16 @@ function renderContent() {
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? number : null, selectable: true, selectedDay: state.selectedDay, textScale });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: number, selectable: true, selectedDay: state.selectedDay, textScale });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = calendarHeatmap(r.calendar);
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const segments = keys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k] }));
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth) });
-  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k))}</b></span>`).join('');
+  $('token-legend').innerHTML = keys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
+  $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
@@ -618,6 +627,7 @@ $('skills').onclick = async event => {
   finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
+let settingsSources;
 $('settings-open').onclick = $('footer-settings').onclick = async () => {
   $('settings-error').hidden = true;
   $('settings-save').disabled = true;
@@ -625,6 +635,8 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
   try {
     const config = await request('settings.get');
     $('text-size').value = config.textSize ?? 'small';
+    $('simplify-numbers').checked = config.simplifyNumbers !== false;
+    settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes]);
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
     $('settings-save').disabled = false;
@@ -635,9 +647,10 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes') });
-    applyTextSize(config.textSize); render();
-    $('settings-dialog').close(); await load(true);
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes') });
+    applyPreferences(config); render();
+    $('settings-dialog').close();
+    await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes]));
   } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
   finally { $('settings-save').disabled = false; }
 };
@@ -647,7 +660,7 @@ document.addEventListener('pointermove', e => {
   const mark = e.target.closest('.mark[data-tip]');
   if (!mark) { $('tip').hidden = true; return; }
   const tip = JSON.parse(mark.dataset.tip);
-  $('tip').innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(number(tip.total))}</b></p>`);
+  $('tip').innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(typeof tip.total === 'number' ? number(tip.total) : tip.total)}</b></p>`);
   $('tip').hidden = false;
   $('tip').style.left = `${Math.max(4, Math.min(e.clientX + 12, innerWidth - $('tip').offsetWidth - 8))}px`;
   $('tip').style.top = `${Math.max(4, Math.min(e.clientY + 12, innerHeight - $('tip').offsetHeight - 8))}px`;
