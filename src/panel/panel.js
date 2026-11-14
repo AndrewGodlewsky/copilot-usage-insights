@@ -4,7 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', openingSkill: false };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -59,16 +59,26 @@ function table(rows, heading) {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
   return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${['input', 'output', 'cacheRead', 'cacheWrite', 'total', 'credits'].map(key => `<td>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
+function skillFolder(file) {
+  const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+  if (end < 0) return '';
+  const root = end === 0 || (end === 2 && file[1] === ':');
+  return file.slice(0, end + (root ? 1 : 0));
+}
+function skillName(skill) {
+  if (!skill.path) return `<span title="Location not recorded">${esc(skill.name)}</span>`;
+  return `<span class="skill-actions"><button class="skill-link" data-skill-id="${esc(skill.id)}" data-skill-action="open" aria-label="Open folder for ${esc(skill.name)}" title="Open folder containing ${esc(skill.path)}">${esc(skill.name)}</button>${skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
+}
 function renderBreakdown() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group]);
   const skills = report.skills;
-  const focusedSkill = document.activeElement?.dataset.skillId;
+  const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill / recorded location</th><th>Source plugin</th><th>Plugin version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${s.path ? `<button class="skill-link" data-skill-id="${esc(s.id)}" aria-label="Open folder for ${esc(s.name)}" title="Open folder containing ${esc(s.path)}">${esc(s.name)}</button>` : esc(s.name)}<span class="skill-path">${esc(s.path || 'Location not recorded')}</span></td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
-  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill)?.focus({ preventScroll: true });
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Source plugin</th><th>Plugin version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
@@ -162,18 +172,27 @@ for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () =
 for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
-  if (!button || state.openingSkill) return;
-  state.openingSkill = true;
-  button.disabled = true;
+  if (!button || state.skillActionPending) return;
+  const skill = state.report.skills.rows.find(s => s.id === button.dataset.skillId);
+  if (!skill?.path) return;
+  const copy = button.dataset.skillAction === 'copy';
+  state.skillActionPending = true;
+  button.setAttribute('aria-busy', 'true');
   const status = $('skill-folder-status');
   status.hidden = false;
-  status.textContent = `Opening folder for ${button.textContent}…`;
+  status.textContent = `${copy ? 'Copying folder path' : 'Opening folder'} for ${skill.name}…`;
   try {
-    await request('skills.openFolder', { id: button.dataset.skillId });
-    status.textContent = 'Folder request sent to your file manager.';
+    if (copy) {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this window.');
+      await navigator.clipboard.writeText(skillFolder(skill.path));
+      status.textContent = `Folder path copied for ${skill.name}.`;
+    } else {
+      await request('skills.openFolder', { id: button.dataset.skillId });
+      status.textContent = 'Folder request sent to your file manager.';
+    }
   }
-  catch (error) { status.textContent = `Could not open skill folder: ${error.message}`; }
-  finally { state.openingSkill = false; button.disabled = false; }
+  catch (error) { status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
+  finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 $('settings-open').onclick = async () => {

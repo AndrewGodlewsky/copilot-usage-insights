@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.5** fixes skill folder links opening invisible Explorer windows on Windows. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.6** adds a copy-folder button beside each skill name and removes the path displayed underneath. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -108,11 +108,11 @@ Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Window
 
 ## Skills used
 
-Open **Breakdown** to see **Skills used** below the token table. It shows skill name and recorded location, source plugin, plugin version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions and locations, so skills with the same name in different folders remain separate. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
+Open **Breakdown** to see **Skills used** below the token table. It shows skill name with folder actions, source plugin, plugin version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions and locations, so skills with the same name in different folders remain separate. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
 
 **Source plugin** and **Plugin version** come from Copilot's recorded `pluginName` and `pluginVersion` fields. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. Personal skills such as `~/.copilot/skills/hello-test/SKILL.md`, and project skills, normally have no source plugin. **No plugin recorded** / **—** means those fields were absent; it does not mean the skill failed to run.
 
-Click a skill name to open the folder containing its recorded `SKILL.md` in Explorer, Finder, or your Linux file manager. The recorded path appears beneath the name. The dashboard uses that exact saved location; it does not search for another skill with the same name. Missing or moved files show an explanation. Paths from another computer may not be available locally; remote paths are not opened. If Copilot did not record a path, the name is plain text with **Location not recorded**.
+Click a skill name to open the folder containing its recorded `SKILL.md` in Explorer, Finder, or your Linux file manager. Use the copy button beside the name to copy just the containing folder path to your clipboard, then paste it into your file manager if opening the folder is blocked. The folder path is no longer displayed beneath the name. The dashboard uses that exact saved location; it does not search for another skill with the same name. Missing or moved files show an explanation. Paths from another computer may not be available locally; remote paths are not opened. Copying works from the recorded path even if the folder has moved or is on another computer. If Copilot did not record a path, the name is plain text with no copy button and a **Location not recorded** tooltip.
 
 The reader counts persisted `skill.invoked` events from local session logs, deduplicating replayed events and copied homes. It includes sessions with Copilot-attributed requests and omits activations in sessions with mixed or missing provider attribution, with the omitted count shown. This conservative rule can omit genuine Copilot activations in mixed-provider sessions. A skill-only session can appear once Copilot request accounting is available.
 

@@ -9,7 +9,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
 .chart .track{stroke:var(--muted)}.chart .bar{fill:var(--s1)}.chart .t-strong{font-size:20px;font-weight:600}
 .chart [data-day]{cursor:pointer;outline:none}.chart [data-day]:hover>.hit{fill:var(--s1);fill-opacity:.08}.chart [data-day][aria-pressed=true]>.hit{fill:var(--s1);fill-opacity:.15;stroke:var(--s1);stroke-width:1}.chart [data-day]:focus-visible>.hit{stroke:var(--fg);stroke-width:2}.selection-hint{margin-top:10px}.token-types header{margin-bottom:10px;min-height:34px}.token-types header h2{margin:0}#skills~.footnote{margin-top:12px}
 .card header label{white-space:nowrap}
-.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere}.skill-link:hover{background:transparent;color:var(--fg)}.skill-path{display:block;max-width:320px;margin-top:4px;color:var(--muted-fg);font-size:10px;white-space:normal;overflow-wrap:anywhere}#skills td:first-child{min-width:180px;overflow:visible}
+.skill-actions{display:inline-flex;align-items:center;gap:6px;max-width:100%}.skill-link{border:0;border-radius:2px;padding:0;background:transparent;color:var(--s1);text-decoration:underline;text-underline-offset:3px;text-align:left;white-space:normal;overflow-wrap:anywhere;min-width:0}.skill-link:hover{background:transparent;color:var(--fg)}.skill-copy{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:26px;height:26px;padding:0;border-color:transparent;background:transparent;color:var(--muted-fg)}.skill-copy:hover{color:var(--fg);border-color:var(--border)}#skills td:first-child{min-width:180px;overflow:visible}
 </style></head>
 <body><main id="app">
   <header class="hero"><div id="banner" aria-hidden="true"></div><div class="hero-copy"><span class="eyebrow">GITHUB COPILOT</span><h1>Usage Insights</h1><p>Your AI activity, accounted for.</p></div><button id="theme" class="hero-button" aria-label="Switch color theme">◐</button></header>
@@ -44,7 +44,7 @@ html.light{--bg:#fafafa;--fg:#141414;--card:#fff;--muted-fg:#646464;--muted:#eee
     <section id="breakdown-view" hidden>
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option><option value="sessions">Session</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Requests</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
       <p class="footnote">Breakdowns use recorded request metadata. File-level and command-level charges are not available.</p>
-      <article class="card" aria-labelledby="skills-title"><header><h2 id="skills-title">Skills used</h2><span id="skills-summary" class="muted"></span></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p class="footnote">Click a skill name to open its recorded folder. Source plugin and Plugin version identify the plugin that supplied the skill, when recorded. Personal and project skills normally have neither.</p><p id="skills-coverage" class="footnote"></p><p class="footnote">Recorded activations in sessions with Copilot usage. Date, project, and session filters apply. The model filter applies to token accounting only. Activations do not carry per-skill token charges.</p></article>
+      <article class="card" aria-labelledby="skills-title"><header><h2 id="skills-title">Skills used</h2><span id="skills-summary" class="muted"></span></header><div id="skills" class="table-wrap"></div><p id="skill-folder-status" class="footnote" role="status" hidden></p><p class="footnote">Click a skill name to open its recorded folder, or use the copy button beside it to copy the folder path. Source plugin and Plugin version identify the plugin that supplied the skill, when recorded. Personal and project skills normally have neither.</p><p id="skills-coverage" class="footnote"></p><p class="footnote">Recorded activations in sessions with Copilot usage. Date, project, and session filters apply. The model filter applies to token accounting only. Activations do not carry per-skill token charges.</p></article>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
@@ -649,7 +649,7 @@ function pixelBanner(report, opts = {}) {
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', openingSkill: false };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -704,16 +704,26 @@ function table(rows, heading) {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
   return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${['input', 'output', 'cacheRead', 'cacheWrite', 'total', 'credits'].map(key => `<td>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
+function skillFolder(file) {
+  const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
+  if (end < 0) return '';
+  const root = end === 0 || (end === 2 && file[1] === ':');
+  return file.slice(0, end + (root ? 1 : 0));
+}
+function skillName(skill) {
+  if (!skill.path) return `<span title="Location not recorded">${esc(skill.name)}</span>`;
+  return `<span class="skill-actions"><button class="skill-link" data-skill-id="${esc(skill.id)}" data-skill-action="open" aria-label="Open folder for ${esc(skill.name)}" title="Open folder containing ${esc(skill.path)}">${esc(skill.name)}</button>${skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
+}
 function renderBreakdown() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group]);
   const skills = report.skills;
-  const focusedSkill = document.activeElement?.dataset.skillId;
+  const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill / recorded location</th><th>Source plugin</th><th>Plugin version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${s.path ? `<button class="skill-link" data-skill-id="${esc(s.id)}" aria-label="Open folder for ${esc(s.name)}" title="Open folder containing ${esc(s.path)}">${esc(s.name)}</button>` : esc(s.name)}<span class="skill-path">${esc(s.path || 'Location not recorded')}</span></td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
-  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill)?.focus({ preventScroll: true });
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Source plugin</th><th>Plugin version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
@@ -807,18 +817,27 @@ for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () =
 for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
-  if (!button || state.openingSkill) return;
-  state.openingSkill = true;
-  button.disabled = true;
+  if (!button || state.skillActionPending) return;
+  const skill = state.report.skills.rows.find(s => s.id === button.dataset.skillId);
+  if (!skill?.path) return;
+  const copy = button.dataset.skillAction === 'copy';
+  state.skillActionPending = true;
+  button.setAttribute('aria-busy', 'true');
   const status = $('skill-folder-status');
   status.hidden = false;
-  status.textContent = `Opening folder for ${button.textContent}…`;
+  status.textContent = `${copy ? 'Copying folder path' : 'Opening folder'} for ${skill.name}…`;
   try {
-    await request('skills.openFolder', { id: button.dataset.skillId });
-    status.textContent = 'Folder request sent to your file manager.';
+    if (copy) {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this window.');
+      await navigator.clipboard.writeText(skillFolder(skill.path));
+      status.textContent = `Folder path copied for ${skill.name}.`;
+    } else {
+      await request('skills.openFolder', { id: button.dataset.skillId });
+      status.textContent = 'Folder request sent to your file manager.';
+    }
   }
-  catch (error) { status.textContent = `Could not open skill folder: ${error.message}`; }
-  finally { state.openingSkill = false; button.disabled = false; }
+  catch (error) { status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
+  finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 $('settings-open').onclick = async () => {
