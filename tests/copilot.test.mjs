@@ -98,6 +98,34 @@ test('inclusive input shows missing coverage without counting cached tokens twic
   assert.equal(excluding.inputTotal, complete.inputTotal);
 });
 
+test('reasoning stays within output and token averages use only complete requests', () => {
+  const now = new Date(2026, 10, 13, 12);
+  const records = parse([receipt(), receipt({ inputTokens: 200, outputTokens: 40, reasoningTokens: 10 }, 'second'),
+    receipt({ outputTokens: undefined, reasoningTokens: undefined }, 'partial')]).records;
+  const r = buildReport(records, { range: '1d' }, now);
+  assert.equal(r.totals.reasoning, 15);
+  assert.equal(r.totals.missing.reasoning, 1);
+  assert.equal(r.totals.total, 460, 'reasoning is not added to total tokens again');
+  assert.equal(r.totals.averageTokens, 180);
+  assert.equal(r.totals.completeTokenRequests, 2);
+  assert.equal(usageValue(r.totals, 'reasoning'), '15 *');
+  assert.equal(usageValue(r.totals, 'averageTokens'), '180 *');
+  assert.equal(r.models[0].averageTokens, 180);
+  assert.equal(r.projects[0].reasoning, 15);
+  assert.equal(r.sessions[0].averageTokens, 180);
+  const noCache = buildReport(records, { range: '1d', includeCache: false }, now);
+  assert.equal(noCache.totals.averageTokens, 110);
+  assert.equal(noCache.totals.reasoning, 15);
+  const missing = buildReport(parse([receipt({ cacheReadTokens: undefined, reasoningTokens: undefined })]).records, { range: '1d', includeCache: false }, now).totals;
+  assert.equal(missing.averageTokens, null);
+  assert.equal(usageValue(missing, 'averageTokens'), 'Unavailable');
+  assert.equal(usageValue(missing, 'reasoning'), 'Unavailable');
+  const zero = buildReport(parse([receipt({ inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 })]).records, { range: '1d' }, now).totals;
+  assert.equal(zero.averageTokens, 0);
+  assert.equal(usageValue(zero, 'reasoning'), '0');
+  assert.equal(buildReport([], { range: '1d' }, now).totals.averageTokens, null);
+});
+
 async function fixture(t) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-insights-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));

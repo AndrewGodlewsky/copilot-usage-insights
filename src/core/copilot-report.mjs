@@ -1,23 +1,24 @@
 import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
 
-const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite'];
-const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
+const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
+const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, sessions: new Set() });
 const knownTokens = (r, includeCache) => ((includeCache ? r.inputTotal : r.input) ?? 0) + (r.output ?? 0);
 function add(b, r, includeCache) {
   b.requests++; b.sessions.add(r.sessionId);
-  for (const k of tokenFields) { b[k] += r[k] ?? 0; if (r[k] === null) b.missing[k]++; }
+  for (const k of tokenFields) { b[k] += r[k] ?? 0; if (r[k] == null) b.missing[k]++; }
   if (r.input === null) { b.missingCache++; b.unclassifiedInput += r.inputTotal ?? 0; }
   const input = includeCache ? r.inputTotal : r.input;
   if (input === null || r.output === null) b.missingTokens++;
   if (input !== null || r.output !== null) b.knownTokenRequests++;
+  if (input != null && r.output != null) { b.completeTokens += input + r.output; b.completeTokenRequests++; }
   b.total += knownTokens(r, includeCache);
   if (r.nanoAiu === null) b.missingCredits++;
   else { b.nano += BigInt(r.nanoAiu); b.chargedRequests++; }
   if (r.creditStatus === 'partial') b.partialCredits++;
 }
 function finish(b) {
-  const { nano, sessions, ...rest } = b;
-  return { ...rest, sessions: sessions.size, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9 };
+  const { nano, sessions, completeTokens, ...rest } = b;
+  return { ...rest, sessions: sessions.size, averageTokens: b.completeTokenRequests ? completeTokens / b.completeTokenRequests : null, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9 };
 }
 function skillReport(records, activity, input, start, end, now) {
   const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
@@ -32,15 +33,44 @@ function skillReport(records, activity, input, start, end, now) {
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
     if (!attributed) { omitted++; continue; }
     const key = JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
-    if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin, version: skill.version, path: skill.path || '', invocations: 0, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
+    if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin, version: skill.version, path: skill.path || '', invocations: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
     const row = groups.get(key);
     row.invocations++; row.sessions.add(skill.sessionId); row.projects.add(skill.project);
+    const trigger = skill.trigger === 'user-invoked' ? 'manual' : skill.trigger === 'agent-invoked' ? 'agent' : skill.trigger === 'context-load' ? 'preloaded' : 'unknown';
+    row.triggers[trigger]++;
     if (skill.ts > row.lastUsed) row.lastUsed = skill.ts;
     sessions.add(skill.sessionId); invocations++;
   }
   const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size }))
     .sort((a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name));
   return { rows, invocations, sessions: sessions.size, omitted, projectOptions: [...projectOptions] };
+}
+
+function toolReport(records, activity, input, start, end, now) {
+  const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
+  const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), projectOptions = new Set();
+  // The selector uses display labels; tool events carry raw model IDs.
+  const modelIds = new Set(records.filter(r => r.ms <= now.getTime() && r.modelId && input.models?.includes(r.model)).map(r => JSON.stringify([r.sessionId, r.modelId])));
+  let calls = 0, omitted = 0;
+  for (const tool of activity.tools || []) {
+    if (tool.ms > now.getTime()) continue;
+    const attributed = copilotSessions.has(tool.sessionId) && !excluded.has(tool.sessionId);
+    if (attributed) projectOptions.add(tool.project);
+    const day = localDay(new Date(tool.ms));
+    const matchingModel = !input.models || input.models.includes(tool.model) || modelIds.has(JSON.stringify([tool.sessionId, tool.model]));
+    if (day < start || day > end || input.project && input.project !== tool.project || input.session && input.session !== tool.sessionId || !matchingModel) continue;
+    if (!attributed) { omitted++; continue; }
+    const key = JSON.stringify([tool.name, tool.server, tool.mcpTool]);
+    if (!groups.has(key)) groups.set(key, { name: tool.name, server: tool.server, mcpTool: tool.mcpTool, calls: 0, successes: 0, failures: 0, unknown: 0, lastUsed: tool.ts });
+    const row = groups.get(key);
+    row.calls++; calls++;
+    const outcome = tool.completedMs != null && tool.completedMs >= tool.ms && tool.completedMs <= now.getTime() ? tool.success : null;
+    row[outcome === true ? 'successes' : outcome === false ? 'failures' : 'unknown']++;
+    if (tool.ts > row.lastUsed) row.lastUsed = tool.ts;
+  }
+  const rows = [...groups.values()].map(row => ({ ...row, successRate: row.successes + row.failures ? row.successes / (row.successes + row.failures) * 100 : null }))
+    .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name) || a.server.localeCompare(b.server));
+  return { rows, calls, omitted, projectOptions: [...projectOptions] };
 }
 
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
@@ -65,13 +95,15 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   const ranked = map => [...map].map(([name, b]) => ({ name, ...finish(b) })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   let current = 0;
   for (let d = calendar.has(today) ? today : today - 1; calendar.has(d); d--) current++;
-  const { projectOptions, ...skills } = skillReport(records, activity, input, q.range === 'all' ? -Infinity : start, end, now);
+  const activityStart = q.range === 'all' ? -Infinity : start;
+  const { projectOptions, ...skills } = skillReport(records, activity, input, activityStart, end, now);
+  const { projectOptions: toolProjects, ...tools } = toolReport(records, activity, { ...input, models: q.models }, activityStart, end, now);
   return {
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
     rhythm, models: ranked(models), projects: ranked(projects), sessions: ranked(sessions),
-    skills,
-    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions])].sort(), sessions: [...new Set(records.map(r => r.sessionId))].sort() },
+    skills, tools,
+    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects])].sort(), sessions: [...new Set(records.map(r => r.sessionId))].sort() },
   };
 }

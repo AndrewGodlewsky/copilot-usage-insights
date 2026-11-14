@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.8** adds a separate **Skill version (installed)** column, read from each skill's current `SKILL.md` metadata. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.9** adds skill trigger counts and an **Additional info** toggle for plugin/version details, reasoning tokens and average tokens per request in the usage breakdown, and a separate tool activity table with failures and success percentages. Skill names open their recorded folders, with source plugin and plugin version shown when recorded. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -93,7 +93,7 @@ The **Usage** view includes a token overview with total tokens, input including 
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
 
-**Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks a known subtotal with incomplete coverage. Missing counts show **Unavailable**.
+**Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
 - Both desktop and CLI usage can appear when they share the same Copilot home. This is local recorded activity, not an account-wide billing report.
@@ -102,13 +102,17 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 - **AI credits** use Copilot's recorded `totalNanoAiu` divided by one billion. No model-price estimates, dollar totals, remaining balances, or subscription limits are inferred. Missing charges show as unavailable; partial amounts and incomplete totals are marked.
 - Date ranges use local calendar days. Activity and streak show filtered history; the daily chart and breakdown use the selected dates. Excluding cache changes token totals, not credit charges.
 
+**Usage breakdown** includes **Reasoning** and **Avg. tokens / request** for each model, project, or session. Reasoning is reported separately but remains part of output, so it is not added to totals again. The average uses only requests whose input and output counts are both known, follows **Include cache tokens**, and shows an asterisk when some requests are excluded for incomplete counts. Hover over an average to see how many requests contributed; if none have complete counts, it shows **Unavailable**. These are request metrics, not token charges assigned to individual skills.
+
 Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources are scanned incrementally while the canvas is visible. **Refresh** forces a complete reread. Source diagnostics explain missing homes, unsupported schemas, and skipped records. Copilot's local event format and canvas APIs are experimental; app updates can require a reader update.
 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
 
 ## Skills used
 
-Open **Breakdown** to see **Skills used** below the token table. It shows skill name with folder actions, source plugin, recorded plugin version, current installed skill version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions and locations, so skills with the same name in different folders remain separate. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
+Open **Breakdown** to see **Skills used** below the token table. By default it shows the skill name with folder actions, activations, a **Triggered by** breakdown, distinct session/project counts, and last use. Click **Additional info** beneath the heading to reveal **Source plugin**, **Plugin version**, and **Skill version (installed)**; click again to hide them. The choice survives report refreshes while the dashboard remains open. Rows still distinguish recorded plugin versions and locations even when their columns are hidden. Date, project, and session filters apply to the activation itself. The model filter does not filter skill activations because those events do not consistently record a model.
+
+**Triggered by** counts the saved event's `data.trigger`: **Manual** is `user-invoked` (a slash command or explicit UI action), **Agent** is `agent-invoked`, and **Preloaded** is `context-load`. Missing or unrecognized triggers are **Unknown**, not assumed to be manual or agent activity. All four counts add up to the row's activations. Preloaded and Unknown appear only when nonzero. A replayed event is counted once; a prompt that reuses an already loaded skill is not necessarily another activation.
 
 **Source plugin** and **Plugin version** come from `data.pluginName` and `data.pluginVersion` in Copilot's saved `skill.invoked` events under `session-state/<session>/events.jsonl`. The tracker reads the values recorded for that activation, rather than looking up the plugin's currently installed version. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. These fields are optional in GitHub's [`skill.invoked` event reference](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events#skillinvoked). Personal skills such as `~/.copilot/skills/example-skill/SKILL.md`, and project skills, normally have no source plugin. **No plugin recorded** / **—** means those fields were absent; it does not mean the skill failed to run.
 
@@ -135,17 +139,25 @@ The reader counts persisted `skill.invoked` events from local session logs, dedu
 
 An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions and arguments are discarded; the dashboard keeps names, recorded file paths, current installed skill versions, and activation metadata locally. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
 
+## Tool activity
+
+The **Tool activity** table in **Breakdown** lists calls, successes, failures, unknown outcomes, success percentage, and last use by tool. When a saved call identifies an MCP server, its server and tool names appear together; this counts actual calls, not configured servers.
+
+The reader pairs persisted `tool.execution_start` and `tool.execution_complete` events by session and tool-call ID. A recorded `success: true` counts as success; `success: false` counts as failure. Missing or invalid outcomes remain **Unknown**, including calls still running. **Success rate = successes / (successes + failures) x 100**; unknown outcomes are excluded, and no known outcomes means **Unavailable**. These are tool outcomes, not proof that a skill or the overall task succeeded.
+
+Date filters use the call's start time, with its latest recorded outcome. Project and session filters apply; model filters use the model explicitly recorded on the start event and exclude calls with no matching model. As with skills, calls from sessions with missing or mixed provider attribution are omitted, with coverage notices. A completion without a saved start cannot be identified as a table row. Copied logs and replayed calls are deduplicated.
+
+Skill trigger counts, tool outcomes, and request metrics are reconstructed from Copilot's existing local records when the dashboard refreshes. No background recorder, new history database, or per-skill token estimates are introduced. Tool arguments, results, and error-message contents are discarded.
+
 ## Possible next additions
 
 These are supported by Copilot event metadata but are **not implemented in this release**:
 
 | Capability | What could be shown |
 | --- | --- |
-| MCP servers | Servers and tools actually called, call counts, and last use |
-| Tool reliability | Successful and failed calls; elapsed time when start and completion events can be paired |
+| Tool timing | Elapsed time when start and completion events can be paired |
 | Subagents | Agent names, selected models, durations, and reported tool counts |
 | Response performance | Request duration and time to first token where recorded |
-| Reasoning | Recorded reasoning tokens as a subset of output, never added to the total again |
 
 GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events). Historical coverage depends on which events the app persisted. A configured MCP server is not evidence it was used. Session token totals cannot reliably be assigned to an individual skill or MCP call without explicit accounting links. Any further activity view should retain names and counts, without retaining tool arguments or output.
 

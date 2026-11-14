@@ -19,7 +19,7 @@ export function esc(value) {
 
 // Keep unavailable values distinct from zero in both charts and tables.
 export function usageValue(row, key, fmt = compact) {
-  const missing = key === 'credits' ? row.missingCredits || row.partialCredits : key === 'total' ? row.missingTokens : row.missing?.[key];
+  const missing = key === 'credits' ? row.missingCredits || row.partialCredits : key === 'total' || key === 'averageTokens' ? row.missingTokens : row.missing?.[key];
   const unavailable = row[key] === null || row.requests > 0 && (key === 'total' ? row.knownTokenRequests === 0 : row.missing?.[key] === row.requests);
   if (unavailable) return 'Unavailable';
   return `${fmt(row[key] ?? 0)}${missing ? ' *' : ''}`;

@@ -89,12 +89,16 @@ export function createScanner() {
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
-    const records = new Map(), skills = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
-    const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
+    const records = new Map(), skills = new Map(), tools = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
+    const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
     for (const s of snapshots) {
       for (const r of s.records) if (!records.has(r.key)) { records.set(r.key, r); s.source.records++; }
       for (const skill of s.skills) if (!skills.has(skill.key)) skills.set(skill.key, skill);
-      for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills']) coverage[k] += s[k];
+      for (const tool of s.tools) {
+        const previous = tools.get(tool.key);
+        if (!previous || (tool.completedMs ?? -Infinity) > (previous.completedMs ?? -Infinity)) tools.set(tool.key, tool);
+      }
+      for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools']) coverage[k] += s[k];
       if (s.aggregateOnly) coverage.aggregateOnly++;
     }
     for (const { db, source } of databases) {
@@ -106,7 +110,7 @@ export function createScanner() {
       } catch (e) { source.state = 'warning'; source.message = e.message; }
     }
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    return { records: [...records.values()], skills: [...skills.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
+    return { records: [...records.values()], skills: [...skills.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }

@@ -4,7 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, skillDetails: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -55,9 +55,12 @@ function options(id, values, all) {
 function creditLabel(row) {
   return usageValue(row, 'credits', number);
 }
-function table(rows, heading) {
+function table(rows, heading, details = false) {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
-  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th><th>Input</th><th>Output</th><th>Cache read</th><th>Cache write</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${['input', 'output', 'cacheRead', 'cacheWrite', 'total', 'credits'].map(key => `<td>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', 'total', ...(details ? ['averageTokens'] : []), 'credits'];
+  const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
+  const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
+  return `<table><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td title="${esc(r.name)}">${esc(r.name)}</td><td>${number(r.requests)}</td>${keys.map(key => `<td${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, number))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 function skillFolder(file) {
   const end = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\'));
@@ -69,21 +72,37 @@ function skillName(skill) {
   if (!skill.path) return `<span title="Location not recorded">${esc(skill.name)}</span>`;
   return `<span class="skill-actions"><button class="skill-link" data-skill-id="${esc(skill.id)}" data-skill-action="open" aria-label="Open folder for ${esc(skill.name)}" title="Open folder containing ${esc(skill.path)}">${esc(skill.name)}</button>${skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
 }
+function skillTriggers(skill) {
+  const triggers = skill.triggers || { manual: 0, agent: 0, preloaded: 0, unknown: skill.invocations };
+  return `<div class="skill-triggers"><span>Manual ${number(triggers.manual)}</span><span>Agent ${number(triggers.agent)}</span>${triggers.preloaded ? `<span>Preloaded ${number(triggers.preloaded)}</span>` : ''}${triggers.unknown ? `<span>Unknown ${number(triggers.unknown)}</span>` : ''}</div>`;
+}
+function renderTools(report) {
+  const tools = report.tools;
+  $('tools-summary').textContent = `${number(tools.calls)} call${tools.calls === 1 ? '' : 's'}`;
+  $('tools').innerHTML = tools.rows.length ? `<table><thead><tr><th>Tool</th><th>Calls</th><th>Successes</th><th>Failures</th><th title="No valid completion outcome recorded; may still be running.">Unknown</th><th title="Successes divided by successes plus failures. Unknown outcomes are excluded.">Success rate</th><th>Last used</th></tr></thead><tbody>${tools.rows.map(t => `<tr><td title="${esc(t.name)}">${esc(t.server ? `${t.server} / ${t.mcpTool || t.name}` : t.name)}</td><td>${number(t.calls)}</td><td>${number(t.successes)}</td><td>${number(t.failures)}</td><td>${number(t.unknown)}</td><td>${t.successRate === null ? 'Unavailable' : `${t.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`}</td><td>${esc(new Date(t.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded tool calls match these filters.</p>';
+  const coverage = [];
+  if (tools.omitted) coverage.push(`${number(tools.omitted)} calls omitted because their sessions have missing or mixed provider attribution.`);
+  if (report.coverage.invalidTools) coverage.push(`${number(report.coverage.invalidTools)} malformed tool events skipped across scanned sources.`);
+  $('tools-coverage').hidden = !coverage.length;
+  $('tools-coverage').textContent = coverage.join(' ');
+}
 function renderBreakdown() {
   const report = state.report;
   if (!report) return;
   const group = $('group').value, sort = $('sort').value;
-  $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group]);
+  $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${esc(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  $('skill-details').setAttribute('aria-expanded', String(state.skillDetails));
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Activations</th><th title="Manual: explicitly invoked by the user. Agent: requested by the agent. Preloaded: loaded with other context. Unknown: trigger not recorded or not recognized.">Triggered by</th><th>Sessions</th><th>Projects</th><th>Last used</th>${state.skillDetails ? '<th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th>' : ''}</tr></thead><tbody>${skills.rows.map(s => `<tr><td>${skillName(s)}</td><td>${number(s.invocations)}</td><td>${skillTriggers(s)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td>${state.skillDetails ? `<td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '\u2014')}</td><td>${esc(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
   if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
   $('skills-coverage').hidden = !coverage.length;
   $('skills-coverage').textContent = coverage.join(' ');
+  renderTools(report);
 }
 function render() {
   const r = state.report;
@@ -170,6 +189,7 @@ $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
 for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
+$('skill-details').onclick = () => { state.skillDetails = !state.skillDetails; renderBreakdown(); };
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
   if (!button || state.skillActionPending) return;

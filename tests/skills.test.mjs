@@ -50,6 +50,24 @@ test('skills from different paths stay separate and row IDs survive date filters
   assert.deepEqual(r.skills.rows.map(s => s.id).sort(), report(snapshot, { range: 'all' }).skills.rows.map(s => s.id).sort());
 });
 
+test('skill triggers count manual, agent, preloaded, and unknown activations without splitting rows', () => {
+  const snapshot = parse([usage(), skill('manual', { trigger: 'user-invoked' }),
+    skill('manual', { trigger: 'user-invoked' }), skill('agent', { trigger: 'agent-invoked' }),
+    skill('preloaded', { trigger: 'context-load' }), skill('legacy'),
+    skill('future-kind', { trigger: 'future-trigger' }), skill('invalid-kind', { trigger: {} }),
+    { ...skill('yesterday', { trigger: 'agent-invoked' }), timestamp: new Date(2026, 10, 12, 10).toISOString() },
+    { type: 'session.context_changed', data: { repository: 'project-two' } }, skill('other', { trigger: 'user-invoked' })]);
+  assert.equal(snapshot.skills.find(s => s.key.includes('manual')).trigger, 'user-invoked');
+  assert.equal(snapshot.skills.find(s => s.key.includes('future-kind')).trigger, 'unknown');
+  const rows = report(snapshot).skills.rows;
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].triggers, { manual: 2, agent: 1, preloaded: 1, unknown: 3 });
+  assert.equal(Object.values(rows[0].triggers).reduce((a, b) => a + b, 0), rows[0].invocations);
+  assert.equal(report(snapshot, { range: 'all' }).skills.rows[0].triggers.agent, 2);
+  assert.deepEqual(report(snapshot, { project: 'project-two' }).skills.rows[0].triggers, { manual: 1, agent: 0, preloaded: 0, unknown: 0 });
+  assert.equal(report(snapshot, { models: ['another-model'] }).skills.rows[0].triggers.manual, 2);
+});
+
 test('folder API opens only an attributed recorded row from enabled sources', async t => {
   let snapshot = parse([usage(), skill()]);
   const opened = [];
