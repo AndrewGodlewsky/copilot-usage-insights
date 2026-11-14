@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage } from '../src/core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }) {
@@ -45,6 +45,10 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
         server.config = { ...server.config, ...message.input };
         report.preferences = { textSize: server.config.textSize, simplifyNumbers: server.config.simplifyNumbers ?? true };
         return { ok: true, json: async () => server.config };
+      }
+      if (message.method === 'usage.sessionModels') {
+        if (server.sessionModelsError) return { ok: false, json: async () => ({ error: server.sessionModelsError }) };
+        return { ok: true, json: async () => server.sessionModels(message.input) };
       }
       if (message.method === 'usage.sessions') {
         if (server.sessionError) return { ok: false, json: async () => ({ error: server.sessionError }) };
@@ -131,6 +135,7 @@ async function requestPanel() {
   const report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
   const panel = await mountPanel(report);
   panel.server.sessionPage = input => buildModelSessionPage(records, input, now);
+  panel.server.sessionModels = input => buildSessionModels(records, input, now);
   panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
     ...(input.id ? { prompt: { available: true, text: '<script>unsafe()</script> Full original prompt', truncated: false } } : {}),
   })) });
@@ -273,7 +278,7 @@ test('model sessions page independently, sort before paging, and discard removed
 });
 
 test('project sessions expand and page locally, sort the full set, and reset or clamp pages as needed', async () => {
-  const { get, report, records, now, requests, click, document } = await requestPanel();
+  const { get, report, records, now, requests, click, document, server } = await requestPanel();
   const sessions = Array.from({ length: 52 }, (_, i) => ({ ...records[0], key: `request-${i}`, sessionId: `session-${i}`,
     sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, inputTotal: 100, input: 30 }));
   Object.assign(report, buildReport(sessions, {}, now));
@@ -300,6 +305,12 @@ test('project sessions expand and page locally, sort the full set, and reset or 
   buttons.find(b => b.dataset.projectName === project).focus();
   await click({ projectName: project });
   assert.equal(document.activeElement.dataset.projectName, project, 'expanding keeps the project toggle focused');
+  server.sessionModels = input => buildSessionModels(sessions, input, now);
+  buttons.find(b => b.dataset.projectSession === 'session-51').focus();
+  await click({ projectSession: 'session-51' });
+  assert.equal(document.activeElement.dataset.projectSession, 'session-51', 'opening models preserves session focus');
+  await click({ projectSession: 'session-51' });
+  assert.equal(document.activeElement.dataset.projectSession, 'session-51', 'collapsing models preserves session focus');
   assert.match(html(), /52 sessions/);
   assert.match(html(), /1–25/);
   assert.equal(rowCount(), 25);
@@ -312,7 +323,7 @@ test('project sessions expand and page locally, sort the full set, and reset or 
   assert.match(html(), /51–52/);
   assert.equal(rowCount(), 2);
   assert.equal(document.activeElement.dataset.sessionPageDirection, 'previous');
-  assert.equal(requests.length, before, 'project expansion and session paging make no API requests');
+  assert.equal(requests.length, before + 1, 'only the model expansion makes an API request');
   get('sort').value = 'output'; get('sort').onchange();
   assert.match(html(), /1–25/);
   await click({ sessionPage: '50' });
@@ -370,6 +381,108 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
   assert.match(html(), /data-request-model=/);
   get('group').value = 'projects'; get('group').onchange();
   assert.doesNotMatch(html(), /id="project-sessions"/);
+});
+
+test('project sessions expand into filtered model metrics, sort locally, and refresh without prompt reads', async () => {
+  const { get, report, records, now, server, click, requests } = await requestPanel();
+  const history = [
+    { ...records[0], key: 'a', project: '<Project>', sessionId: 's1', sessionName: '<Session>', model: '<Model A>', output: 500, nanoAiu: 1e9 },
+    { ...records[0], key: 'b', project: '<Project>', sessionId: 's1', sessionName: '<Session>', model: '<Model B>', nanoAiu: 2e9 },
+    { ...records[0], key: 'c', project: 'Other', sessionId: 's1', model: 'Excluded project' },
+    { ...records[0], key: 'd', project: '<Project>', sessionId: 's2', sessionName: 'Other session', model: 'Excluded session' },
+  ];
+  server.sessionModels = input => buildSessionModels(history, input, now);
+  Object.assign(report, buildReport(history, {}, now));
+  await get('refresh').onclick();
+  get('group').value = 'projects'; get('group').onchange();
+  const html = () => get('breakdown').innerHTML;
+  await click({ projectName: '<Project>' });
+  const before = requests.length;
+  await click({ projectSession: 's1' });
+  assert.equal(requests.length, before + 1);
+  assert.equal(requests.at(-1).method, 'usage.sessionModels');
+  assert.equal(requests.at(-1).input.project, '<Project>');
+  assert.equal(requests.at(-1).input.session, 's1');
+  assert.match(html(), /data-project-session="s1" aria-expanded="true" aria-controls="session-models"/);
+  assert.match(html(), /id="session-models" class="request-list" aria-label="Models for &lt;Session&gt;"/);
+  assert.match(html(), /2 models/);
+  assert.match(html(), /&lt;Model A&gt;/);
+  assert.match(html(), /&lt;Model B&gt;/);
+  assert.doesNotMatch(html(), /Excluded project|Excluded session|<Model|data-request-model|data-request-session|data-request-id/);
+  const headers = [...html().matchAll(/<thead><tr><th>[^<]*<\/th>([\s\S]*?)<\/tr><\/thead>/g)].map(m => m[1]);
+  assert.equal(headers.length, 3);
+  assert.ok(headers.every(h => h === headers[0]));
+  const modelNames = () => [...html().slice(html().indexOf('id="session-models"')).matchAll(/<tr><td class="text-cell"[^>]*><span[^>]*>(.*?)<\/span>/g)].map(m => m[1]);
+  assert.deepEqual(modelNames(), ['&lt;Model A&gt;', '&lt;Model B&gt;']);
+  const beforeSort = requests.length;
+  get('sort').value = 'credits'; get('sort').onchange();
+  assert.deepEqual(modelNames(), ['&lt;Model B&gt;', '&lt;Model A&gt;']);
+  assert.equal(requests.length, beforeSort, 'model sorting is local');
+  history.push({ ...history[0], key: 'new', model: 'New model' });
+  Object.assign(report, buildReport(history, {}, now));
+  await get('refresh').onclick(); await new Promise(setImmediate);
+  assert.match(html(), /3 models/);
+  assert.match(html(), /New model/);
+  assert.ok(!requests.some(r => r.method === 'usage.requests'), 'no prompt reads or request fetches');
+  get('model').value = '<Model A>'; get('cache').checked = false;
+  get('model').onchange(); await new Promise(setImmediate);
+  assert.doesNotMatch(html(), /id="session-models"/);
+  await click({ projectName: '<Project>' }); await click({ projectSession: 's1' });
+  assert.deepEqual(requests.at(-1).input.models, ['<Model A>']);
+  assert.equal(requests.at(-1).input.includeCache, false);
+  assert.match(html(), /1 model<\/strong>/);
+});
+
+test('project session model loading retries and ignores stale results after collapse or switching groups', async () => {
+  const { get, records, server, click } = await requestPanel();
+  get('group').value = 'projects'; get('group').onchange();
+  const html = () => get('breakdown').innerHTML;
+  await click({ projectName: records[0].project });
+  server.sessionModelsError = '<offline>';
+  await click({ projectSession: 's1' });
+  assert.match(html(), /Could not load models: &lt;offline&gt;/);
+  assert.match(html(), /data-session-model-retry="true"/);
+  server.sessionModelsError = '';
+  await click({ projectSession: 's1', sessionModelRetry: 'true' });
+  assert.match(html(), /&lt;Sonnet&gt;/);
+  await click({ projectSession: 's1' });
+  assert.doesNotMatch(html(), /id="session-models"/);
+  let resolve;
+  server.sessionModels = () => new Promise(r => { resolve = r; });
+  const pending = click({ projectSession: 's1' }); await new Promise(setImmediate);
+  assert.match(html(), /Loading session models/);
+  await click({ projectName: records[0].project });
+  await click({ projectName: records[0].project });
+  resolve({ rows: [{ name: 'Stale model' }] }); await pending;
+  assert.doesNotMatch(html(), /Stale model|id="session-models"/);
+  const later = click({ projectSession: 's1' }); await new Promise(setImmediate);
+  get('group').value = 'models'; get('group').onchange();
+  resolve({ rows: [{ name: 'Stale model' }] }); await later;
+  assert.doesNotMatch(html(), /Stale model|id="session-models"/);
+  assert.match(html(), /data-request-model=/);
+  get('group').value = 'projects'; get('group').onchange();
+  await click({ projectName: records[0].project });
+  server.sessionModels = () => ({ rows: [] });
+  await click({ projectSession: 's1' });
+  assert.match(html(), /No matching models remain/);
+});
+
+test('project session models close on paging and when refresh removes the selected session', async () => {
+  const { get, records, report, now, server, click } = await requestPanel();
+  const history = Array.from({ length: 26 }, (_, i) => ({ ...records[0], key: `r${i}`, sessionId: `s${i}`, sessionName: `Session ${i}`, output: 100 - i }));
+  Object.assign(report, buildReport(history, {}, now));
+  server.sessionModels = input => buildSessionModels(history, input, now);
+  await get('refresh').onclick();
+  get('group').value = 'projects'; get('group').onchange();
+  await click({ projectName: records[0].project }); await click({ projectSession: 's0' });
+  assert.match(get('breakdown').innerHTML, /id="session-models"/);
+  await click({ sessionPage: '25' });
+  assert.doesNotMatch(get('breakdown').innerHTML, /id="session-models"/);
+  await click({ projectSession: 's25' });
+  assert.match(get('breakdown').innerHTML, /id="session-models"/);
+  Object.assign(report, buildReport(history.slice(0, 5), {}, now));
+  await get('refresh').onclick();
+  assert.doesNotMatch(get('breakdown').innerHTML, /id="session-models"/);
 });
 
 test('Efficiency shows evidence safely, persists across refresh, and drills into the correct filtered breakdown', async () => {
@@ -533,8 +646,8 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   const card = index => get('tiles').innerHTML.split('<div class="tile">')[index + 1].split('</div>')[0];
   assert.equal(get('tiles').innerHTML.match(/class="tile"/g).length, 4);
   assert.doesNotMatch(get('tiles').innerHTML, /Current streak|>Models</);
-  assert.match(card(2), /<span class="label">AI credits\/prompt<\/span>.*>Unavailable<\/strong>.*0 of 0 prompts/);
-  assert.match(card(3), /<span class="label">AI credit\/1M tokens<\/span>.*>2\.1K<\/strong>/);
+  assert.match(card(2), /<span class="label">AI credits \/ prompt<\/span>.*>Unavailable<\/strong>.*0 of 0 prompts/);
+  assert.match(card(3), /<span class="label">AI credit \/ 1M tokens<\/span>.*>2\.1K<\/strong>/);
   assert.match(card(3), /<span class="sub">input \+ output \+ cache<\/span>/);
   Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0.0678776, averageCredits: 0.0678776 });
   await get('refresh').onclick();
@@ -731,7 +844,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   get('group').value = 'projects';
   get('group').onchange();
   await get('breakdown').onclick({ target: { closest: () => ({ dataset: { projectName: report.projects[0].name } }) } });
-  assert.match(get('breakdown').innerHTML, />&lt;Planning &quot;work&quot;&gt;<\//);
+  assert.match(get('breakdown').innerHTML, / &lt;Planning &quot;work&quot;&gt;<\/button>/);
   assert.match(get('breakdown').innerHTML, /title="[^"]*s1[^"]*"/);
   get('session').value = 's1';
   await get('session').onchange();

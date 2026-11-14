@@ -4,7 +4,7 @@ const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copi
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
 const enumFields = {
-  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'skills.openFolder', 'efficiency.context']),
+  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   action: new Set(['copy', 'open']),

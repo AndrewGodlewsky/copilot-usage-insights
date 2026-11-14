@@ -112,10 +112,11 @@ async function load(force = false, refresh = false) {
         state.report = report;
         render();
         if (state.modelView) loadModelSessionPage(state.modelView.offset);
+        if (state.projectView?.models) loadSessionModels();
         $('live').textContent = 'Usage updated';
       } catch (e) {
         if (version !== state.version) continue;
-        state.requestView = null; state.modelView = null;
+        state.requestView = null; state.modelView = null; state.projectView = null;
         state.creditsUnavailable = true;
         renderHeaderCredits();
         $('status').hidden = false;
@@ -156,25 +157,25 @@ function sortActivity(rows, key) {
   });
 }
 const pluginMarketplace = plugin => plugin.marketplace || (plugin.source === 'builtin' ? 'Built-in' : 'Direct / local');
-function table(rows, heading, details = false) {
+function table(rows, heading, details = false, expansion = '') {
   if (!rows.length) return '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', ...(details ? ['averageTokens'] : []), 'total', 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
   const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
-  const modelExpansion = details && heading === 'Model', projectExpansion = details && heading === 'Project';
-  const sessionExpansion = details && heading === 'Session' && !!state.modelView, requestExpansion = details && heading === 'Time';
-  const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion;
-  const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : 'data-request-id';
-  const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : 'request-detail';
+  const modelExpansion = expansion === 'model', projectExpansion = expansion === 'project';
+  const sessionExpansion = expansion === 'session', requestExpansion = expansion === 'request', sessionModelsExpansion = expansion === 'sessionModels';
+  const expandable = modelExpansion || projectExpansion || sessionExpansion || requestExpansion || sessionModelsExpansion;
+  const attribute = modelExpansion ? 'data-request-model' : projectExpansion ? 'data-project-name' : sessionExpansion ? 'data-request-session' : sessionModelsExpansion ? 'data-project-session' : 'data-request-id';
+  const region = modelExpansion ? 'model-sessions' : projectExpansion ? 'project-sessions' : sessionExpansion ? 'session-requests' : sessionModelsExpansion ? 'session-models' : 'request-detail';
   return `<table${requestExpansion ? ' class="request-table"' : ''}><thead><tr><th>${esc(heading)}</th><th>Requests</th>${keys.map(key => `<th data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr></thead><tbody>${rows.map(r => {
-    const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
+    const open = modelExpansion ? state.modelView?.model === r.name : projectExpansion ? state.projectView?.project === r.name : sessionExpansion ? state.requestView?.session === r.id : sessionModelsExpansion ? state.projectView?.models?.session === r.id : requestExpansion && state.requestView?.selectedId === r.id;
     const label = requestExpansion ? requestDate.format(new Date(r.ts)) : r.name;
     const title = requestExpansion ? `${initiatorLabel(r.initiator)} · Recorded model call` : r.id ? `${label} — ${r.id}` : label;
     const name = expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${region}"` : ''} title="${esc(title)}"><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(label)}</button></td>` : textCell(label, title);
     const cells = `<tr>${name}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
-    const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : requestDetail(state.requestView);
-    return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
+    const content = modelExpansion ? modelSessionList() : projectExpansion ? projectSessionList(r.name) : sessionExpansion ? requestList() : sessionModelsExpansion ? sessionModelList() : requestDetail(state.requestView);
+    return cells + `<tr class="request-expansion"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${content}</div></td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
@@ -187,8 +188,34 @@ function projectSessionList(project) {
   const total = rows.length, limit = 25, view = state.projectView;
   view.offset = Math.min(view.offset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
   const offset = view.offset, end = Math.min(offset + limit, total);
+  if (view.models && !rows.slice(offset, end).some(r => r.id === view.models.session)) view.models = null;
   const paging = total > limit ? `<div class="request-paging"><span>${offset + 1}–${end}</span><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div>` : '';
-  return `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>${table(rows.slice(offset, end), 'Session', true)}`;
+  return `<header class="session-paging"><strong>${number(total)} session${total === 1 ? '' : 's'}</strong>${paging}</header>${table(rows.slice(offset, end), 'Session', true, 'sessionModels')}`;
+}
+
+function sessionModelList() {
+  const view = state.projectView.models;
+  if (view.pending && !view.rows) return '<p class="muted" role="status">Loading session models…</p>';
+  if (view.error) return `<p role="status">${esc(view.error)} <button data-project-session="${esc(view.session)}" data-session-model-retry="true">Retry</button></p>`;
+  if (!view.rows?.length) return '<p class="muted">No matching models remain. Refresh to update the session totals.</p>';
+  return `<header><strong>${number(view.rows.length)} model${view.rows.length === 1 ? '' : 's'}</strong>${view.pending ? '<span class="footnote" role="status">Updating…</span>' : ''}</header>${table(sortedUsage(view.rows), 'Model', true)}`;
+}
+async function loadSessionModels() {
+  const project = state.projectView, view = project?.models;
+  if (!view) return;
+  const version = ++view.version;
+  view.pending = true; view.error = '';
+  renderBreakdown();
+  try {
+    const result = await request('usage.sessionModels', { ...JSON.parse(state.filterKey), project: project.project, session: view.session });
+    if (state.projectView !== project || project.models !== view || view.version !== version) return;
+    view.rows = result.rows;
+  } catch (e) {
+    if (state.projectView !== project || project.models !== view || view.version !== version) return;
+    view.error = `Could not load models: ${e.message}`;
+  } finally {
+    if (state.projectView === project && project.models === view && view.version === version) { view.pending = false; renderBreakdown(); }
+  }
 }
 
 const requestDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
@@ -207,7 +234,7 @@ function modelSessionList() {
   const page = view.page;
   if (!page?.rows.length) return '<p class="muted">No matching sessions remain. Refresh to update the model totals.</p>';
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Session', true)}`;
+  return `<header><div><strong>${number(page.total)} session${page.total === 1 ? '' : 's'}</strong>${view.pending ? '<p class="footnote" role="status">Updating…</p>' : ''}</div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-model-session-page-direction="previous" data-model-session-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-model-session-page-direction="next" data-model-session-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Session', true, 'session')}`;
 }
 function requestList() {
   const view = state.requestView;
@@ -216,7 +243,7 @@ function requestList() {
   const page = view.page;
   if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the session totals.</p>';
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Time', true)}`;
+  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header>${table(page.rows, 'Time', true, 'request')}`;
 }
 async function loadModelSessionPage(offset = 0) {
   const view = state.modelView;
@@ -332,14 +359,14 @@ function renderBreakdownContent() {
   if (group !== 'models' || state.modelView && !report.models.some(r => r.name === state.modelView.model)) { state.modelView = null; state.requestView = null; }
   if (group !== 'projects' || state.projectView && !report.projects.some(r => r.name === state.projectView.project)) state.projectView = null;
   const focusedRequest = document.activeElement?.dataset;
-  $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true);
+  $('breakdown').innerHTML = table(sortedUsage(report[group]), { models: 'Model', projects: 'Project' }[group], true, group === 'models' ? 'model' : 'project');
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
     if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection || focusedRequest.modelSessionPageDirection) {
       const key = focusedRequest.modelSessionPageDirection ? 'modelSessionPageDirection' : focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
       const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
       (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || buttons.find(b => b.dataset.projectName === state.projectView?.project && b.dataset.projectName !== undefined) || $('group'))?.focus({ preventScroll: true });
-    } else for (const key of ['requestModel', 'requestSession', 'requestId', 'requestPage', 'modelSessionPage', 'projectName']) {
+    } else for (const key of ['requestModel', 'requestSession', 'requestId', 'requestPage', 'modelSessionPage', 'projectName', 'projectSession']) {
       if (focusedRequest[key] !== undefined) (buttons.find(b => b.dataset[key] === focusedRequest[key]) || $('group'))?.focus({ preventScroll: true });
     }
   }
@@ -588,8 +615,8 @@ function renderContent() {
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits/prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${promptCoverage}${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
-    ['AI credit/1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
+    ['AI credits / prompt', rateValue(p.averageCredits, p.eligiblePrompts, p.prompts), `${promptCoverage}${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
@@ -668,15 +695,22 @@ $('refresh').onclick = $('footer-refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestSession, modelSessionPage, requestPage, requestId, requestRetry, projectName, sessionPage } = button.dataset;
+  const { requestModel, requestSession, modelSessionPage, requestPage, requestId, requestRetry, projectName, sessionPage, projectSession, sessionModelRetry } = button.dataset;
   if (projectName !== undefined && $('group').value === 'projects') {
     state.projectView = state.projectView?.project === projectName ? null : { project: projectName, offset: 0 };
     renderBreakdown();
   } else if (sessionPage !== undefined && state.projectView) {
+    state.projectView.models = null;
     state.projectView.offset = Math.max(0, Number(sessionPage) || 0);
     renderBreakdown();
     const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
     $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
+  } else if (projectSession !== undefined && state.projectView) {
+    const view = state.projectView;
+    if (!sortedUsage(state.report.sessions.filter(r => r.project === view.project)).slice(view.offset, view.offset + 25).some(r => r.id === projectSession)) return;
+    if (view.models?.session === projectSession && !sessionModelRetry) { view.models = null; renderBreakdown(); return; }
+    view.models = { session: projectSession, version: 0 };
+    await loadSessionModels();
   } else if (requestModel !== undefined) {
     state.requestView = null;
     if (state.modelView?.model === requestModel) { state.modelView = null; renderBreakdown(); return; }

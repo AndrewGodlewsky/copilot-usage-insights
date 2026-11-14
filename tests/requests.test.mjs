@@ -102,6 +102,34 @@ test('model session pages sort the complete set, clamp offsets, and validate opt
   }
 });
 
+test('project session models reconcile with filtered session totals and isolate both identifiers', () => {
+  assert.equal(typeof reportApi.buildSessionModels, 'function');
+  const records = parse([receipt('a'), receipt('b', { model: 'Other' }), receipt('c', { model: 'Other' }),
+    receipt('missing', { model: 'Other', inputTokens: undefined, copilotUsage: undefined }), receipt('partial', { aiCreditsStatus: 'partial' })]);
+  for (const r of records) Object.assign(r, { project: 'A', sessionId: 's1' });
+  records.push({ ...records[0], key: 'other-project', project: 'B', model: 'Excluded project' },
+    { ...records[0], key: 'other-session', sessionId: 's2', model: 'Excluded session' },
+    { ...records[0], key: 'yesterday', ms: new Date(2026, 10, 13, 23, 59).getTime() },
+    { ...records[0], key: 'future', ms: now.getTime() + 1000 });
+  for (const filters of [{ range: '1d' }, { range: 'all', includeCache: false }, { models: ['Other'] },
+    { range: 'custom', startDate: '2026-11-13', endDate: '2026-11-13' }]) {
+    const input = { ...filters, project: 'A', session: 's1' };
+    const { rows } = reportApi.buildSessionModels(records, input, now);
+    const parent = buildReport(records, input, now).totals;
+    for (const field of ['requests', 'input', 'output', 'reasoning', 'cacheRead', 'cacheWrite', 'total', 'credits', 'missingTokens', 'partialCredits', 'completeTokenRequests']) {
+      assert.equal(rows.reduce((sum, r) => sum + (r[field] ?? 0), 0), parent[field] ?? 0, field);
+    }
+    assert.deepEqual(rows, buildReport(records, input, now).models);
+    assert.ok(rows.every(r => !r.name.startsWith('Excluded')));
+    assert.doesNotMatch(JSON.stringify(rows), /prompt|apiCallId|logFile|source/);
+  }
+  assert.deepEqual(reportApi.buildSessionModels(records, { project: 'missing', session: 's1' }, now).rows, []);
+  for (const input of [{}, { project: 'A' }, { project: '', session: 's1' }, { project: 'A', session: 1 },
+    { project: 'A', session: 's1', id: 'a' }, { project: 'A', session: 's1', logFile: '/secret' }]) {
+    assert.throws(() => reportApi.buildSessionModels(records, input, now), TypeError);
+  }
+});
+
 test('prompts join by API call and interaction IDs, deduplicate messages, and stay out of accounting', async t => {
   const content = '<script>alert("hello")</script> ' + 'Long prompt '.repeat(100);
   const events = [user('prompt1', 'i1', content), receipt('call1'), assistant('call1', 'i1'), assistant('call1', 'i1'),
@@ -150,6 +178,14 @@ test('request API reuses history, reads prompts only for details, and rechecks e
   const report = await (await call({ method: 'usage.report' })).json();
   assert.doesNotMatch(JSON.stringify(report), /Selected prompt|Unselected secret/);
   await fs.rename(file, file + '.moved');
+  const modelInput = { project: report.sessions[0].project, session: 's1' };
+  const modelResponse = await call({ method: 'usage.sessionModels', input: modelInput });
+  assert.equal(modelResponse.status, 200);
+  const models = await modelResponse.json();
+  assert.equal(models.rows.length, 2);
+  assert.equal(models.rows.reduce((sum, row) => sum + row.requests, 0), 2);
+  assert.doesNotMatch(JSON.stringify(models), /prompt|Selected prompt|Unselected secret|logFile|apiCallId/);
+  assert.equal((await call({ method: 'usage.sessionModels', input: { ...modelInput, id: 'call1' } })).status, 400);
   const sessionResponse = await call({ method: 'usage.sessions', input: { model: 'Sonnet' } });
   assert.equal(sessionResponse.status, 200);
   const sessions = await sessionResponse.json();
@@ -184,6 +220,7 @@ test('request API reuses history, reads prompts only for details, and rechecks e
   assert.equal(scans.length, 3);
   assert.equal(scans.at(-1).force, true, 'manual refresh still forces a full scan');
   await settings.set({ disabledHomes: [home] });
+  assert.deepEqual((await (await call({ method: 'usage.sessionModels', input: modelInput })).json()).rows, []);
   assert.equal((await (await call({ method: 'usage.requests', input })).json()).total, 0);
   assert.equal(scans.length, 4, 'changing sources immediately invalidates cached history');
   await settings.set({ disabledHomes: [], extraHomes: [path.join(home, 'another-home')] });

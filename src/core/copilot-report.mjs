@@ -182,6 +182,21 @@ export function buildModelSessionPage(records, input = {}, now = new Date()) {
   return { total: rows.length, offset, limit, rows: rows.slice(offset, offset + limit) };
 }
 
+export function buildSessionModels(records, input = {}, now = new Date()) {
+  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session']);
+  if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown session model filter');
+  for (const key of ['project', 'session']) if (typeof input[key] !== 'string' || !input[key].trim()) throw new TypeError(`Expected a ${key}`);
+  const { q, history, start, end } = usageScope(records, input, now), models = new Map();
+  for (const r of history) {
+    const day = localDay(new Date(r.ms));
+    if (day < start || day > end) continue;
+    if (!models.has(r.model)) models.set(r.model, bucket());
+    add(models.get(r.model), r, q.includeCache);
+  }
+  return { rows: [...models].map(([name, b]) => ({ name, ...finish(b) }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)) };
+}
+
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
   const { q, today, history, start, end } = usageScope(records, input, now);
   const sessionLabels = sessionNames(records);
