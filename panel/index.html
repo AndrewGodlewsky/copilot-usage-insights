@@ -541,12 +541,6 @@ function rng(seed) {
   }
 }
 
-function hashString(s) {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
-  return h >>> 0
-}
-
 function hexToRgb(h) {
   const n = parseInt(h.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
@@ -557,12 +551,12 @@ function mix(a, b, t) {
   return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('')
 }
 
-// Resample a series to n buckets by summing.
+// Resample by each day's right edge so the newest day stays in the final bucket.
 function resample(values, n) {
   if (!values.length) return Array(n).fill(0)
   const out = Array(n).fill(0)
   values.forEach((v, i) => {
-    out[Math.min(n - 1, Math.floor((i / values.length) * n))] += v
+    out[Math.ceil(((i + 1) * n) / values.length) - 1] += v
   })
   return out
 }
@@ -572,8 +566,8 @@ function paintScene(report, { w = 120, h = 34 } = {}) {
   const generated = report?.generatedAt ? new Date(report.generatedAt) : new Date()
   const sky = SKIES[skyFor(generated.getHours())]
   const daily = (report?.daily || []).map((d) => d.total || 0)
-  const seed = hashString(`${report?.range || ''}:${daily.length}:${report?.totals?.turns || 0}`)
-  const rand = rng(seed)
+  // Changing the date range should not reshuffle the background.
+  const rand = rng(1)
   const grid = Array.from({ length: h }, () => Array(w).fill(null))
 
   // Sky: 4-step ordered-dither gradient between top and bottom colors.
@@ -623,11 +617,10 @@ function paintScene(report, { w = 120, h = 34 } = {}) {
   const buckets = resample(daily, count)
   const max = Math.max(...buckets, 0)
   const outShare = report?.totals?.total ? Math.min(1, (report.totals.output * 20) / report.totals.total + 0.2) : 0.3
-  const bw = Math.floor(w / count)
   buckets.forEach((v, i) => {
     const bh = Math.max(3, Math.round((max > 0 ? v / max : 0.1) * (h * 0.62)) + 2)
-    const x0 = i * bw + (i % 2)
-    const width = Math.max(2, bw - 1 - (i % 2))
+    const x0 = Math.floor(i * w / count) + (i % 2)
+    const width = Math.max(2, Math.floor((i + 1) * w / count) - x0 - 1)
     for (let y = h - bh; y < h; y++) {
       for (let x = x0; x < x0 + width && x < w; x++) grid[y][x] = sky.near
     }
@@ -659,7 +652,7 @@ function pixelBanner(report, opts = {}) {
       x += run
     }
   }
-  return `<svg class="banner" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid slice" shape-rendering="crispEdges" role="img" aria-label="Pixel skyline drawn from your usage" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+  return `<svg class="banner" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMaxYMid slice" shape-rendering="crispEdges" role="img" aria-label="Pixel skyline drawn from your usage" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
 }
 
 // src/panel/panel.js

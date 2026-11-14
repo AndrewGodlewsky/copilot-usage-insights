@@ -101,6 +101,24 @@ test('pixel banner is deterministic and follows the data', () => {
   assert.equal(skyFor(23), 'night')
 })
 
+test('banner keeps recent activity at the right edge as the date range expands', () => {
+  const scene = (length, daysAgo = 0) => paintScene({
+    generatedAt: new Date(2026, 10, 14, 22).toISOString(),
+    daily: Array.from({ length }, (_, i) => ({ total: i === length - 1 - daysAgo ? 100 : 0 })),
+    totals: { total: 100, output: 2 }, streak: { current: 3 }, today: { total: 100 }, peakDay: { total: 100 },
+  });
+  const building = grid => grid[12].flatMap((color, x) => color === '#12152c' ? [x] : []);
+  const ranges = [1, 7, 14, 30, 90];
+  for (const length of ranges) {
+    const grid = scene(length), xs = building(grid);
+    assert.ok(xs.length, 'the active day has a visible building');
+    assert.equal(Math.max(...xs), 118, `${length} days: newest activity stays at the right edge`);
+    assert.deepEqual(grid.slice(0, 7), scene(1).slice(0, 7), 'the sky does not reshuffle when the range changes');
+  }
+  const olderPositions = ranges.slice(1).map(length => Math.min(...building(scene(length, 2))));
+  for (let i = 1; i < olderPositions.length; i++) assert.ok(olderPositions[i] >= olderPositions[i - 1], 'the same older day moves toward the recent edge as the range widens');
+});
+
 test('areaTrend draws one smoothed line per provider with hover columns', () => {
   const mk = (p, vals) => ({ provider: p, daily: vals.map((v, i) => ({ day: `2026-10-2${i}`, total: v, credits: v / 10 })) })
   const s = areaTrend([mk('copilot', [5, 9, 0, 3]), mk('model-b', [1, 2, 8, 4])])

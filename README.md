@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.18** adds **Skills**, **Plugins**, and **MCP** buttons below the Usage breakdown table. Only the selected detail panel is shown, with **Skills** selected by default. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.19** steadies the pixel skyline when changing date ranges: recent activity stays anchored to the right, older days are spaced proportionally, and the background stays consistent. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -92,6 +92,8 @@ Open the printed localhost URL in your browser. Stop with Ctrl+C. A browser prev
 The **Usage** view includes a token overview with total tokens, input including cache, output, uncached input, cache reads, cache writes, and cache hit rate. The daily chart and **Tokens by type** bar show how the total is divided. Hover over a count to see its full value. The **AI credits** selector changes the daily chart; the token summary remains visible.
 
 Click a **daily bar** to show that day's token total, input/output/cache counts, and token-type bar. Click the selected day again or choose **Show all days** to return to the overall filtered totals. Bars also support Tab, Enter, and Space. Changing a filter resets the selection; refreshing keeps it. The daily chart and the other dashboard sections continue to show the full selected date range.
+
+The decorative header skyline follows the selected date range, from oldest activity on the left to newest on the right. Expanding the range keeps its recent edge anchored and distributes older activity proportionally across the full width. The sky and ridge no longer reshuffle just because the date range changes. Building heights still reflect relative token usage, and the sky palette follows the local time of day.
 
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 
