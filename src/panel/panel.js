@@ -4,7 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 
 const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '' };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', openingSkill: false };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -65,8 +65,10 @@ function renderBreakdown() {
   const group = $('group').value, sort = $('sort').value;
   $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group]);
   const skills = report.skills;
-  $('skills-summary').textContent = `${number(skills.invocations)} activations · ${number(skills.sessions)} sessions`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th>Plugin</th><th>Version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td title="${esc(s.name)}">${esc(s.name)}</td><td>${esc(s.plugin || 'Not recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  const focusedSkill = document.activeElement?.dataset.skillId;
+  $('skills-summary').textContent = `${number(skills.invocations)} activation${skills.invocations === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
+  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill / recorded location</th><th>Source plugin</th><th>Plugin version</th><th>Activations</th><th>Sessions</th><th>Projects</th><th>Last used</th></tr></thead><tbody>${skills.rows.map(s => `<tr><td>${s.path ? `<button class="skill-link" data-skill-id="${esc(s.id)}" aria-label="Open folder for ${esc(s.name)}" title="Open folder containing ${esc(s.path)}">${esc(s.name)}</button>` : esc(s.name)}<span class="skill-path">${esc(s.path || 'Location not recorded')}</span></td><td>${esc(s.plugin || 'No plugin recorded')}</td><td>${esc(s.version || '—')}</td><td>${number(s.invocations)}</td><td>${number(s.sessions)}</td><td>${number(s.projects)}</td><td>${esc(new Date(s.lastUsed).toLocaleString())}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill activations match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill)?.focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} activations omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidSkills) coverage.push(`${number(report.coverage.invalidSkills)} malformed skill events skipped across scanned sources.`);
@@ -158,6 +160,21 @@ $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
 for (const id of ['group', 'sort']) $(id).onchange = renderBreakdown;
+$('skills').onclick = async event => {
+  const button = event.target.closest('[data-skill-id]');
+  if (!button || state.openingSkill) return;
+  state.openingSkill = true;
+  button.disabled = true;
+  const status = $('skill-folder-status');
+  status.hidden = false;
+  status.textContent = `Opening folder for ${button.textContent}…`;
+  try {
+    await request('skills.openFolder', { id: button.dataset.skillId });
+    status.textContent = 'Folder request sent to your file manager.';
+  }
+  catch (error) { status.textContent = `Could not open skill folder: ${error.message}`; }
+  finally { state.openingSkill = false; button.disabled = false; }
+};
 $('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 $('settings-open').onclick = async () => {
   $('settings-error').hidden = true;

@@ -4,9 +4,10 @@ import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome } from './settings.mjs';
 import { buildReport } from '../core/copilot-report.mjs';
+import { openSkillFolder } from './skill-folder.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date() } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
@@ -52,6 +53,14 @@ export async function startServer({ settings = createSettings(), scanner = creat
         const config = await settings.get();
         const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes, force: message.method === 'usage.refresh' });
         result = { ...buildReport(scan.records, input, now(), scan), sources: scan.sources, coverage: scan.coverage };
+      } else if (message.method === 'skills.openFolder') {
+        if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
+        const config = await settings.get();
+        const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes });
+        const row = buildReport(scan.records, { range: 'all' }, now(), scan).skills.rows.find(skill => skill.id === input.id);
+        if (!row?.path) throw new TypeError('This skill location is not available in the current sources. Refresh the dashboard and try again.');
+        await openFolder(row.path);
+        result = { ok: true };
       } else throw new TypeError('Unknown dashboard method');
       json(res, 200, result);
     } catch (e) { json(res, e instanceof TypeError || e instanceof RangeError || e instanceof SyntaxError ? 400 : 500, { error: e.message }); }

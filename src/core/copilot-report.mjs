@@ -31,8 +31,8 @@ function skillReport(records, activity, input, start, end, now) {
     if (day < start || day > end || input.project && input.project !== skill.project || input.session && input.session !== skill.sessionId) continue;
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
     if (!attributed) { omitted++; continue; }
-    const key = JSON.stringify([skill.name, skill.plugin, skill.version]);
-    if (!groups.has(key)) groups.set(key, { name: skill.name, plugin: skill.plugin, version: skill.version, invocations: 0, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
+    const key = JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
+    if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin, version: skill.version, path: skill.path || '', invocations: 0, sessions: new Set(), projects: new Set(), lastUsed: skill.ts });
     const row = groups.get(key);
     row.invocations++; row.sessions.add(skill.sessionId); row.projects.add(skill.project);
     if (skill.ts > row.lastUsed) row.lastUsed = skill.ts;

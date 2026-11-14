@@ -18,7 +18,7 @@ const usage = (extra = {}, id = 'u1') => ({ id, type: 'session.usage_record', ti
 } } });
 const skill = (id = 'k1', extra = {}) => ({ id, type: 'skill.invoked', timestamp, data: {
   name: 'code-review', pluginName: 'team-tools', pluginVersion: '1.2.3',
-  content: 'PRIVATE SKILL BODY', arguments: 'PRIVATE ARGUMENTS', path: 'PRIVATE PATH', ...extra,
+  content: 'PRIVATE SKILL BODY', arguments: 'PRIVATE ARGUMENTS', path: path.join(os.tmpdir(), 'skill-fixture', 'SKILL.md'), ...extra,
 } });
 const parse = events => {
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
@@ -33,8 +33,44 @@ test('skill parser deduplicates persisted activations and retains only metadata'
   assert.equal(snapshot.skills.length, 1);
   assert.equal(snapshot.skills[0].name, 'code-review');
   assert.equal(snapshot.skills[0].project, 'project-one');
+  assert.equal(snapshot.skills[0].path, skill().data.path);
   assert.equal(snapshot.invalidSkills, 3);
   assert.ok(!JSON.stringify(snapshot).includes('PRIVATE'));
+});
+
+test('skills from different paths stay separate and row IDs survive date filters', () => {
+  const other = path.join(os.tmpdir(), 'other-skill-fixture', 'SKILL.md');
+  const snapshot = parse([usage(), skill(), skill('k2', { path: other }), skill('k3', { path: undefined }),
+    { ...skill('yesterday'), timestamp: new Date(2026, 10, 12, 10).toISOString() }]);
+  const r = report(snapshot);
+  assert.equal(r.skills.rows.length, 3);
+  assert.equal(new Set(r.skills.rows.map(s => s.id)).size, 3);
+  assert.ok(r.skills.rows.some(s => s.path === other));
+  assert.ok(r.skills.rows.some(s => s.path === ''));
+  assert.deepEqual(r.skills.rows.map(s => s.id).sort(), report(snapshot, { range: 'all' }).skills.rows.map(s => s.id).sort());
+});
+
+test('folder API opens only an attributed recorded row from enabled sources', async t => {
+  let snapshot = parse([usage(), skill()]);
+  const opened = [];
+  const server = await startServer({ html: '', now: () => now, defaultHome: 'fixture',
+    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
+    scanner: { scan: async () => ({ ...snapshot, sources: [], coverage: {} }) },
+    openFolder: async file => opened.push(file),
+  });
+  t.after(() => server.close());
+  const request = (input, origin) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify({ method: 'skills.openFolder', input }) });
+  const id = report(snapshot).skills.rows[0].id;
+  assert.equal((await request({ id })).status, 200);
+  assert.deepEqual(opened, [skill().data.path]);
+  assert.equal((await request({ id: 'invented' })).status, 400);
+  assert.equal((await request({ id, path: '/arbitrary/path' })).status, 400);
+  assert.equal((await request({ id }, 'https://example.com')).status, 403);
+  snapshot = parse([usage({ isByok: true }), skill()]);
+  assert.equal((await request({ id })).status, 400);
+  snapshot = parse([]);
+  assert.equal((await request({ id })).status, 400);
+  assert.equal(opened.length, 1);
 });
 
 test('skill reports group by name/plugin/version and respect event dates, project and session', () => {

@@ -46,7 +46,7 @@ Copilot can call the plugin's `open_usage_insights` tool to open the dashboard i
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.3** adds clickable daily bars and recorded skill activity under Breakdown. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.4** adds clickable skill names that open their recorded folders and clarifies the source plugin columns. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -108,11 +108,15 @@ Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Window
 
 ## Skills used
 
-Open **Breakdown** to see **Skills used** below the token table. It shows skill name, recorded plugin and version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
+Open **Breakdown** to see **Skills used** below the token table. It shows skill name and recorded location, source plugin, plugin version, activations, distinct session/project counts, and last use. Rows distinguish plugin versions and locations, so skills with the same name in different folders remain separate. Date, project, and session filters apply to the activation itself. The model filter applies only to token accounting because skill events do not consistently record a model.
+
+**Source plugin** and **Plugin version** come from Copilot's recorded `pluginName` and `pluginVersion` fields. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. Personal skills such as `~/.copilot/skills/hello-test/SKILL.md`, and project skills, normally have no source plugin. **No plugin recorded** / **—** means those fields were absent; it does not mean the skill failed to run.
+
+Click a skill name to open the folder containing its recorded `SKILL.md` in Explorer, Finder, or your Linux file manager. The recorded path appears beneath the name. The dashboard uses that exact saved location; it does not search for another skill with the same name. Missing or moved files show an explanation. Paths from another computer may not be available locally; remote paths are not opened. If Copilot did not record a path, the name is plain text with **Location not recorded**.
 
 The reader counts persisted `skill.invoked` events from local session logs, deduplicating replayed events and copied homes. It includes sessions with Copilot-attributed requests and omits activations in sessions with mixed or missing provider attribution, with the omitted count shown. This conservative rule can omit genuine Copilot activations in mixed-provider sessions. A skill-only session can appear once Copilot request accounting is available.
 
-An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions, arguments, and paths are discarded; the dashboard keeps names and activation metadata. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
+An empty list means **no recorded activations match the filters**, not that skills have never been used. Older logs and database-only history may lack skill events. Skill definitions and arguments are discarded; the dashboard keeps names, recorded file paths, and activation metadata locally. Activations show which skills were loaded, not whether every instruction was followed, and do not carry per-skill token charges.
 
 ## Possible next additions
 

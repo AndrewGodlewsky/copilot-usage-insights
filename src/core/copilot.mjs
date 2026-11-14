@@ -49,7 +49,7 @@ export function createReceiptParser({ sessionId: initialSession, source }) {
         const key = JSON.stringify(['skill', sessionId, id]);
         if (!skills.has(key)) skills.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(),
           project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', name,
-          plugin: textValue(e.data?.pluginName), version: textValue(e.data?.pluginVersion),
+          plugin: textValue(e.data?.pluginName), version: textValue(e.data?.pluginVersion), path: textValue(e.data?.path),
         });
       } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') hasCheckpoint = true;
       else if (e?.type === 'session.usage_record') {
