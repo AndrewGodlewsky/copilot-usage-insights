@@ -1,6 +1,25 @@
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeUsage, normalizeSessionName } from '../core/copilot.mjs';
 
+export function readDesktopSessionNames(file, sessionIds) {
+  let db;
+  try {
+    db = new DatabaseSync(file, { readOnly: true });
+    db.exec('PRAGMA query_only = ON; PRAGMA busy_timeout = 1000;');
+    const columns = new Set(db.prepare('PRAGMA table_info(sessions)').all().map(c => c.name));
+    if (!columns.has('id') || !columns.has('title')) return new Map();
+    const query = db.prepare('SELECT title FROM sessions WHERE id = ?'), names = new Map();
+    for (const id of sessionIds) {
+      const name = normalizeSessionName(query.get(id)?.title);
+      if (name) names.set(id, name);
+    }
+    return names;
+  } catch {
+    // Desktop metadata is optional; older names and usage remain available if it cannot be read.
+    return new Map();
+  } finally { db?.close(); }
+}
+
 export function readUsageDatabase(file, receiptSessions, source) {
   let db;
   try {

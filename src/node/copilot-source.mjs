@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
-import { readUsageDatabase } from './copilot-db.mjs';
+import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024;
@@ -129,6 +129,16 @@ export function createScanner() {
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
         for (const r of result.records) if (!records.has(r.key)) { records.set(r.key, r); source.records++; coverage.fallbackRequests++; }
       } catch (e) { source.state = 'warning'; source.message = e.message; }
+    }
+    const sessionIdsByHome = new Map();
+    for (const record of records.values()) {
+      if (!sessionIdsByHome.has(record.source)) sessionIdsByHome.set(record.source, new Set());
+      sessionIdsByHome.get(record.source).add(record.sessionId);
+    }
+    for (const [home, ids] of sessionIdsByHome) {
+      for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) {
+        sessionNames.set(JSON.stringify([home, id]), name);
+      }
     }
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
     return { records: [...records.values()].map(r => ({ ...r, sessionName: sessionNames.get(JSON.stringify([r.source, r.sessionId])) || '' })), skills: [...skills.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };

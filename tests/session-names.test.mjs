@@ -64,6 +64,15 @@ test('database summaries label receipt and database-only sessions without changi
   await fs.unlink(metadata);
   db.prepare('UPDATE sessions SET summary = ? WHERE id = ?').run('Renamed in database', 's1');
   assert.equal((await scan.scan([home])).records[0].sessionName, 'Renamed in database');
+  const desktop = new DatabaseSync(path.join(home, 'data.db'));
+  try {
+    desktop.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT)');
+    desktop.prepare('INSERT INTO sessions VALUES (?, ?)').run('s2', 'Renamed desktop-only session');
+  } finally { desktop.close(); }
+  result = await scan.scan([home]);
+  assert.equal(result.records.find(r => r.sessionId === 's2').sessionName, 'Renamed desktop-only session');
+  assert.equal(result.records.length, 2);
+  assert.equal(result.coverage.fallbackRequests, 1);
 });
 
 test('session labels keep duplicate names separate and unnamed labels stable across date filters', () => {
@@ -99,4 +108,93 @@ test('receipt session names remain available when the database usage schema is u
   assert.equal(result.records[0].sessionName, 'Available name');
   assert.equal(result.records[0].total, 120);
   assert.match(result.sources[0].message, /Unsupported Copilot usage database schema/);
+});
+
+test('desktop renames refresh without log changes and preserve usage, activity, and session IDs', async t => {
+  let db;
+  t.after(() => db?.close());
+  const { home, metadata } = await fixture(t);
+  await fs.writeFile(metadata, 'id: s1\nname: Hello test\n');
+  const activity = [
+    { type: 'skill.invoked', id: 'skill1', timestamp, data: { name: 'hello-test', trigger: 'user-invoked' } },
+    { type: 'tool.execution_start', id: 'tool1', timestamp, data: { toolName: 'view', toolCallId: 'call1' } },
+    { type: 'tool.execution_complete', id: 'tool2', timestamp, data: { toolCallId: 'call1', success: true } },
+  ];
+  await fs.appendFile(path.join(home, 'session-state', 's1', 'events.jsonl'), activity.map(e => JSON.stringify(e)).join('\n') + '\n');
+  const scanner = createScanner();
+  const before = await scanner.scan([home]);
+  assert.equal(before.skills.length, 1);
+  assert.equal(before.tools.length, 1);
+  db = new DatabaseSync(path.join(home, 'data.db'));
+  db.exec('PRAGMA journal_mode = WAL; CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, title_source TEXT, total_input_tokens INTEGER, private_body TEXT)');
+  const insert = db.prepare('INSERT INTO sessions VALUES (?, ?, ?, ?, ?)');
+  insert.run('s1', 'V12', 'user', 999999, 'PRIVATE BODY');
+  insert.run('unrelated', 'Unrelated private title', 'user', 999999, 'PRIVATE BODY');
+  let result = await scanner.scan([home]);
+  assert.equal(result.records[0].sessionName, 'V12');
+  const withoutNames = scan => ({ ...scan, records: scan.records.map(({ sessionName, ...record }) => record) });
+  assert.deepEqual(withoutNames(result), withoutNames(before));
+  assert.ok(!JSON.stringify(result).includes('PRIVATE BODY'));
+  assert.ok(!JSON.stringify(result).includes('Unrelated private title'));
+  db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run('Renamed again', 's1');
+  result = await scanner.scan([home]);
+  const report = buildReport(result.records, { range: 'all', session: 's1' }, now, result);
+  assert.equal(report.sessions[0].name, 'Renamed again');
+  assert.deepEqual(report.options.sessions, [{ id: 's1', name: 'Renamed again' }]);
+  assert.equal(report.totals.total, 120);
+  assert.equal(report.totals.requests, 1);
+  assert.deepEqual(withoutNames(result), withoutNames(before));
+  assert.equal((await scanner.scan([home], { force: true })).records[0].sessionName, 'Renamed again');
+  db.prepare('DELETE FROM sessions WHERE id = ?').run('s1');
+  assert.equal((await scanner.scan([home])).records[0].sessionName, 'Hello test');
+});
+
+test('optional desktop metadata can be absent, unsupported, corrupt, or locked without hiding usage', async t => {
+  let db;
+  t.after(() => db?.close());
+  const { home, metadata } = await fixture(t);
+  await fs.writeFile(metadata, 'id: s1\nname: Workspace fallback\n');
+  const file = path.join(home, 'data.db'), scanner = createScanner();
+  const baseline = await scanner.scan([home]);
+  await assert.rejects(fs.access(file), { code: 'ENOENT' });
+  db = new DatabaseSync(file);
+  db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, unsupported_name TEXT)');
+  assert.deepEqual(await scanner.scan([home]), baseline);
+  db.exec('ALTER TABLE sessions ADD COLUMN title;');
+  db.prepare('INSERT INTO sessions (id, title) VALUES (?, ?)').run('s1', 'Desktop name');
+  assert.equal((await scanner.scan([home])).records[0].sessionName, 'Desktop name');
+  for (const invalid of [null, '', ' \n\t ', 42, Buffer.from('Not a string')]) {
+    db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(invalid, 's1');
+    assert.deepEqual(await scanner.scan([home]), baseline);
+  }
+  db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run('  Clean\n\tname\0 ' + 'x'.repeat(300), 's1');
+  const cleaned = (await scanner.scan([home])).records[0].sessionName;
+  assert.equal(cleaned.length, 256);
+  assert.ok(cleaned.startsWith('Clean name '));
+  db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run('Recovered name', 's1');
+  db.exec('BEGIN EXCLUSIVE');
+  try { assert.deepEqual(await scanner.scan([home]), baseline); }
+  finally { db.exec('ROLLBACK'); }
+  assert.equal((await scanner.scan([home])).records[0].sessionName, 'Recovered name');
+  db.close(); db = null;
+  await fs.writeFile(file, 'not a SQLite database');
+  assert.deepEqual(await scanner.scan([home]), baseline);
+});
+
+test('desktop titles stay with their Copilot home when copied or disabled sources share session IDs', async t => {
+  const first = await fixture(t), second = await fixture(t);
+  await fs.writeFile(first.metadata, 'id: s1\nname: Original name\n');
+  const db = new DatabaseSync(path.join(second.home, 'data.db'));
+  try {
+    db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT)');
+    db.prepare('INSERT INTO sessions VALUES (?, ?)').run('s1', 'Backup title');
+  } finally { db.close(); }
+  const scanner = createScanner();
+  const original = await scanner.scan([first.home, second.home]);
+  assert.equal(original.records.length, 1);
+  assert.equal(original.records[0].sessionName, 'Original name');
+  const backup = await scanner.scan([first.home, second.home], { disabled: [await fs.realpath(first.home)] });
+  assert.equal(backup.records.length, 1);
+  assert.equal(backup.records[0].sessionName, 'Backup title');
+  assert.equal(backup.records[0].total, original.records[0].total);
 });
