@@ -465,6 +465,24 @@ test('header credits follow filtered totals, keep fractions, and preserve unavai
   assert.equal(get('hero-credits').textContent, '1.5');
 });
 
+test('token total card follows the loaded date range and filters instead of today', async () => {
+  const { get, report, records, now } = await requestPanel();
+  const earlier = new Date(2026, 10, 13, 12);
+  const history = [...records, ...records.map(r => ({ ...r, key: r.key + '-earlier', ms: earlier.getTime(), ts: earlier.toISOString(), project: 'Earlier project' }))];
+  const tile = () => get('tiles').innerHTML.split('<div class="tile">')[2].split('</div>')[0];
+  for (const [range, label, total] of [['1d', 'Today', '3.4K'], ['7d', 'Last 7 days', '6.7K'], ['30d', 'Last 30 days', '6.7K'], ['90d', 'Last 90 days', '6.7K'], ['all', 'All history', '6.7K'], ['custom', 'Custom dates', '3.4K']]) {
+    Object.assign(report, buildReport(history, { range, ...(range === 'custom' ? { startDate: '2026-11-13', endDate: '2026-11-13' } : {}) }, now));
+    await get('refresh').onclick();
+    assert.ok(tile().includes(`>${label}</span>`), range);
+    assert.ok(tile().includes(`>${total}</strong>`), range);
+  }
+  Object.assign(report, buildReport(history, { range: '7d', project: 'Earlier project', includeCache: false }, now));
+  await get('refresh').onclick();
+  assert.ok(tile().includes('>1.4K</strong>'), 'project and cache filters apply to the total');
+  get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
+  assert.ok(tile().includes('>1.4K</strong>'), 'daily chart selection does not narrow the filter total');
+});
+
 test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
   const { get, requests, intervals, listeners, document } = await requestPanel();
   assert.equal(intervals.length, 1);
@@ -724,7 +742,7 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.doesNotMatch(get('tip').innerHTML, /Unavailable/);
   await click({ requestModel: '<Sonnet>' });
   await click({ requestId: large[0].key });
-  assert.match(get('breakdown').innerHTML, /<dt>Output<\/dt><dd>2\.1K<\/dd>/);
+  assert.match(get('breakdown').innerHTML, /<dt>Output<\/dt><dd data-measure="tokens">2\.1K<\/dd>/);
   await get('settings-open').onclick();
   assert.equal(get('simplify-numbers').checked, true);
   get('simplify-numbers').checked = false;
@@ -771,7 +789,7 @@ test('simplified numbers apply across views and context, persist, and only chang
     assert.match(get(id).innerHTML, /12\.3/, id);
     assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
   }
-  assert.match(get('breakdown').innerHTML, /<dt>AI credits<\/dt><dd>12\.3<\/dd>/);
+  assert.match(get('breakdown').innerHTML, /<dt>AI credits<\/dt><dd data-measure="credits">12\.3<\/dd>/);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();
