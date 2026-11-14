@@ -196,6 +196,8 @@ These thresholds identify places to investigate, not ideal targets or proof of w
 
 Input and output measures keep their physical meaning regardless of **Include cache tokens**; that checkbox continues to control token totals elsewhere. Selecting an individual daily bar does not narrow Efficiency. **How these measures work** in the tab explains the definitions and rules. Guidance follows GitHub's [AI usage optimization](https://docs.github.com/en/copilot/tutorials/optimize-ai-usage) and [conversation context guidance](https://docs.github.com/en/copilot/tutorials/optimize-chat-usage).
 
+For planned improvements, see the [Efficiency research and 38-scenario catalogue](docs/research/2026-11-14-efficiency-scenarios.md) and [repository, prompting, and memory research](docs/research/2026-11-14-context-memory-efficiency.md). These distinguish current measurements, additional available metadata, and ideas requiring a separate project or content review. They are proposals, not additional shipped features. Low cache reuse does not prove excessive chat switching, and many tool calls do not prove poor prompting. The next priorities are measured tool-definition overhead, cache behavior around known events, repeated execution failures, and comparable interaction trends.
+
 ## Skills
 
 Open **Breakdown → Skills** to see recorded skill uses below the token table. Use the **Skills**, **Plugins**, and **MCP** buttons to switch detail panels. Skills is selected when the dashboard opens; your choice stays selected during refreshes, filter changes, and visits to the Usage view. The usage breakdown table stays visible above these buttons.
