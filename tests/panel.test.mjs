@@ -5,6 +5,7 @@ import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
+import { TOKEN_TOPICS } from '../src/panel/token-topics.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -14,6 +15,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       addEventListener(name, callback) { this[`on${name}`] = callback; },
+      style: { setProperty(key, value) { this[key] = String(value); } },
       before() {},
       focus() { document.activeElement = this; },
       select() { this.selected = true; },
@@ -21,6 +23,31 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
   }));
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
+  // Model the persistent navigation children without running a browser.
+  for (const id of ['token-topic-stops', 'token-track-nodes']) {
+    let markup = '', children = [];
+    Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) {
+      markup = value;
+      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest], index) => {
+        const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
+        return { dataset: { [kind === 'stop' ? 'tokenStop' : 'tokenNode']: topic },
+          setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
+          classList: { toggle(key, on) { this[key] = on; } },
+          getBoundingClientRect: () => ({ left: index * 78 - (get('token-track-scroll').scrollLeft || 0), right: (index + 1) * 78 - (get('token-track-scroll').scrollLeft || 0), width: 78 }),
+        };
+      });
+    } });
+    get(id).querySelectorAll = () => children;
+    get(id).querySelector = selector => children.find(child => Object.values(child.dataset).includes(selector.match(/="([^"]+)"/)?.[1])) || null;
+  }
+  if (nodes.has('token-track-scroll')) {
+    get('token-track-scroll').scrolls = [];
+    get('token-track-scroll').getBoundingClientRect = () => ({ left: 0, right: 360, width: 360 });
+    get('token-track-scroll').scrollBy = options => {
+      get('token-track-scroll').scrolls.push(options);
+      get('token-track-scroll').scrollLeft = Math.max(0, Math.min(420, (get('token-track-scroll').scrollLeft || 0) + options.left));
+    };
+  }
   for (const [, id, choices] of html.matchAll(/<select[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
     const options = [...choices.matchAll(/<option value="([^"]*)"([^>]*)>/g)];
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
@@ -1435,24 +1462,32 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(report.totals.credits, 12.345678901);
 });
 
+function jumpTokenTopic(get, id) {
+  get('token-topic-stops').onclick({ target: { closest: () => ({ dataset: { tokenStop: id } }) } });
+}
+
 test('Efficiency section pickers separate topics, switch locally, and retain independent selections', async () => {
   const { get, requests, windowListeners, timeouts, document } = await requestPanel();
   const tokenPanels = ['overview', 'context', 'cache', 'detail'];
-  const tokenTopics = ['overview', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'drivers', 'skills'];
+  const tokenTopics = TOKEN_TOPICS.map(topic => topic.id);
   const patternPanels = ['findings', 'habits', 'recovery', 'models', 'detail'];
   const patternTopics = ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models'];
-  const choose = (picker, id) => { get(picker).value = id; get(picker).onchange(); };
+  const choose = (picker, id) => {
+    if (picker === 'efficiency-topic') jumpTokenTopic(get, id);
+    else { get(picker).value = id; get(picker).onchange(); }
+  };
   const visible = (prefix, panels) => panels.filter(id => !get(prefix + '-' + id + '-panel').hidden);
   const switchTab = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
   assert.deepEqual(visible('token', tokenPanels), ['overview']);
   assert.deepEqual(visible('pattern', patternPanels), ['findings']);
-  assert.equal((get('efficiency-topic').innerHTML.match(/<option /g) || []).length, 10);
+  assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]').length, 10);
   assert.equal((get('efficiency-pattern-topic').innerHTML.match(/<option /g) || []).length, 8);
   const before = requests.length;
   for (const topic of tokenTopics) {
     choose('efficiency-topic', topic);
     assert.deepEqual(visible('token', tokenPanels), [tokenPanels.includes(topic) ? topic : 'detail']);
-    assert.equal(get('efficiency-topic').value, topic);
+    assert.equal(get('efficiency-topic').value, String(tokenTopics.indexOf(topic)));
+    assert.equal(get('token-selected-title').textContent, TOKEN_TOPICS[tokenTopics.indexOf(topic)].label);
     if (!tokenPanels.includes(topic)) assert.ok(get('token-topic-body').innerHTML.length > 0);
   }
   switchTab('patterns');
@@ -1461,11 +1496,11 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
     assert.deepEqual(visible('pattern', patternPanels), [patternPanels.includes(topic) ? topic : 'detail']);
     assert.equal(get('efficiency-pattern-topic').value, topic);
     if (!patternPanels.includes(topic)) assert.ok(get('pattern-topic-body').innerHTML.length > 0);
-    assert.equal(get('efficiency-topic').value, 'skills');
+    assert.equal(get('efficiency-topic').value, '9');
   }
   choose('efficiency-topic', 'growth');
   choose('efficiency-pattern-topic', 'cache');
-  assert.equal(get('efficiency-topic').value, 'skills', 'wrong dashboard topic is ignored');
+  assert.equal(get('efficiency-topic').value, '9', 'wrong dashboard topic is ignored');
   assert.equal(get('efficiency-pattern-topic').value, 'models');
   assert.equal(requests.length, before, 'navigation never loads logs, inspects context, or invokes AI');
   switchTab('review');
@@ -1481,7 +1516,7 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   get('model').value = 'Alpha';
   await get('model').onchange();
   assert.equal(get('efficiency-pattern-topic').value, 'growth');
-  assert.equal(get('efficiency-topic').value, 'skills');
+  assert.equal(get('efficiency-topic').value, '9');
   assert.ok(oldGrowth.length && get('pattern-topic-body').innerHTML.length);
   windowListeners.get('resize')();
   timeouts.at(-1).callback();
@@ -1494,10 +1529,110 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   choose('efficiency-pattern-topic', 'habits');
   get('efficiency-inspect-instructions').onclick();
   assert.equal(get('efficiency-tokens-panel').hidden, false);
-  assert.equal(get('efficiency-topic').value, 'context');
+  assert.equal(get('efficiency-topic').value, '1');
   assert.equal(get('efficiency-pattern-topic').value, 'habits');
   assert.equal(document.activeElement, get('efficiency-context-read'));
   assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
+  assert.equal(get('token-selected-title').textContent, 'Always-loaded context');
+  assert.equal(get('token-topic-position').textContent, 'Context · Section 2 of 10');
+  assert.equal(get('efficiency-topic').getAttribute('aria-valuetext'), 'Always-loaded context, section 2 of 10');
+  assert.equal(get('token-topic-stops').querySelector('[data-token-stop="context"]').getAttribute('aria-current'), 'true');
+});
+
+test('token explorer maps every stop, preserves its focused lens, and only rerenders changed selections', async () => {
+  const { get, requests, document } = await requestPanel();
+  const lens = get('efficiency-topic'), stops = get('token-topic-stops').querySelectorAll('[data-token-stop]');
+  const nodes = get('token-track-nodes').querySelectorAll('[data-token-node]');
+  assert.equal(lens.getAttribute('type'), 'range');
+  assert.equal(lens.getAttribute('step'), '1');
+  assert.equal(lens.getAttribute('min'), '0');
+  assert.equal(lens.max, '9');
+  assert.equal(lens.getAttribute('aria-label'), 'Token usage section');
+  assert.match(get('token-track-groups').innerHTML, /Summary.*span 5.*Context.*span 3.*Agent work.*Spending/);
+  assert.equal(lens.value, '0');
+  assert.equal(get('token-topic-prev').disabled, true);
+  assert.equal(get('token-topic-next').disabled, false);
+  const before = requests.length;
+  lens.focus();
+  for (const [index, topic] of TOKEN_TOPICS.entries()) {
+    lens.value = String(index); lens.oninput();
+    assert.equal(document.activeElement, lens);
+    assert.equal(get('token-selected-title').textContent, topic.label);
+    assert.equal(lens.getAttribute('aria-valuetext'), `${topic.label}, section ${index + 1} of 10`);
+    assert.equal(stops[index].getAttribute('aria-label'), topic.label);
+    assert.equal(stops.filter(b => b.getAttribute('aria-current') === 'true').length, 1);
+    assert.equal(stops[index].getAttribute('aria-current'), 'true');
+    assert.deepEqual(nodes.map(n => n.classList.current), TOKEN_TOPICS.map((_, i) => i === index));
+    const panel = ['overview', 'context', 'cache'].includes(topic.id) ? topic.id : 'detail';
+    assert.equal(get(`token-${panel}-panel`).hidden, false);
+    if (panel === 'detail') assert.equal(get('token-topic-title').textContent, topic.label);
+  }
+  assert.equal(get('token-topic-next').disabled, true);
+  jumpTokenTopic(get, 'tools');
+  let renders = 0, body = get('token-topic-body').innerHTML;
+  Object.defineProperty(get('token-topic-body'), 'innerHTML', { get: () => body, set(value) { renders++; body = value; } });
+  lens.oninput(); lens.onchange(); jumpTokenTopic(get, 'tools');
+  assert.equal(renders, 0, 'same stop and drag release do not rerender');
+  jumpTokenTopic(get, 'results');
+  assert.equal(renders, 1);
+  assert.equal(requests.length, before, 'navigation never fetches or inspects context');
+  await get('refresh').onclick();
+  get('model').value = 'Alpha'; await get('model').onchange();
+  assert.equal(lens.value, '3');
+  assert.equal(document.activeElement, lens);
+  assert.equal(renders, 3, 'fresh reports update the selected content');
+  assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]')[0], stops[0], 'stop nodes are never rebuilt');
+});
+
+test('token explorer keyboard and buttons respect endpoints and scroll without interrupting a drag', async () => {
+  const { get, requests, document, windowListeners } = await requestPanel();
+  const lens = get('efficiency-topic'), track = get('token-track-scroll');
+  lens.focus();
+  const before = requests.length;
+  const key = (name, expected) => {
+    let prevented = false;
+    lens.onkeydown({ key: name, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(lens.value, String(expected));
+    assert.equal(document.activeElement, lens);
+  };
+  key('ArrowLeft', 0); key('ArrowDown', 0); key('ArrowRight', 1); key('ArrowUp', 2);
+  key('End', 9); key('ArrowRight', 9); key('ArrowUp', 9);
+  assert.equal(get('token-topic-next').disabled, true);
+  assert.ok(track.scrollLeft > 0);
+  key('Home', 0);
+  assert.equal(track.scrollLeft, 0);
+  assert.equal(get('token-topic-prev').disabled, true);
+  lens.onkeydown({ key: 'Tab', preventDefault() { assert.fail('Tab keeps native focus navigation'); } });
+  get('token-topic-next').onclick();
+  assert.equal(lens.value, '1');
+  let previousDisabled = get('token-topic-prev').disabled;
+  Object.defineProperty(get('token-topic-prev'), 'disabled', { get: () => previousDisabled, set(value) {
+    previousDisabled = value;
+    if (value && document.activeElement === get('token-topic-prev')) document.activeElement = null;
+  } });
+  get('token-topic-prev').focus();
+  get('token-topic-prev').onclick(); get('token-topic-prev').onclick();
+  assert.equal(lens.value, '0');
+  assert.equal(get('token-topic-prev').disabled, true);
+  assert.equal(document.activeElement, lens, 'endpoint button hands focus to the lens before it becomes unavailable');
+  lens.onpointerdown();
+  track.scrolls.length = 0;
+  lens.value = '9'; lens.oninput(); lens.onchange();
+  assert.equal(get('token-selected-title').textContent, 'Biggest spend drivers', 'content changes during the drag');
+  assert.equal(track.scrolls.length, 0, 'no programmatic scrolling during a drag');
+  windowListeners.get('pointerup')();
+  assert.ok(track.scrollLeft > 0, 'released lens can be brought into view');
+  assert.equal(document.activeElement, lens);
+  jumpTokenTopic(get, 'overview');
+  assert.equal(track.scrollLeft, 0);
+  assert.equal(get('token-topic-announcement').textContent, 'Showing Overview');
+  lens.onpointerdown(); windowListeners.get('pointercancel')(); key('End', 9);
+  assert.ok(track.scrollLeft > 0, 'canceled pointer does not block later navigation');
+  get('token-topic-next').onclick();
+  assert.equal(lens.value, '9');
+  assert.equal(requests.length, before);
+  assert.ok(track.scrolls.every(s => s.behavior === 'instant' && !('top' in s)), 'navigation never animates or scrolls the page vertically');
 });
 
 test('Efficiency panels live only in their assigned dashboard and AI review stays separate', async () => {
@@ -1525,15 +1660,15 @@ test('token topic inspector links retain keyboard focus through refresh and sect
   } });
   body.querySelector = () => button;
   for (const topic of ['tools', 'results', 'skills']) {
-    get('efficiency-topic').value = topic; get('efficiency-topic').onchange();
+    jumpTokenTopic(get, topic);
     button.focus();
     const previous = button;
     await get('refresh').onclick();
     assert.notEqual(button, previous);
     assert.equal(document.activeElement, button, topic + ' restores its recreated action');
   }
-  get('efficiency-topic').value = 'output'; get('efficiency-topic').onchange();
-  assert.equal(document.activeElement, get('efficiency-topic'), 'removed action returns focus to the section selector');
+  jumpTokenTopic(get, 'output');
+  assert.equal(document.activeElement, get('efficiency-topic'), 'removed action returns focus to the lens');
 });
 
 test('Efficiency subviews switch locally, retain selection on refresh, and expose scoped habits and outcomes', async () => {

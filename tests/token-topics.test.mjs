@@ -6,7 +6,9 @@ const formats = { number: value => value == null ? 'Unavailable' : String(value)
 const render = (id, report = {}) => renderTokenTopic(id, report, formats);
 
 test('efficiency catalogs separate consumption from workflow findings without duplicating topics', () => {
-  assert.deepEqual(TOKEN_TOPICS.map(t => t.id), ['overview', 'context', 'tools', 'results', 'cache', 'prompts', 'delegation', 'output', 'drivers', 'skills']);
+  assert.deepEqual(TOKEN_TOPICS.map(t => t.id), ['overview', 'context', 'tools', 'results', 'cache', 'skills', 'prompts', 'delegation', 'output', 'drivers']);
+  assert.deepEqual(TOKEN_TOPICS.map(t => t.group), ['', 'Context', 'Context', 'Context', 'Context', 'Context', 'Agent work', 'Agent work', 'Agent work', 'Spending']);
+  assert.ok(TOKEN_TOPICS.every(t => t.label && t.shortLabel));
   assert.deepEqual(PATTERN_TOPICS.map(t => t.id), ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models']);
   const all = [...TOKEN_TOPICS, ...PATTERN_TOPICS];
   assert.equal(new Set(all.map(t => t.id)).size, all.length);

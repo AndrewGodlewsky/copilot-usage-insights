@@ -81,6 +81,43 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 #breakdown [data-depth="1"]{background:var(--bg)}#breakdown [data-depth="2"]{background:var(--card)}#breakdown [data-depth="3"]{background:var(--bg)}#breakdown .usage-context>td{padding:0;max-width:none;text-align:left;white-space:normal;overflow:visible}#breakdown .request-list,#breakdown .request-detail{background:transparent}#breakdown .request-list{padding:12px 7px;border:0}#breakdown .request-list>header{margin-bottom:0}#breakdown .usage-context[data-depth="1"] .request-list{padding-inline-start:calc(7px + 16px * var(--text-scale))}#breakdown .usage-context[data-depth="2"] .request-list{padding-inline-start:calc(7px + 32px * var(--text-scale))}
 
 .token-topic-navigation{display:flex;align-items:center;gap:12px 24px;flex-wrap:wrap}.token-topic-navigation label{width:min(100%,360px);flex-shrink:0}.token-topic-navigation select{max-width:100%;text-overflow:ellipsis}.token-topic-navigation>p{flex:1;min-width:min(100%,220px);max-width:60ch}.token-topic-detail p{max-width:88ch}.token-topic-detail .efficiency-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));margin-bottom:16px}.token-topic-detail .table-wrap{margin-top:16px}#token-topic-body>p+ p,#token-topic-body>button{margin-top:12px}.token-topic-status{font-weight:600;margin-block:18px 8px}
+.token-explorer{--lens-blue:#74b5ed;--lens-ink:#123953;min-width:0;display:flex;flex-direction:column;gap:12px}
+.token-explorer-heading h2{margin-bottom:4px}
+.token-track-scroll{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--muted-fg) var(--muted);padding:8px 4px;overscroll-behavior-x:contain}
+.token-track-inner{min-width:calc(780px * var(--text-scale))}
+.token-track-groups,.token-track-nodes,.token-topic-stops{display:grid;grid-template-columns:repeat(var(--token-topic-count),minmax(0,1fr))}
+.token-track-groups{font-size:calc(10px * var(--text-scale));color:var(--muted-fg);margin-bottom:8px}
+.token-track-groups span{text-align:center;padding:4px 0;border-bottom:1px solid var(--border);margin:0 8px}
+.token-track{height:64px;position:relative}
+.token-track::before{content:"";position:absolute;top:31px;height:2px;left:calc(50% / var(--token-topic-count));right:calc(50% / var(--token-topic-count));background:var(--border)}
+.token-track-nodes{position:absolute;inset:0;align-items:center;pointer-events:none}
+.token-track-nodes span{justify-self:center;width:10px;height:10px;border:2px solid var(--muted-fg);background:var(--bg);border-radius:50%;box-shadow:0 0 0 5px var(--bg)}
+.token-track-nodes .current{border-color:var(--lens-blue)}
+/* Native thumb travel aligns with the stop centres, including its half-width at each end. */
+#efficiency-topic{--lens-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Cg stroke='%23123953' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'%3E%3Cpath d='M10 6H7a1 1 0 0 0-1 1v3m20-4h3a1 1 0 0 1 1 1v3M6 26v3a1 1 0 0 0 1 1h3m20-4v3a1 1 0 0 1-1 1h-3'/%3E%3Ccircle cx='17' cy='16' r='7'/%3E%3Cpath d='m22 22 4 4M14 16h6m-3-3v6'/%3E%3C/g%3E%3C/svg%3E");appearance:none;-webkit-appearance:none;position:absolute;left:calc(50% / var(--token-topic-count) - 23px);top:0;width:calc(100% - 100% / var(--token-topic-count) + 46px);height:64px;padding:0;margin:0;border:0;background:transparent;cursor:grab;touch-action:pan-y}
+#efficiency-topic:focus-visible{outline:none}
+#efficiency-topic:active{cursor:grabbing}
+#efficiency-topic::-webkit-slider-runnable-track{height:64px;background:transparent;border:0}
+#efficiency-topic::-moz-range-track{height:64px;background:transparent;border:0}
+#efficiency-topic::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;box-sizing:border-box;width:46px;height:46px;margin-top:9px;border:2px solid #aed8fa;border-radius:14px;background:var(--lens-blue) var(--lens-icon) center/34px 34px no-repeat;box-shadow:0 3px 8px #0004}
+#efficiency-topic::-moz-range-thumb{box-sizing:border-box;width:46px;height:46px;border:2px solid #aed8fa;border-radius:14px;background:var(--lens-blue) var(--lens-icon) center/34px 34px no-repeat;box-shadow:0 3px 8px #0004}
+html.light #efficiency-topic::-webkit-slider-thumb{border-color:var(--lens-ink)}
+html.light #efficiency-topic::-moz-range-thumb{border-color:var(--lens-ink)}
+#efficiency-topic:focus-visible::-webkit-slider-thumb{outline:2px solid var(--fg);outline-offset:4px}
+#efficiency-topic:focus-visible::-moz-range-thumb{outline:2px solid var(--fg);outline-offset:4px}
+.token-topic-stops button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted-fg);font-size:calc(11px * var(--text-scale));line-height:1.4;min-height:56px;padding:7px 4px 12px}
+.token-topic-stops button:hover{color:var(--fg);background:var(--card)}
+.token-topic-stops button[aria-current=true]{color:var(--lens-blue);font-weight:600;border-bottom-color:var(--lens-blue)}
+html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);background:var(--lens-blue);border-bottom-color:var(--lens-ink)}
+.token-topic-stops button:focus-visible{outline-color:var(--fg);outline-offset:-2px}
+.token-scroll-hint{margin-top:-6px}
+.token-explorer-current{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px}
+.token-explorer-current>div:first-child{flex:1;min-width:min(100%,240px)}
+#token-selected-title{display:block;font-size:calc(15px * var(--text-scale));margin-top:3px}
+.token-step-buttons{display:flex;gap:6px;flex-shrink:0}
+.token-step-buttons button{font-size:calc(12px * var(--text-scale))}
+.token-step-buttons button:disabled{cursor:default}
+@media(forced-colors:active){#efficiency-topic::-webkit-slider-thumb{border-color:ButtonText;forced-color-adjust:none}#efficiency-topic::-moz-range-thumb{border-color:ButtonText;forced-color-adjust:none}.token-topic-stops button[aria-current=true]{border-bottom-color:Highlight}}
 
 #release-notes-dialog{width:min(1000px,calc(100% - 32px));height:min(640px,88dvh);max-height:88dvh;padding:0;overflow:hidden}
 #release-notes-dialog[open]{display:flex;flex-direction:column}
@@ -171,7 +208,18 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
       <div class="efficiency-intro"><div><h2>Explore your AI usage</h2></div></div>
       <div class="controls efficiency-navigation"><div class="seg" id="efficiency-sections" role="group" aria-label="Efficiency dashboards"><button data-efficiency-section="tokens" aria-pressed="true" aria-controls="efficiency-tokens-panel">Where did the tokens go?</button><button data-efficiency-section="patterns" aria-pressed="false" aria-controls="efficiency-patterns-panel">Worth a closer look</button><button data-efficiency-section="review" aria-pressed="false" aria-controls="efficiency-review-panel">AI review</button></div></div>
       <section id="efficiency-tokens-panel" aria-label="Where did the tokens go?">
-      <div class="token-topic-navigation"><label for="efficiency-topic">Section<select id="efficiency-topic" aria-controls="token-topic-content" aria-describedby="token-topic-hint"><option value="overview">Overview</option></select></label><p id="token-topic-hint" class="footnote">Explore one section at a time. These views can overlap; their token counts are not added together.</p></div>
+      <div class="token-explorer">
+        <div class="token-explorer-heading"><h2>Explore your token usage</h2><p id="token-explorer-instructions" class="footnote">Drag the blue lens or click a section. With the lens focused, use arrow keys or Home/End.</p></div>
+        <div class="token-track-scroll" id="token-track-scroll"><div class="token-track-inner" id="token-track-inner">
+          <div class="token-track-groups" id="token-track-groups" aria-hidden="true"></div>
+          <div class="token-track"><div class="token-track-nodes" id="token-track-nodes" aria-hidden="true"></div><input id="efficiency-topic" type="range" min="0" step="1" value="0" aria-label="Token usage section" aria-controls="token-topic-content" aria-describedby="token-explorer-instructions token-topic-hint"></div>
+          <nav class="token-topic-stops" id="token-topic-stops" aria-label="Jump to a token usage section"></nav>
+        </div></div>
+        <p class="footnote token-scroll-hint">↔ Scroll sideways if needed. Every section is available.</p>
+        <div class="token-explorer-current"><div><span id="token-topic-position" class="footnote"></span><strong id="token-selected-title"></strong></div><div class="token-step-buttons"><button id="token-topic-prev" aria-label="Previous token usage section" aria-controls="token-topic-content" disabled>← Previous</button><button id="token-topic-next" aria-label="Next token usage section" aria-controls="token-topic-content">Next →</button></div></div>
+        <p id="token-topic-hint" class="footnote">Explore one section at a time. These views can overlap; their token counts are not added together.</p>
+        <span id="token-topic-announcement" class="sr-only" role="status"></span>
+      </div>
       <div id="token-topic-content">
       <article id="token-overview-panel" class="card efficiency-flow" aria-labelledby="token-overview-heading"><header><h2 id="token-overview-heading">Overview</h2><span class="muted">Selected filters · input includes cache</span></header><div id="efficiency-flow"></div><div id="efficiency-summary" class="efficiency-metrics" aria-label="Average request measurements"></div></article>
       <article id="token-context-panel" class="card efficiency-context" aria-labelledby="token-context-heading" hidden><header><div><h2 id="token-context-heading">Always-loaded context</h2><p class="footnote">Current conversation · separate from the selected history</p></div><button id="efficiency-context-read">Inspect context</button></header><p class="muted">Instructions, tool definitions, and conversation history can occupy context before your next request. Inspect the conversation hosting this dashboard to see its largest recorded contributors.</p><div id="efficiency-context-result" aria-live="polite"><p class="footnote integration-note">Loaded only when you ask. An installed skill or plugin is not proof that it is consuming context.</p></div></article>
@@ -197,7 +245,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. Nothing is uploaded. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.61" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.61</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.62" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.62</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="release-notes-dialog" aria-labelledby="release-notes-title">
     <header><h2 id="release-notes-title">Release notes</h2><button id="release-notes-close" aria-label="Close release notes">Close</button></header>
     <div class="release-browser">
@@ -216,8 +264,8 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.61";
-const RELEASE_NOTES = [{"version":"0.1.61","summary":"Moved Filter usage beneath the Efficiency section buttons. Your filter selections and expanded state stay intact when switching tabs, and Usage and Breakdown keep their original layout."},{"version":"0.1.60","summary":"Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."},{"version":"0.1.59","summary":"Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."},{"version":"0.1.58","summary":"Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."},{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
+const BUILD_VERSION = "0.1.62";
+const RELEASE_NOTES = [{"version":"0.1.62","summary":"Replaced the token-section dropdown with a draggable blue inspection lens and labelled stops. Explore all ten sections by dragging, clicking, using the keyboard, or choosing Previous and Next; your selection stays in place when data refreshes."},{"version":"0.1.61","summary":"Moved Filter usage beneath the Efficiency section buttons. Your filter selections and expanded state stay intact when switching tabs, and Usage and Breakdown keep their original layout."},{"version":"0.1.60","summary":"Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."},{"version":"0.1.59","summary":"Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."},{"version":"0.1.58","summary":"Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."},{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -958,16 +1006,16 @@ function buildEfficiencyReview(report, context, scope = {}) {
 // src/panel/token-topics.mjs
 
 const TOKEN_TOPICS = [
-  { id: 'overview', label: 'Overview', group: '', question: 'See the overall balance of input and output.' },
-  { id: 'context', label: 'Always-loaded context', group: 'Context', question: 'What occupies context before your next request?' },
-  { id: 'tools', label: 'Tool and MCP footprint', group: 'Context', question: 'How much input describes the tools available to the agent?' },
-  { id: 'results', label: 'Files, searches, and tool results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
-  { id: 'cache', label: 'Cache reuse', group: 'Context', question: 'How much input is reused from cache rather than processed fresh?' },
-  { id: 'prompts', label: 'Work behind each prompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
-  { id: 'delegation', label: 'Delegated work', group: 'Agent work', question: 'How much usage happens in subagents?' },
-  { id: 'output', label: 'Reasoning and generated output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
-  { id: 'drivers', label: 'Biggest spend drivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
-  { id: 'skills', label: 'Skills and instruction footprint', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+  { id: 'overview', label: 'Overview', shortLabel: 'Overview', group: '', question: 'See the overall balance of input and output.' },
+  { id: 'context', label: 'Always-loaded context', shortLabel: 'Always-loaded\ncontext', group: 'Context', question: 'What occupies context before your next request?' },
+  { id: 'tools', label: 'Tool and MCP footprint', shortLabel: 'Tools\n& MCP', group: 'Context', question: 'How much input describes the tools available to the agent?' },
+  { id: 'results', label: 'Files, searches, and tool results', shortLabel: 'Files\n& results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
+  { id: 'cache', label: 'Cache reuse', shortLabel: 'Cache\nreuse', group: 'Context', question: 'How much input is reused from cache rather than processed fresh?' },
+  { id: 'skills', label: 'Skills and instruction footprint', shortLabel: 'Skills &\ninstructions', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+  { id: 'prompts', label: 'Work behind each prompt', shortLabel: 'Work per\nprompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
+  { id: 'delegation', label: 'Delegated work', shortLabel: 'Delegated\nwork', group: 'Agent work', question: 'How much usage happens in subagents?' },
+  { id: 'output', label: 'Reasoning and generated output', shortLabel: 'Reasoning\n& output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
+  { id: 'drivers', label: 'Biggest spend drivers', shortLabel: 'Spend\ndrivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
 ];
 
 const PATTERN_TOPICS = [
@@ -1593,17 +1641,50 @@ function showEfficiencySection(section) {
   selectButton('efficiency-sections', 'efficiencySection', section);
   $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
+  if (section === 'tokens') keepTokenStopVisible();
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
+let draggingTokenLens = false;
 const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
 const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
-$('efficiency-topic').innerHTML = topicOption(TOKEN_TOPICS[0]) + ['Context', 'Agent work', 'Spending'].map(group => `<optgroup label="${group}">${TOKEN_TOPICS.filter(topic => topic.group === group).map(topicOption).join('')}</optgroup>`).join('');
-$('efficiency-topic').value = tokenTopic;
-function showTokenTopic(id) {
+$('efficiency-topic').max = String(TOKEN_TOPICS.length - 1);
+$('token-track-inner').style.setProperty('--token-topic-count', TOKEN_TOPICS.length);
+$('token-track-groups').innerHTML = [...new Set(TOKEN_TOPICS.map(topic => topic.group))].map(group => `<span style="grid-column:span ${TOKEN_TOPICS.filter(topic => topic.group === group).length}">${esc(group || 'Summary')}</span>`).join('');
+$('token-track-nodes').innerHTML = TOKEN_TOPICS.map(topic => `<span data-token-node="${topic.id}"></span>`).join('');
+$('token-topic-stops').innerHTML = TOKEN_TOPICS.map(topic => `<button data-token-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="token-topic-content">${esc(topic.shortLabel).replaceAll('\n', '<br>')}</button>`).join('');
+function keepTokenStopVisible() {
+  if (draggingTokenLens) return;
+  const stop = $('token-topic-stops').querySelector(`[data-token-stop="${tokenTopic}"]`);
+  if (!stop) return;
+  const bounds = stop.getBoundingClientRect(), track = $('token-track-scroll').getBoundingClientRect();
+  if (track.width && (bounds.left < track.left + 8 || bounds.right > track.right - 8)) {
+    $('token-track-scroll').scrollBy({ left: bounds.left - track.left - (track.width - bounds.width) / 2, behavior: 'instant' });
+  }
+}
+function syncTokenNavigation() {
+  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic), topic = TOKEN_TOPICS[index];
+  $('efficiency-topic').value = String(index);
+  $('efficiency-topic').setAttribute('aria-valuetext', `${topic.label}, section ${index + 1} of ${TOKEN_TOPICS.length}`);
+  for (const button of $('token-topic-stops').querySelectorAll('[data-token-stop]')) button.setAttribute('aria-current', String(button.dataset.tokenStop === tokenTopic));
+  for (const node of $('token-track-nodes').querySelectorAll('[data-token-node]')) node.classList.toggle('current', node.dataset.tokenNode === tokenTopic);
+  $('token-topic-position').textContent = `${topic.group || 'Summary'} · Section ${index + 1} of ${TOKEN_TOPICS.length}`;
+  $('token-selected-title').textContent = topic.label;
+  $('token-topic-prev').disabled = index === 0;
+  $('token-topic-next').disabled = index === TOKEN_TOPICS.length - 1;
+}
+function showTokenTopic(id, announce = false) {
+  if (!TOKEN_TOPICS.some(topic => topic.id === id)) return;
+  if (tokenTopic !== id) {
+    tokenTopic = id;
+    syncTokenNavigation();
+    renderSelectedTokenTopic();
+    if (announce) $('token-topic-announcement').textContent = `Showing ${TOKEN_TOPICS.find(topic => topic.id === id).label}`;
+  }
+  keepTokenStopVisible();
+}
+function renderSelectedTokenTopic() {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
-  if (TOKEN_TOPICS.some(topic => topic.id === id)) tokenTopic = id;
-  $('efficiency-topic').value = tokenTopic;
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
@@ -1618,7 +1699,31 @@ function showTokenTopic(id) {
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
-$('efficiency-topic').onchange = () => showTokenTopic($('efficiency-topic').value);
+$('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
+$('efficiency-topic').onchange = keepTokenStopVisible;
+$('efficiency-topic').onpointerdown = () => { draggingTokenLens = true; };
+function finishTokenDrag() {
+  if (!draggingTokenLens) return;
+  draggingTokenLens = false;
+  keepTokenStopVisible();
+}
+window.addEventListener('pointerup', finishTokenDrag);
+window.addEventListener('pointercancel', finishTokenDrag);
+$('efficiency-topic').onkeydown = event => {
+  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic);
+  const keys = { ArrowRight: index + 1, ArrowUp: index + 1, ArrowLeft: index - 1, ArrowDown: index - 1, Home: 0, End: TOKEN_TOPICS.length - 1 };
+  if (!(event.key in keys)) return;
+  event.preventDefault();
+  showTokenTopic(TOKEN_TOPICS[Math.max(0, Math.min(TOKEN_TOPICS.length - 1, keys[event.key]))].id);
+};
+$('token-topic-stops').onclick = event => showTokenTopic(event.target.closest('[data-token-stop]')?.dataset.tokenStop, true);
+for (const [id, step] of [['token-topic-prev', -1], ['token-topic-next', 1]]) $(id).onclick = () => {
+  const focused = document.activeElement === $(id);
+  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic);
+  showTokenTopic(TOKEN_TOPICS[index + step]?.id, true);
+  if ($(id).disabled && focused) $('efficiency-topic').focus({ preventScroll: true });
+};
+syncTokenNavigation();
 let patternTopic = 'findings';
 const patternPanelNames = ['findings', 'habits', 'recovery', 'models', 'detail'];
 $('efficiency-pattern-topic').innerHTML = PATTERN_TOPICS.map(topicOption).join('');
@@ -1653,7 +1758,8 @@ function renderEfficiency() {
   renderEfficiencyFlow(summary);
   renderEfficiencyHabits();
   renderEfficiencyReliability();
-  showTokenTopic(tokenTopic);
+  renderSelectedTokenTopic();
+  keepTokenStopVisible();
   showPatternTopic(patternTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {

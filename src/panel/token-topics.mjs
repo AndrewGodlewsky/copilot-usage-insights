@@ -1,16 +1,16 @@
 import { esc, usageValue } from './charts.mjs';
 
 export const TOKEN_TOPICS = [
-  { id: 'overview', label: 'Overview', group: '', question: 'See the overall balance of input and output.' },
-  { id: 'context', label: 'Always-loaded context', group: 'Context', question: 'What occupies context before your next request?' },
-  { id: 'tools', label: 'Tool and MCP footprint', group: 'Context', question: 'How much input describes the tools available to the agent?' },
-  { id: 'results', label: 'Files, searches, and tool results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
-  { id: 'cache', label: 'Cache reuse', group: 'Context', question: 'How much input is reused from cache rather than processed fresh?' },
-  { id: 'prompts', label: 'Work behind each prompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
-  { id: 'delegation', label: 'Delegated work', group: 'Agent work', question: 'How much usage happens in subagents?' },
-  { id: 'output', label: 'Reasoning and generated output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
-  { id: 'drivers', label: 'Biggest spend drivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
-  { id: 'skills', label: 'Skills and instruction footprint', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+  { id: 'overview', label: 'Overview', shortLabel: 'Overview', group: '', question: 'See the overall balance of input and output.' },
+  { id: 'context', label: 'Always-loaded context', shortLabel: 'Always-loaded\ncontext', group: 'Context', question: 'What occupies context before your next request?' },
+  { id: 'tools', label: 'Tool and MCP footprint', shortLabel: 'Tools\n& MCP', group: 'Context', question: 'How much input describes the tools available to the agent?' },
+  { id: 'results', label: 'Files, searches, and tool results', shortLabel: 'Files\n& results', group: 'Context', question: 'How much material is the agent bringing into the conversation?' },
+  { id: 'cache', label: 'Cache reuse', shortLabel: 'Cache\nreuse', group: 'Context', question: 'How much input is reused from cache rather than processed fresh?' },
+  { id: 'skills', label: 'Skills and instruction footprint', shortLabel: 'Skills &\ninstructions', group: 'Context', question: 'Which loaded skills or instruction sources occupy context?' },
+  { id: 'prompts', label: 'Work behind each prompt', shortLabel: 'Work per\nprompt', group: 'Agent work', question: 'How much recorded work follows one user-submitted message?' },
+  { id: 'delegation', label: 'Delegated work', shortLabel: 'Delegated\nwork', group: 'Agent work', question: 'How much usage happens in subagents?' },
+  { id: 'output', label: 'Reasoning and generated output', shortLabel: 'Reasoning\n& output', group: 'Agent work', question: 'How much output is reported reasoning, and how much output is generated overall?' },
+  { id: 'drivers', label: 'Biggest spend drivers', shortLabel: 'Spend\ndrivers', group: 'Spending', question: 'Which sessions account for the largest recorded charges?' },
 ];
 
 export const PATTERN_TOPICS = [
