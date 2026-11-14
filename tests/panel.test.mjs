@@ -12,6 +12,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
     return [id, { value: '', innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
+      focus() { document.activeElement = this; },
       showModal() { this.open = true; }, close() { this.open = false; },
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
   }));
@@ -21,13 +22,13 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
-  const requests = [], rootStyle = new Map(), server = { config, saveError: '' };
-  const document = { getElementById: get, activeElement: null, hidden: false, addEventListener() {}, documentElement: {
+  const requests = [], intervals = [], listeners = new Map(), rootStyle = new Map(), server = { config, saveError: '' };
+  const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
   const context = createContext({
     document,
-    window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval() {},
+    window: { addEventListener() {} }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     fetch: async (url, options) => {
       const message = JSON.parse(options.body); requests.push(message);
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
@@ -47,7 +48,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document };
+  return { get, nodes, requests, rootStyle, server, document, intervals, listeners };
 }
 
 async function requestPanel() {
@@ -60,7 +61,7 @@ async function requestPanel() {
   const report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
   const panel = await mountPanel(report);
   panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
-    prompt: { available: true, text: input.id ? '<script>unsafe()</script> Full original prompt' : '<img onerror=unsafe()> Preview', truncated: !input.id },
+    ...(input.id ? { prompt: { available: true, text: '<script>unsafe()</script> Full original prompt', truncated: false } } : {}),
   })) });
   const click = dataset => panel.get('breakdown').onclick({ target: { closest: () => ({ dataset }) } });
   return { ...panel, click, report, records, now };
@@ -75,8 +76,8 @@ test('model request expansion loads on demand, pages safely, and refreshes selec
   assert.match(html(), /28 model requests/);
   assert.match(html(), /1–25/);
   assert.match(html(), /&lt;Session&gt;/);
-  assert.match(html(), /&lt;img onerror=unsafe\(\)&gt; Preview/);
-  assert.doesNotMatch(html(), /<img|<script|Full original prompt/);
+  assert.match(html(), /<th>Started by<\/th>/);
+  assert.doesNotMatch(html(), /<th>Prompt<\/th>|Prompt unavailable|<img|<script|Full original prompt/);
   assert.equal(requests.at(-1).input.model, '<Sonnet>');
   await click({ requestPage: '25' });
   assert.match(html(), /26–28/);
@@ -159,6 +160,82 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
     assert.equal(document.activeElement.dataset.requestPageDirection, expected, 'page edge restores focus to an enabled paging action');
     assert.equal(document.activeElement.disabled, false);
   }
+});
+
+test('session breakdown pages locally, sorts the full set, and resets or clamps pages as needed', async () => {
+  const { get, report, records, now, requests, click, document } = await requestPanel();
+  const sessions = Array.from({ length: 52 }, (_, i) => ({ ...records[0], key: `request-${i}`, sessionId: `session-${i}`,
+    sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, inputTotal: 100, input: 30 }));
+  Object.assign(report, buildReport(sessions, {}, now));
+  await get('refresh').onclick();
+  get('group').value = 'sessions'; get('group').onchange();
+  const node = get('breakdown');
+  let markup = node.innerHTML, buttons = [];
+  document.body = {};
+  Object.defineProperty(node, 'innerHTML', { get: () => markup, set(value) {
+    if (buttons.includes(document.activeElement)) document.activeElement = document.body;
+    markup = value;
+    buttons = [...value.matchAll(/<button\b([^>]*)>/g)].map(([, attrs]) => ({
+      dataset: Object.fromEntries([...attrs.matchAll(/data-([a-z-]+)="([^"]*)"/g)].map(([, key, value]) => [key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value])),
+      disabled: /\sdisabled(?:\s|$)/.test(attrs), focus() { if (!this.disabled) document.activeElement = this; },
+    }));
+  } });
+  node.querySelectorAll = selector => selector === 'button' ? buttons : [];
+  get('sort').value = 'total'; get('sort').onchange();
+  const html = () => node.innerHTML, rowCount = () => [...html().matchAll(/<tr>/g)].length - 1;
+  assert.match(html(), /1–25 of 52 sessions/);
+  assert.equal(rowCount(), 25);
+  assert.match(html(), /Session 51/);
+  assert.doesNotMatch(html(), /Session 00/);
+  const before = requests.length;
+  await click({ sessionPage: '25' });
+  assert.match(html(), /26–50 of 52 sessions/);
+  buttons.find(b => b.dataset.sessionPageDirection === 'next').focus();
+  await click({ sessionPage: '50' });
+  assert.match(html(), /51–52 of 52 sessions/);
+  assert.equal(rowCount(), 2);
+  assert.equal(document.activeElement.dataset.sessionPageDirection, 'previous');
+  assert.equal(requests.length, before, 'session paging makes no API requests');
+  get('sort').value = 'output'; get('sort').onchange();
+  assert.match(html(), /1–25 of 52 sessions/);
+  await click({ sessionPage: '50' });
+  Object.assign(report, buildReport(sessions.slice(0, 30), {}, now));
+  await get('refresh').onclick();
+  assert.match(html(), /26–30 of 30 sessions/);
+  assert.equal(rowCount(), 5);
+  get('range').value = '1d'; get('range').onchange();
+  await new Promise(setImmediate);
+  assert.match(html(), /1–25 of 30 sessions/);
+  await click({ sessionPage: '25' });
+  buttons.find(b => b.dataset.sessionPageDirection === 'previous').focus();
+  Object.assign(report, buildReport(sessions.slice(0, 2), {}, now));
+  await get('refresh').onclick();
+  assert.equal(rowCount(), 2);
+  assert.doesNotMatch(html(), /data-session-page/);
+  assert.equal(document.activeElement, get('group'), 'focus survives removal of paging controls');
+});
+
+test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
+  const { get, requests, intervals, listeners, document } = await requestPanel();
+  assert.equal(intervals.length, 1);
+  assert.equal(intervals[0].ms, 60000);
+  assert.match(get('updated').textContent, /60 seconds/);
+  get('range').value = '1d'; get('range').onchange();
+  await new Promise(setImmediate);
+  assert.equal(requests.at(-1).refresh, undefined);
+  intervals[0].callback(); await new Promise(setImmediate);
+  assert.equal(requests.at(-1).method, 'usage.report');
+  assert.equal(requests.at(-1).refresh, true);
+  document.hidden = true;
+  const count = requests.length;
+  intervals[0].callback(); listeners.get('visibilitychange')();
+  await new Promise(setImmediate);
+  assert.equal(requests.length, count);
+  document.hidden = false;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.at(-1).refresh, true);
+  await get('refresh').onclick();
+  assert.equal(requests.at(-1).method, 'usage.refresh');
 });
 
 test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {

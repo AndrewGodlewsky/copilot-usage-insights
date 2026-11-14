@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 const number = value => value == null ? 'Unavailable' : value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null };
+const state = { range: '7d', metric: 'tokens', view: 'usage', report: null, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', bannerRange: null, buildingPatterns: {}, requestView: null, sessionOffset: 0 };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -14,8 +14,8 @@ function applyTextSize(value) {
   state.textSize = typeof value === 'string' && Object.hasOwn(TEXT_SCALES, value) ? value : 'small';
   document.documentElement.style.setProperty('--text-scale', TEXT_SCALES[state.textSize]);
 }
-async function request(method, input = {}) {
-  const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
+async function request(method, input = {}, refresh = false) {
+  const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}) }) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
   return result;
@@ -25,8 +25,8 @@ function query() {
     ...($('model').value ? { models: [$('model').value] } : {}), project: $('project').value, session: $('session').value,
     ...(state.range === 'custom' ? { startDate: state.startDate, endDate: state.endDate } : {}) };
 }
-async function load(force = false) {
-  state.version++; state.force ||= force;
+async function load(force = false, refresh = false) {
+  state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
   state.pending = true;
   $('refresh').disabled = true;
@@ -35,11 +35,12 @@ async function load(force = false) {
     do {
       version = state.version;
       const method = state.force ? 'usage.refresh' : 'usage.report'; state.force = false;
+      const rescan = state.rescan; state.rescan = false;
       try {
         const input = query(), filterKey = JSON.stringify(input);
-        const report = await request(method, input);
+        const report = await request(method, input, rescan);
         if (version !== state.version) continue;
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.sessionOffset = 0; state.filterKey = filterKey; }
         applyTextSize(report.preferences?.textSize);
         state.report = report;
         render();
@@ -112,10 +113,9 @@ function requestList() {
   const page = view.page;
   if (!page?.rows.length) return '<p class="muted">No matching requests remain. Refresh to update the model totals.</p>';
   const end = page.offset + page.rows.length;
-  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header><table class="request-table"><thead><tr><th>Time</th><th>Session</th><th>Prompt</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${page.rows.map(r => {
+  return `<header><div><strong>${number(page.total)} model request${page.total === 1 ? '' : 's'}</strong><p class="footnote">One prompt can produce several model requests. Newest first.${view.pending ? ' Updating…' : ''}</p></div><div class="request-paging"><span>${page.offset + 1}–${end}</span><button data-request-page-direction="previous" data-request-page="${Math.max(0, page.offset - page.limit)}" aria-disabled="${view.pending}"${page.offset === 0 ? ' disabled' : ''}>Previous</button><button data-request-page-direction="next" data-request-page="${end}" aria-disabled="${view.pending}"${end >= page.total ? ' disabled' : ''}>Next</button></div></header><table class="request-table"><thead><tr><th>Time</th><th>Session</th><th>Started by</th><th>Tokens</th><th>AI credits</th></tr></thead><tbody>${page.rows.map(r => {
     const open = view.selectedId === r.id;
-    const preview = r.prompt?.available ? (r.prompt.text || '(Empty prompt)') + (r.prompt.truncated ? '…' : '') : 'Prompt unavailable';
-    return `<tr><td><button class="request-toggle" data-request-id="${esc(r.id)}" aria-expanded="${open}"${open ? ' aria-controls="request-detail"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(requestDate.format(new Date(r.ts)))}</button></td><td class="text-cell"><span class="cell-text" title="${esc(r.sessionId)}">${esc(r.sessionName)}<small class="muted">${esc(r.project)}</small></span></td><td class="text-cell"><span class="cell-text request-preview">${esc(preview)}<small class="muted">${esc(initiatorLabel(r.initiator))}</small></span></td><td>${esc(usageValue(r, 'total', number))}</td><td>${esc(creditLabel(r))}</td></tr>` + (open ? `<tr class="request-expansion"><td colspan="5"><div id="request-detail" class="request-detail">${requestDetail(view)}</div></td></tr>` : '');
+    return `<tr><td><button class="request-toggle" data-request-id="${esc(r.id)}" aria-expanded="${open}"${open ? ' aria-controls="request-detail"' : ''}><span aria-hidden="true">${open ? '▾' : '▸'}</span> ${esc(requestDate.format(new Date(r.ts)))}</button></td><td class="text-cell"><span class="cell-text" title="${esc(r.sessionId)}">${esc(r.sessionName)}<small class="muted">${esc(r.project)}</small></span></td>${textCell(initiatorLabel(r.initiator))}<td>${esc(usageValue(r, 'total', number))}</td><td>${esc(creditLabel(r))}</td></tr>` + (open ? `<tr class="request-expansion"><td colspan="5"><div id="request-detail" class="request-detail">${requestDetail(view)}</div></td></tr>` : '');
   }).join('')}</tbody></table>`;
 }
 async function loadRequestPage(offset = 0) {
@@ -205,12 +205,21 @@ function renderBreakdown() {
   const group = $('group').value, sort = $('sort').value;
   if (group !== 'models' || state.requestView && !report.models.some(r => r.name === state.requestView.model)) state.requestView = null;
   const focusedRequest = document.activeElement?.dataset;
-  $('breakdown').innerHTML = table([...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
+  let rows = [...report[group]].sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name)), paging = '';
+  if (group === 'sessions') {
+    const total = rows.length, limit = 25;
+    state.sessionOffset = Math.min(state.sessionOffset, Math.max(0, Math.ceil(total / limit) - 1) * limit);
+    const offset = state.sessionOffset, end = Math.min(offset + limit, total);
+    if (total > limit) paging = `<header class="session-paging"><span>${offset + 1}–${end} of ${number(total)} sessions</span><div class="request-paging"><button data-session-page-direction="previous" data-session-page="${Math.max(0, offset - limit)}"${offset === 0 ? ' disabled' : ''}>Previous</button><button data-session-page-direction="next" data-session-page="${end}"${end >= total ? ' disabled' : ''}>Next</button></div></header>`;
+    rows = rows.slice(offset, end);
+  }
+  $('breakdown').innerHTML = paging + table(rows, { models: 'Model', projects: 'Project', sessions: 'Session' }[group], true);
   if (focusedRequest) {
     const buttons = [...$('breakdown').querySelectorAll('button')];
-    if (focusedRequest.requestPageDirection) {
-      const paging = buttons.filter(b => b.dataset.requestPageDirection && !b.disabled);
-      (paging.find(b => b.dataset.requestPageDirection === focusedRequest.requestPageDirection) || paging[0] || buttons.find(b => b.dataset.requestId))?.focus({ preventScroll: true });
+    if (focusedRequest.requestPageDirection || focusedRequest.sessionPageDirection) {
+      const key = focusedRequest.sessionPageDirection ? 'sessionPageDirection' : 'requestPageDirection';
+      const paging = buttons.filter(b => b.dataset[key] && !b.disabled);
+      (paging.find(b => b.dataset[key] === focusedRequest[key]) || paging[0] || buttons.find(b => b.dataset.requestId) || $('group'))?.focus({ preventScroll: true });
     } else for (const key of ['requestModel', 'requestId', 'requestPage']) {
       if (focusedRequest[key] !== undefined) buttons.find(b => b.dataset[key] === focusedRequest[key])?.focus({ preventScroll: true });
     }
@@ -290,7 +299,7 @@ function render() {
   $('models-summary').innerHTML = hBars(r.models.slice(0, 8).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total') })), { width: Math.max(280, $('models-summary').clientWidth), textScale });
   $('projects-summary').innerHTML = table(r.projects.slice(0, 10), 'Project');
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
-  $('updated').textContent = `Updated ${new Date(r.generatedAt).toLocaleTimeString()}. Refreshes every 30 seconds while visible.`;
+  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
   renderBreakdown();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
 }
@@ -320,8 +329,12 @@ $('refresh').onclick = () => load(true);
 $('breakdown').onclick = async event => {
   const button = event.target.closest('button');
   if (!button || button.disabled) return;
-  const { requestModel, requestPage, requestId, requestRetry } = button.dataset;
-  if (requestModel !== undefined) {
+  const { requestModel, requestPage, requestId, requestRetry, sessionPage } = button.dataset;
+  if (sessionPage !== undefined && $('group').value === 'sessions') {
+    state.sessionOffset = Math.max(0, Number(sessionPage) || 0);
+    renderBreakdown();
+    $('live').textContent = `Showing sessions ${state.sessionOffset + 1}–${Math.min(state.sessionOffset + 25, state.report.sessions.length)}`;
+  } else if (requestModel !== undefined) {
     if (state.requestView?.model === requestModel) { state.requestView = null; renderBreakdown(); return; }
     state.requestView = { model: requestModel, offset: 0, version: 0, detailVersion: 0 };
     await loadRequestPage();
@@ -337,7 +350,8 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
-for (const id of ['group', 'sort', 'skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
+for (const id of ['group', 'sort']) $(id).onchange = () => { state.sessionOffset = 0; renderBreakdown(); };
+for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = renderBreakdown;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
   if (!button || state.skillActionPending) return;
@@ -401,8 +415,8 @@ document.addEventListener('pointermove', e => {
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
-setInterval(() => { if (!document.hidden && !state.pending) load(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(false, true); });
+setInterval(() => { if (!document.hidden && !state.pending) load(false, true); }, 60000);
 $('start-date').value = dayKey(localDay() - 6); $('end-date').value = dayKey(localDay());
 $('end-date').max = $('start-date').max = dayKey(localDay());
 load();

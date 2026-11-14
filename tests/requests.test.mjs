@@ -92,22 +92,81 @@ test('prompt lookup handles missing links, malformed lines, bounded text, and co
   assert.equal((await readRequestPrompts([dbOnly])).get('db-only').available, false);
 });
 
-test('request API exposes only selected local prompts and rechecks filters and enabled sources', async t => {
-  const { home } = await fixture(t, [user('p1', 'i1', 'Selected prompt'), receipt('call1'), assistant('call1', 'i1'),
+test('request API reuses history, reads prompts only for details, and rechecks enabled sources', async t => {
+  const { home, file } = await fixture(t, [user('p1', 'i1', 'Selected prompt'), receipt('call1'), assistant('call1', 'i1'),
     user('p2', 'i2', 'Unselected secret'), receipt('call2', { model: 'Other' }), assistant('call2', 'i2')]);
   const settings = createSettings(path.join(home, 'settings'));
-  const server = await startServer({ settings, defaultHome: home, now: () => now, html: 'test' });
+  const base = createScanner(), scans = [];
+  const scanner = { scan(roots, options) { scans.push(options); return base.scan(roots, options); } };
+  let clock = now;
+  const server = await startServer({ settings, scanner, defaultHome: home, now: () => clock, html: 'test' });
   t.after(() => server.close());
   const call = input => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
   const report = await (await call({ method: 'usage.report' })).json();
   assert.doesNotMatch(JSON.stringify(report), /Selected prompt|Unselected secret/);
+  await fs.rename(file, file + '.moved');
   const page = await (await call({ method: 'usage.requests', input: { model: 'Sonnet' } })).json();
   assert.equal(page.total, 1);
-  assert.equal(page.rows[0].prompt.text, 'Selected prompt');
-  assert.doesNotMatch(JSON.stringify(page), /Unselected secret|logFile|apiCallId/);
+  assert.doesNotMatch(JSON.stringify(page), /prompt|Selected prompt|Unselected secret|logFile|apiCallId/);
   const input = { model: 'Sonnet', id: page.rows[0].id };
+  assert.equal((await (await call({ method: 'usage.requests', input })).json()).rows[0].prompt.available, false);
+  await fs.rename(file + '.moved', file);
+  const detail = await (await call({ method: 'usage.requests', input })).json();
+  assert.equal(detail.rows[0].prompt.text, 'Selected prompt');
+  assert.doesNotMatch(JSON.stringify(detail), /Unselected secret|logFile|apiCallId/);
   assert.equal((await (await call({ method: 'usage.requests', input: { ...input, session: 'other' } })).json()).total, 0);
   assert.equal((await call({ method: 'usage.requests', input: { ...input, logFile: 'C:/secret' } })).status, 400);
+  clock = new Date(now.getTime() + 60000);
+  for (const range of ['1d', '7d', 'all']) {
+    const cached = await (await call({ method: 'usage.report', input: { range } })).json();
+    assert.equal(cached.scannedAt, report.scannedAt, 'filtering keeps the history timestamp');
+  }
+  assert.equal(scans.length, 1, 'paging, details, and filtering reuse the first scan');
+  await fs.appendFile(file, JSON.stringify(receipt('new-call')) + '\n');
+  assert.equal((await (await call({ method: 'usage.requests', input: { model: 'Sonnet' } })).json()).total, 1);
+  const updated = await (await call({ method: 'usage.report', refresh: true })).json();
+  assert.equal(updated.totals.requests, 3);
+  assert.equal(updated.scannedAt, clock.toISOString());
+  assert.equal(scans.length, 2);
+  assert.equal(scans.at(-1).force, false, 'automatic refresh keeps the incremental parser');
+  assert.equal((await (await call({ method: 'usage.requests', input: { model: 'Sonnet' } })).json()).total, 2);
+  await call({ method: 'usage.refresh' });
+  assert.equal(scans.length, 3);
+  assert.equal(scans.at(-1).force, true, 'manual refresh still forces a full scan');
   await settings.set({ disabledHomes: [home] });
   assert.equal((await (await call({ method: 'usage.requests', input })).json()).total, 0);
+  assert.equal(scans.length, 4, 'changing sources immediately invalidates cached history');
+  await settings.set({ disabledHomes: [], extraHomes: [path.join(home, 'another-home')] });
+  assert.equal((await (await call({ method: 'usage.requests', input })).json()).total, 1);
+  assert.equal(scans.length, 5);
+});
+
+test('history shares pending scans, retries errors, and cannot reuse a superseded source snapshot', async t => {
+  const config = { extraHomes: [], disabledHomes: [] }, pending = [];
+  const scanner = { scan(roots) { return new Promise((resolve, reject) => pending.push({ roots, resolve, reject })); } };
+  const server = await startServer({ settings: { get: async () => ({ ...config }) }, scanner, defaultHome: 'fixture', html: 'test', now: () => now });
+  t.after(() => server.close());
+  const call = () => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.requests', input: { model: 'Sonnet' } }) });
+  const first = call(), second = call();
+  while (!pending.length) await new Promise(setImmediate);
+  pending[0].resolve({ records: parse([receipt('old')]) });
+  assert.equal((await (await first).json()).total, 1);
+  assert.equal((await (await second).json()).total, 1);
+  assert.equal(pending.length, 1);
+  config.extraHomes = ['source-two'];
+  const failed = call();
+  while (pending.length < 2) await new Promise(setImmediate);
+  pending[1].reject(new Error('Temporary scan error'));
+  assert.equal((await failed).status, 500);
+  const retry = call();
+  while (pending.length < 3) await new Promise(setImmediate);
+  config.extraHomes = ['source-three'];
+  const newer = call();
+  while (pending.length < 4) await new Promise(setImmediate);
+  pending[3].resolve({ records: [] });
+  assert.equal((await (await newer).json()).total, 0);
+  pending[2].resolve({ records: parse([receipt('late')]) });
+  await retry;
+  assert.equal((await (await call()).json()).total, 0);
+  assert.equal(pending.length, 4, 'a late scan does not replace the current source snapshot');
 });

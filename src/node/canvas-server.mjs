@@ -16,6 +16,17 @@ export async function startServer({ settings = createSettings(), scanner = creat
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
+  let history;
+  function readHistory(config, { refresh = false, force = false } = {}) {
+    const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes]);
+    if (!history || history.key !== key || refresh || force) {
+      const entry = { key, promise: scanner.scan(roots, { disabled: config.disabledHomes, force })
+        .then(scan => ({ scan, scannedAt: now().toISOString() })) };
+      history = entry;
+      entry.promise.catch(() => { if (history === entry) history = undefined; });
+    }
+    return history.promise;
+  }
   const server = createServer({ maxHeaderSize: 8192 }, (req, res) => {
     const task = handle(req, res).catch(e => {
       if (!res.headersSent) json(res, 500, { error: e.message });
@@ -48,6 +59,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
       if (!message || typeof message !== 'object' || Array.isArray(message)) throw new TypeError('Expected an object');
       const input = message.input ?? {};
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('input must be an object');
+      if (message.refresh !== undefined && typeof message.refresh !== 'boolean') throw new TypeError('refresh must be a boolean');
       let result;
       if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
@@ -55,8 +67,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
         // Validate before opening any files.
         buildReport([], input, now());
         const config = await settings.get();
-        const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes, force: message.method === 'usage.refresh' });
-        result = { ...buildReport(scan.records, input, now(), scan), sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small' } };
+        const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
+        result = { ...buildReport(scan.records, input, now(), scan), scannedAt, sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small' } };
         await addInstalledSkillVersions(result.skills.rows);
         const inventory = await readIntegrations();
         result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
@@ -64,11 +76,13 @@ export async function startServer({ settings = createSettings(), scanner = creat
       } else if (message.method === 'usage.requests') {
         buildRequestPage([], input, now());
         const config = await settings.get();
-        const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes });
+        const { scan } = await readHistory(config);
         result = buildRequestPage(scan.records, input, now());
-        const ids = new Set(result.rows.map(row => row.id));
-        const prompts = await readRequestPrompts(scan.records.filter(r => ids.has(r.key)), { maxChars: input.id === undefined ? 160 : 12000 });
-        result.rows = result.rows.map(row => ({ ...row, prompt: prompts.get(row.id) }));
+        if (input.id !== undefined) {
+          const ids = new Set(result.rows.map(row => row.id));
+          const prompts = await readRequestPrompts(scan.records.filter(r => ids.has(r.key)), { maxChars: 12000 });
+          result.rows = result.rows.map(row => ({ ...row, prompt: prompts.get(row.id) }));
+        }
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();
