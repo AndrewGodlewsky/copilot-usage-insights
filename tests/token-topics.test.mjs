@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic } from '../src/panel/token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
 const formats = { number: value => value == null ? 'Unavailable' : String(value), credits: value => value == null ? 'Unavailable' : String(value) };
 const render = (id, report = {}) => renderTokenTopic(id, report, formats);
@@ -8,11 +8,25 @@ const render = (id, report = {}) => renderTokenTopic(id, report, formats);
 test('efficiency catalogs separate consumption from workflow findings without duplicating topics', () => {
   assert.deepEqual(TOKEN_TOPICS.map(t => t.id), ['overview', 'context', 'tools', 'results', 'cache', 'skills', 'prompts', 'delegation', 'output', 'drivers']);
   assert.deepEqual(TOKEN_TOPICS.map(t => t.group), ['', 'Context', 'Context', 'Context', 'Context', 'Context', 'Agent work', 'Agent work', 'Agent work', 'Spending']);
-  assert.ok(TOKEN_TOPICS.every(t => t.label && t.shortLabel));
+  assert.ok(TOKEN_TOPICS.every(t => t.label && t.iconPath));
   assert.deepEqual(PATTERN_TOPICS.map(t => t.id), ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models']);
   const all = [...TOKEN_TOPICS, ...PATTERN_TOPICS];
   assert.equal(new Set(all.map(t => t.id)).size, all.length);
   assert.ok(all.every(t => t.question));
+});
+
+test('each topic has a distinct decorative icon shared by its stop and framed lens', () => {
+  assert.equal(new Set(TOKEN_TOPICS.map(t => t.iconPath)).size, 10);
+  for (const topic of TOKEN_TOPICS) {
+    const icon = tokenTopicIcon(topic), lens = tokenTopicIcon(topic, true);
+    assert.ok(icon.includes(`<path d="${topic.iconPath}"/>`));
+    assert.ok(lens.includes(`<path d="${topic.iconPath}"/>`));
+    assert.match(icon, /viewBox="0 0 24 24"/);
+    assert.match(lens, /viewBox="0 0 36 36"/);
+    assert.match(lens, /stroke="#123953"/);
+    assert.match(icon, /aria-hidden="true" focusable="false"/);
+    assert.doesNotMatch(icon + lens, /undefined|NaN|<text/);
+  }
 });
 
 test('topic introductions handle absent measurements without invented zeros', () => {

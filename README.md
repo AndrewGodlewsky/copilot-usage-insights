@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.62** adds the draggable token explorer under **Efficiency → Where did the tokens go?**. Drag the blue lens, click a labelled stop, use arrow keys or Home/End, or choose Previous/Next to explore the ten sections. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.63** makes the token explorer shorter and fits all ten topic icons within the panel. The blue lens changes its symbol with the selected topic, whose full name remains visible below the track. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -231,9 +231,9 @@ The **Overview** section in **Where did the tokens go?** shows the input/output 
 
 Coverage is visible under summary values and in model-value tooltips. Missing data shows **Unavailable**, not zero. Explicit `cacheDetailsReported: false` is treated as missing cache detail even if placeholder zero counts exist. Older records may lack tool-definition counts. Definitions describe available tools; they are already part of input and do not measure tool-result size or per-skill cost.
 
-**Where did the tokens go?** has a horizontal token explorer, starting with **Overview**. Drag the blue inspection lens between sections, click a labelled stop, or use **Previous / Next**. With the lens focused, use arrow keys to move one section or **Home / End** to jump to either end. On narrow panels, scroll the track sideways; keyboard and button navigation bring the selected section into view. All sections are available immediately, and only one is shown at a time.
+**Where did the tokens go?** has a compact horizontal token explorer, starting with **Overview**. Drag the blue inspection lens between sections, click a topic icon, or use the **Previous / Next** arrows. With the lens focused, use arrow keys to move one section or **Home / End** to jump to either end. All ten stops fit the panel without horizontal scrolling. Hover over an icon for its full name; the buttons also have full names for screen readers. The lens changes its symbol with the selected topic, and the full selected title remains visible below the track. All sections are available immediately, and only one is shown at a time.
 
-The track groups **Always-loaded context**, **Tool and MCP footprint**, **Files, searches, and tool results**, **Cache reuse**, and **Skills and instruction footprint** under Context; **Work behind each prompt**, **Delegated work**, and **Reasoning and generated output** under Agent work; and **Biggest spend drivers** under Spending. The selected section's full title appears below the track.
+The section order is **Overview**, then **Always-loaded context**, **Tool and MCP footprint**, **Files, searches, and tool results**, **Cache reuse**, and **Skills and instruction footprint** under Context; **Work behind each prompt**, **Delegated work**, and **Reasoning and generated output** under Agent work; and **Biggest spend drivers** under Spending. The selected section's group and position appear above its title.
 
 **Worth a closer look** has its own **Section** dropdown, starting with **Findings**. Choose **Conversation habits**, **Context growth**, **Context reduction**, **Calls and recovery**, **Model changes and fresh starts**, **Repeated exploration**, or **Model comparisons**. Findings retains measured observations, practical experiments, comparison guidance, and positive cache-reuse findings.
 

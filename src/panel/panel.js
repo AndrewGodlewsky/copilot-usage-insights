@@ -3,7 +3,7 @@ import { pixelBanner, nextBuildingPatterns } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
-import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic } from './token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 
 const $ = id => document.getElementById(id);
@@ -569,34 +569,24 @@ function showEfficiencySection(section) {
   selectButton('efficiency-sections', 'efficiencySection', section);
   $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
-  if (section === 'tokens') keepTokenStopVisible();
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
-let draggingTokenLens = false;
 const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
 const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
 $('efficiency-topic').max = String(TOKEN_TOPICS.length - 1);
 $('token-track-inner').style.setProperty('--token-topic-count', TOKEN_TOPICS.length);
-$('token-track-groups').innerHTML = [...new Set(TOKEN_TOPICS.map(topic => topic.group))].map(group => `<span style="grid-column:span ${TOKEN_TOPICS.filter(topic => topic.group === group).length}">${esc(group || 'Summary')}</span>`).join('');
 $('token-track-nodes').innerHTML = TOKEN_TOPICS.map(topic => `<span data-token-node="${topic.id}"></span>`).join('');
-$('token-topic-stops').innerHTML = TOKEN_TOPICS.map(topic => `<button data-token-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="token-topic-content">${esc(topic.shortLabel).replaceAll('\n', '<br>')}</button>`).join('');
-function keepTokenStopVisible() {
-  if (draggingTokenLens) return;
-  const stop = $('token-topic-stops').querySelector(`[data-token-stop="${tokenTopic}"]`);
-  if (!stop) return;
-  const bounds = stop.getBoundingClientRect(), track = $('token-track-scroll').getBoundingClientRect();
-  if (track.width && (bounds.left < track.left + 8 || bounds.right > track.right - 8)) {
-    $('token-track-scroll').scrollBy({ left: bounds.left - track.left - (track.width - bounds.width) / 2, behavior: 'instant' });
-  }
-}
+$('token-topic-stops').innerHTML = TOKEN_TOPICS.map(topic => `<button data-token-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="token-topic-content">${tokenTopicIcon(topic)}</button>`).join('');
 function syncTokenNavigation() {
   const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic), topic = TOKEN_TOPICS[index];
   $('efficiency-topic').value = String(index);
+  $('efficiency-topic').title = topic.label;
+  $('efficiency-topic').style.setProperty('--lens-icon', `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
   $('efficiency-topic').setAttribute('aria-valuetext', `${topic.label}, section ${index + 1} of ${TOKEN_TOPICS.length}`);
   for (const button of $('token-topic-stops').querySelectorAll('[data-token-stop]')) button.setAttribute('aria-current', String(button.dataset.tokenStop === tokenTopic));
   for (const node of $('token-track-nodes').querySelectorAll('[data-token-node]')) node.classList.toggle('current', node.dataset.tokenNode === tokenTopic);
-  $('token-topic-position').textContent = `${topic.group || 'Summary'} · Section ${index + 1} of ${TOKEN_TOPICS.length}`;
+  $('token-topic-position').textContent = `${topic.group || 'Summary'} · ${index + 1} of ${TOKEN_TOPICS.length}`;
   $('token-selected-title').textContent = topic.label;
   $('token-topic-prev').disabled = index === 0;
   $('token-topic-next').disabled = index === TOKEN_TOPICS.length - 1;
@@ -609,7 +599,6 @@ function showTokenTopic(id, announce = false) {
     renderSelectedTokenTopic();
     if (announce) $('token-topic-announcement').textContent = `Showing ${TOKEN_TOPICS.find(topic => topic.id === id).label}`;
   }
-  keepTokenStopVisible();
 }
 function renderSelectedTokenTopic() {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
@@ -628,15 +617,6 @@ function renderSelectedTokenTopic() {
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
-$('efficiency-topic').onchange = keepTokenStopVisible;
-$('efficiency-topic').onpointerdown = () => { draggingTokenLens = true; };
-function finishTokenDrag() {
-  if (!draggingTokenLens) return;
-  draggingTokenLens = false;
-  keepTokenStopVisible();
-}
-window.addEventListener('pointerup', finishTokenDrag);
-window.addEventListener('pointercancel', finishTokenDrag);
 $('efficiency-topic').onkeydown = event => {
   const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic);
   const keys = { ArrowRight: index + 1, ArrowUp: index + 1, ArrowLeft: index - 1, ArrowDown: index - 1, Home: 0, End: TOKEN_TOPICS.length - 1 };
@@ -687,7 +667,6 @@ function renderEfficiency() {
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   renderSelectedTokenTopic();
-  keepTokenStopVisible();
   showPatternTopic(patternTopic);
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {

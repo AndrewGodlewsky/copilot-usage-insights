@@ -46,15 +46,13 @@
       <div class="controls efficiency-navigation"><div class="seg" id="efficiency-sections" role="group" aria-label="Efficiency dashboards"><button data-efficiency-section="tokens" aria-pressed="true" aria-controls="efficiency-tokens-panel">Where did the tokens go?</button><button data-efficiency-section="patterns" aria-pressed="false" aria-controls="efficiency-patterns-panel">Worth a closer look</button><button data-efficiency-section="review" aria-pressed="false" aria-controls="efficiency-review-panel">AI review</button></div></div>
       <section id="efficiency-tokens-panel" aria-label="Where did the tokens go?">
       <div class="token-explorer">
-        <div class="token-explorer-heading"><h2>Explore your token usage</h2><p id="token-explorer-instructions" class="footnote">Drag the blue lens or click a section. With the lens focused, use arrow keys or Home/End.</p></div>
-        <div class="token-track-scroll" id="token-track-scroll"><div class="token-track-inner" id="token-track-inner">
-          <div class="token-track-groups" id="token-track-groups" aria-hidden="true"></div>
+        <p id="token-explorer-instructions" class="sr-only">Drag the blue lens or click a section icon. With the lens focused, use arrow keys or Home/End.</p>
+        <div class="token-track-inner" id="token-track-inner">
           <div class="token-track"><div class="token-track-nodes" id="token-track-nodes" aria-hidden="true"></div><input id="efficiency-topic" type="range" min="0" step="1" value="0" aria-label="Token usage section" aria-controls="token-topic-content" aria-describedby="token-explorer-instructions token-topic-hint"></div>
           <nav class="token-topic-stops" id="token-topic-stops" aria-label="Jump to a token usage section"></nav>
-        </div></div>
-        <p class="footnote token-scroll-hint">↔ Scroll sideways if needed. Every section is available.</p>
-        <div class="token-explorer-current"><div><span id="token-topic-position" class="footnote"></span><strong id="token-selected-title"></strong></div><div class="token-step-buttons"><button id="token-topic-prev" aria-label="Previous token usage section" aria-controls="token-topic-content" disabled>← Previous</button><button id="token-topic-next" aria-label="Next token usage section" aria-controls="token-topic-content">Next →</button></div></div>
-        <p id="token-topic-hint" class="footnote">Explore one section at a time. These views can overlap; their token counts are not added together.</p>
+        </div>
+        <div class="token-explorer-current"><div><span id="token-topic-position" class="footnote"></span><strong id="token-selected-title"></strong></div><div class="token-step-buttons"><button id="token-topic-prev" aria-label="Previous token usage section" title="Previous section" aria-controls="token-topic-content" disabled>←</button><button id="token-topic-next" aria-label="Next token usage section" title="Next section" aria-controls="token-topic-content">→</button></div></div>
+        <p id="token-topic-hint" class="footnote">These views overlap; do not add their token counts together.</p>
         <span id="token-topic-announcement" class="sr-only" role="status"></span>
       </div>
       <div id="token-topic-content">

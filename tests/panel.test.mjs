@@ -5,7 +5,7 @@ import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
-import { TOKEN_TOPICS } from '../src/panel/token-topics.mjs';
+import { TOKEN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -28,25 +28,16 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     let markup = '', children = [];
     Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) {
       markup = value;
-      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest], index) => {
+      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest]) => {
         const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
         return { dataset: { [kind === 'stop' ? 'tokenStop' : 'tokenNode']: topic },
           setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
           classList: { toggle(key, on) { this[key] = on; } },
-          getBoundingClientRect: () => ({ left: index * 78 - (get('token-track-scroll').scrollLeft || 0), right: (index + 1) * 78 - (get('token-track-scroll').scrollLeft || 0), width: 78 }),
         };
       });
     } });
     get(id).querySelectorAll = () => children;
     get(id).querySelector = selector => children.find(child => Object.values(child.dataset).includes(selector.match(/="([^"]+)"/)?.[1])) || null;
-  }
-  if (nodes.has('token-track-scroll')) {
-    get('token-track-scroll').scrolls = [];
-    get('token-track-scroll').getBoundingClientRect = () => ({ left: 0, right: 360, width: 360 });
-    get('token-track-scroll').scrollBy = options => {
-      get('token-track-scroll').scrolls.push(options);
-      get('token-track-scroll').scrollLeft = Math.max(0, Math.min(420, (get('token-track-scroll').scrollLeft || 0) + options.left));
-    };
   }
   for (const [, id, choices] of html.matchAll(/<select[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
     const options = [...choices.matchAll(/<option value="([^"]*)"([^>]*)>/g)];
@@ -1534,7 +1525,7 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   assert.equal(document.activeElement, get('efficiency-context-read'));
   assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
   assert.equal(get('token-selected-title').textContent, 'Always-loaded context');
-  assert.equal(get('token-topic-position').textContent, 'Context · Section 2 of 10');
+  assert.equal(get('token-topic-position').textContent, 'Context · 2 of 10');
   assert.equal(get('efficiency-topic').getAttribute('aria-valuetext'), 'Always-loaded context, section 2 of 10');
   assert.equal(get('token-topic-stops').querySelector('[data-token-stop="context"]').getAttribute('aria-current'), 'true');
 });
@@ -1548,7 +1539,6 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
   assert.equal(lens.getAttribute('min'), '0');
   assert.equal(lens.max, '9');
   assert.equal(lens.getAttribute('aria-label'), 'Token usage section');
-  assert.match(get('token-track-groups').innerHTML, /Summary.*span 5.*Context.*span 3.*Agent work.*Spending/);
   assert.equal(lens.value, '0');
   assert.equal(get('token-topic-prev').disabled, true);
   assert.equal(get('token-topic-next').disabled, false);
@@ -1559,7 +1549,10 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
     assert.equal(document.activeElement, lens);
     assert.equal(get('token-selected-title').textContent, topic.label);
     assert.equal(lens.getAttribute('aria-valuetext'), `${topic.label}, section ${index + 1} of 10`);
+    assert.equal(lens.title, topic.label);
+    assert.equal(lens.style['--lens-icon'], `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
     assert.equal(stops[index].getAttribute('aria-label'), topic.label);
+    assert.equal(stops[index].getAttribute('title'), topic.label, 'icon buttons retain full hover names');
     assert.equal(stops.filter(b => b.getAttribute('aria-current') === 'true').length, 1);
     assert.equal(stops[index].getAttribute('aria-current'), 'true');
     assert.deepEqual(nodes.map(n => n.classList.current), TOKEN_TOPICS.map((_, i) => i === index));
@@ -1571,22 +1564,23 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
   jumpTokenTopic(get, 'tools');
   let renders = 0, body = get('token-topic-body').innerHTML;
   Object.defineProperty(get('token-topic-body'), 'innerHTML', { get: () => body, set(value) { renders++; body = value; } });
-  lens.oninput(); lens.onchange(); jumpTokenTopic(get, 'tools');
-  assert.equal(renders, 0, 'same stop and drag release do not rerender');
+  lens.oninput(); lens.oninput(); jumpTokenTopic(get, 'tools');
+  assert.equal(renders, 0, 'repeated input on the same stop does not rerender');
   jumpTokenTopic(get, 'results');
   assert.equal(renders, 1);
   assert.equal(requests.length, before, 'navigation never fetches or inspects context');
   await get('refresh').onclick();
   get('model').value = 'Alpha'; await get('model').onchange();
   assert.equal(lens.value, '3');
+  assert.equal(lens.style['--lens-icon'], `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(TOKEN_TOPICS[3], true))}")`);
   assert.equal(document.activeElement, lens);
   assert.equal(renders, 3, 'fresh reports update the selected content');
   assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]')[0], stops[0], 'stop nodes are never rebuilt');
 });
 
-test('token explorer keyboard and buttons respect endpoints and scroll without interrupting a drag', async () => {
-  const { get, requests, document, windowListeners } = await requestPanel();
-  const lens = get('efficiency-topic'), track = get('token-track-scroll');
+test('compact token explorer retains keyboard, direct jumps, and endpoint focus', async () => {
+  const { get, requests, document } = await requestPanel();
+  const lens = get('efficiency-topic');
   lens.focus();
   const before = requests.length;
   const key = (name, expected) => {
@@ -1599,9 +1593,7 @@ test('token explorer keyboard and buttons respect endpoints and scroll without i
   key('ArrowLeft', 0); key('ArrowDown', 0); key('ArrowRight', 1); key('ArrowUp', 2);
   key('End', 9); key('ArrowRight', 9); key('ArrowUp', 9);
   assert.equal(get('token-topic-next').disabled, true);
-  assert.ok(track.scrollLeft > 0);
   key('Home', 0);
-  assert.equal(track.scrollLeft, 0);
   assert.equal(get('token-topic-prev').disabled, true);
   lens.onkeydown({ key: 'Tab', preventDefault() { assert.fail('Tab keeps native focus navigation'); } });
   get('token-topic-next').onclick();
@@ -1616,23 +1608,16 @@ test('token explorer keyboard and buttons respect endpoints and scroll without i
   assert.equal(lens.value, '0');
   assert.equal(get('token-topic-prev').disabled, true);
   assert.equal(document.activeElement, lens, 'endpoint button hands focus to the lens before it becomes unavailable');
-  lens.onpointerdown();
-  track.scrolls.length = 0;
-  lens.value = '9'; lens.oninput(); lens.onchange();
-  assert.equal(get('token-selected-title').textContent, 'Biggest spend drivers', 'content changes during the drag');
-  assert.equal(track.scrolls.length, 0, 'no programmatic scrolling during a drag');
-  windowListeners.get('pointerup')();
-  assert.ok(track.scrollLeft > 0, 'released lens can be brought into view');
+  lens.value = '9'; lens.oninput();
+  assert.equal(get('token-selected-title').textContent, 'Biggest spend drivers', 'input changes the content immediately');
   assert.equal(document.activeElement, lens);
   jumpTokenTopic(get, 'overview');
-  assert.equal(track.scrollLeft, 0);
+  assert.equal(lens.value, '0');
   assert.equal(get('token-topic-announcement').textContent, 'Showing Overview');
-  lens.onpointerdown(); windowListeners.get('pointercancel')(); key('End', 9);
-  assert.ok(track.scrollLeft > 0, 'canceled pointer does not block later navigation');
+  key('End', 9);
   get('token-topic-next').onclick();
   assert.equal(lens.value, '9');
   assert.equal(requests.length, before);
-  assert.ok(track.scrolls.every(s => s.behavior === 'instant' && !('top' in s)), 'navigation never animates or scrolls the page vertically');
 });
 
 test('Efficiency panels live only in their assigned dashboard and AI review stays separate', async () => {

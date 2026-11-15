@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.63",
+    "summary": "Made the token explorer shorter and flexible enough to fit narrow panels without a horizontal scrollbar. Small topic icons replace the labels, the blue lens changes its symbol as you move, and the selected section's full title stays visible."
+  },
+  {
     "version": "0.1.62",
     "summary": "Replaced the token-section dropdown with a draggable blue inspection lens and labelled stops. Explore all ten sections by dragging, clicking, using the keyboard, or choosing Previous and Next; your selection stays in place when data refreshes."
   },
