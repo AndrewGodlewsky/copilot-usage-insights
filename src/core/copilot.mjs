@@ -56,6 +56,8 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         sessionId = textValue(e.data?.sessionId) || sessionId;
         cwd = textValue(e.data?.context?.cwd);
         project = textValue(e.data?.context?.repository);
+        // Older review exports had this label and no working directory. Keep them in the same project.
+        if (!cwd && project === 'Usage Insights AI Review') project = 'Usage Insights';
       } else if (e?.type === 'session.context_changed') {
         cwd = textValue(e.data?.cwd) || cwd;
         project = textValue(e.data?.repository) || cwd.split(/[\\/]/).filter(Boolean).at(-1) || project;

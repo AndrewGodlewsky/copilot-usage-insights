@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.68",
+    "summary": "All AI Review usage now appears under one project named Usage Insights, with a separate session for each review. Earlier reviews join the same project without changing their saved accounting."
+  },
+  {
     "version": "0.1.67",
     "summary": "AI Review now refreshes recorded usage as soon as a run finishes, including cancelled or failed runs. New reviews also handle long Copilot call identifiers correctly so live and saved copies of the same charge count only once."
   },

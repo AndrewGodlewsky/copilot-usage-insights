@@ -163,7 +163,7 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
         data: {
             sessionId,
             context: {
-                repository: 'Usage Insights AI Review'
+                repository: 'Usage Insights'
             }
         }
     }) + '\n';

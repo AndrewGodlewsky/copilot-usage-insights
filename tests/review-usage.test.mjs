@@ -68,7 +68,7 @@ test('writes an isolated project and allowlisted accounting receipt without payl
         assert.equal(lines.length, 1);
         assert.equal(lines[0].type, 'session.start');
         assert.equal(lines[0].data.sessionId, first);
-        assert.equal(lines[0].data.context.repository, 'Usage Insights AI Review');
+        assert.equal(lines[0].data.context.repository, 'Usage Insights');
         assert.equal(workspace.id, first);
         assert.match(workspace.name, /^Usage Insights AI Review · /);
         recorder.record(event());

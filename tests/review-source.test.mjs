@@ -7,6 +7,7 @@ import { createSettings } from '../src/node/settings.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { createUsageRecorder } from '../src/node/review-usage.mjs';
 import { ReviewError } from '../src/node/ai-review.mjs';
+import { createReceiptParser } from '../src/core/copilot.mjs';
 
 const now = new Date('2026-11-14T12:00:00.000Z');
 const firstId = '11111111-1111-4111-8111-111111111111';
@@ -29,7 +30,7 @@ test('actual AI review writer feeds the existing scanner and remains separate fr
   writer.record({ ...usage, type: 'assistant.usage', data: { ...usage.data.usage, prompt: 'PRIVATE', content: 'PRIVATE' } });
   writer.record({ ...usage, id: 'durable-copy' }); await writer.flush();
   const report = await request();
-  assert.equal(report.projects[0].name, 'Usage Insights AI Review');
+  assert.equal(report.projects[0].name, 'Usage Insights');
   assert.equal(report.sessions[0].name.startsWith('Usage Insights AI Review'), true);
   assert.equal(report.totals.requests, 1); assert.equal(report.totals.credits, 0.25); assert.equal(report.totals.total, 120);
   assert.equal(report.projects[0].userPrompts, null);
@@ -85,7 +86,7 @@ test('automatic AI Review source groups helpers separately with exact tokens and
   assert.deepEqual([report.totals.requests, report.totals.inputTotal, report.totals.input, report.totals.output,
     report.totals.cacheRead, report.totals.cacheWrite, report.totals.total, report.totals.credits], [2, 300, 160, 60, 120, 20, 360, 1]);
   assert.equal(report.projects.length, 1);
-  assert.equal(report.projects[0].name, 'Usage Insights AI Review');
+  assert.equal(report.projects[0].name, 'Usage Insights');
   assert.equal(report.projects[0].userPrompts, null, 'accounting-only exports do not invent human submissions');
   assert.equal(report.promptCredits.averageCredits, null);
   assert.equal(report.promptCredits.eligiblePrompts, 0);
@@ -95,9 +96,41 @@ test('automatic AI Review source groups helpers separately with exact tokens and
   const source = report.sources.find(source => source.path === home);
   assert.equal(source.state, 'ok');
   assert.equal(source.records, 2);
-  const sessions = await request('usage.sessions', { range: 'all', model: 'fixture-model', project: 'Usage Insights AI Review' });
+  const sessions = await request('usage.sessions', { range: 'all', model: 'fixture-model', project: 'Usage Insights' });
   assert.equal(sessions.total, 2);
   assert.deepEqual(sessions.rows.map(session => session.total).sort((a, b) => a - b), [120, 240]);
+});
+
+test('legacy and new reviews share one project while retaining separate sessions and original files', async t => {
+  const { dir, home, settings, request } = await fixture(t);
+  await writeSession(home, firstId, [receipt(firstId, 'legacy')]);
+  const legacyFile = path.join(home, 'session-state', firstId, 'events.jsonl');
+  const original = await fs.readFile(legacyFile, 'utf8');
+  const writer = await createUsageRecorder(secondId, home);
+  writer.record(receipt(secondId, 'new')); await writer.flush();
+  const copy = path.join(dir, 'copied-home');
+  await fs.cp(home, copy, { recursive: true });
+  await settings.set({ extraHomes: [copy] });
+  for (const refresh of [false, true]) {
+    const report = await request('usage.report', { range: 'all', project: 'Usage Insights' }, refresh);
+    assert.deepEqual(report.projects.map(p => p.name), ['Usage Insights']);
+    assert.equal(report.totals.requests, 2);
+    assert.equal(report.totals.credits, 0.5);
+    assert.equal(report.totals.total, 240);
+    assert.deepEqual(new Set(report.sessions.map(s => s.id)), new Set([firstId, secondId]));
+    const sessions = await request('usage.sessions', { range: 'all', model: 'fixture-model', project: 'Usage Insights' });
+    assert.equal(sessions.total, 2);
+  }
+  assert.equal(await fs.readFile(legacyFile, 'utf8'), original, 'read-time alias never rewrites historical accounting');
+});
+
+test('review project alias leaves working repositories and other helper projects alone', () => {
+  for (const context of [{ repository: 'Usage Insights AI Review', cwd: '/working/repository' }, { repository: 'Enhanced Prompt' }]) {
+    const parser = createReceiptParser({ sessionId: firstId, source: 'fixture' });
+    parser.push(JSON.stringify({ type: 'session.start', data: { sessionId: firstId, context } }));
+    parser.push(JSON.stringify(receipt(firstId, 'call')));
+    assert.equal(parser.snapshot().records[0].project, context.repository);
+  }
 });
 
 test('completed reviews invalidate a previously cached report and opaque call IDs count once', async t => {
@@ -122,7 +155,7 @@ test('completed reviews invalidate a previously cached report and opaque call ID
     const report = await f.request('usage.report', { range: 'all' }, refresh);
     assert.equal(report.totals.requests, 1);
     assert.equal(report.totals.credits, 0.25);
-    assert.equal(report.projects[0].name, 'Usage Insights AI Review');
+    assert.equal(report.projects[0].name, 'Usage Insights');
   }
   const copied = path.join(f.dir, 'copied-home');
   await fs.cp(home, copied, { recursive: true });

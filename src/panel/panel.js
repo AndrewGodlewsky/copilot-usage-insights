@@ -520,9 +520,9 @@ $('review-send').onclick = async () => {
   try {
     const result = await request('review.run', { prompt: $('efficiency-review-output').value, expectedModel: preparedReviewModel });
     $('review-answer').textContent = result.text;
-    $('review-result-context').textContent = `${result.model} · Snapshot sent ${capturedAt}. Later filter changes do not change this review. Recorded usage is grouped under Usage Insights AI Review and follows your dashboard filters.`;
+    $('review-result-context').textContent = `${result.model} · Snapshot sent ${capturedAt}. Later filter changes do not change this review. Recorded usage is grouped under Usage Insights and follows your dashboard filters.`;
     $('review-result').hidden = false;
-    $('efficiency-review-status').textContent = 'Review complete. Usage is recorded under Usage Insights AI Review; your current filters still apply.';
+    $('efficiency-review-status').textContent = 'Review complete. Usage is recorded under Usage Insights; your current filters still apply.';
     $('efficiency-review-dialog').close();
     $('review-answer').focus();
   } catch (error) { $('efficiency-review-status').textContent = error.message; }
