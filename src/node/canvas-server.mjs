@@ -11,6 +11,8 @@ import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { localDay } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
+import { prepareInsightReview } from './review-evidence.mjs';
+import { loadReviewGuidance } from './review-insights.mjs';
 import { createWslDiscovery } from './wsl-sources.mjs';
 import { createVSCodeSources } from './vscode-sources.mjs';
 
@@ -34,7 +36,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
-  let history, reviewRequest;
+  let history, reviewRequest, preparedReview, contextSnapshot;
   // Reports already built from the current scan, by filter. A scan is never altered once it is
   // returned, so a report stays right until the scan is replaced, the local day changes, or
   // something dated later than the report's own moment comes due.
@@ -121,8 +123,16 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
         result = savedDiagnosticSnapshot();
-      } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.cancel'].includes(message.method)) {
-        if (Object.keys(input).some(key => message.method !== 'review.run' || !['prompt', 'expectedModel'].includes(key))) throw new TypeError('Unexpected review options.');
+      } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel'].includes(message.method)) {
+        const allowed = message.method === 'review.run' ? ['prompt', 'expectedModel'] : message.method === 'review.prepare' ? ['filters'] : message.method === 'review.analyze' ? ['snapshotId', 'expectedModel', 'expectedReasoning', 'allowSamples'] : [];
+        if (Object.keys(input).some(key => !allowed.includes(key))) throw new TypeError('Unexpected review options.');
+        if (message.method === 'review.prepare') {
+          const f = input.filters;
+          if (!f || typeof f !== 'object' || Array.isArray(f) || Object.keys(f).some(k => !['range', 'startDate', 'endDate', 'models', 'project', 'session', 'environment', 'includeCache'].includes(k))) throw new TypeError('Invalid review filters.');
+          for (const key of ['project', 'session']) if (f[key] !== undefined && (typeof f[key] !== 'string' || f[key].length > 8192)) throw new TypeError('Invalid review filters.');
+          buildReport([], f, now());
+        }
+        if (message.method === 'review.analyze' && (typeof input.snapshotId !== 'string' || typeof input.allowSamples !== 'boolean' || !['default', 'medium', 'high'].includes(input.expectedReasoning))) throw new TypeError('Invalid analysis options.');
         if (message.method === 'review.cancel') { reviewRequest?.abort(new ReviewError('cancelled')); reviewService.cancel(); result = { ok: true }; }
         else {
           if (message.method === 'review.run' && (typeof input.prompt !== 'string' || !input.prompt.trim() || Buffer.byteLength(input.prompt) > 48 * 1024)) throw new TypeError('Review snapshot must be nonempty and no larger than 48 KiB.');
@@ -139,13 +149,35 @@ export async function startServer({ settings = createSettings(), scanner, defaul
             clearTimeout(timer);
             if (res.destroyed || controller.signal.aborted) throw new ReviewError('cancelled');
             if (message.method === 'review.run' && (!input.expectedModel || input.expectedModel !== config.reviewModel)) throw new ReviewError('model');
-            result = message.method === 'review.catalog' ? await reviewService.catalog(controller.signal)
+            if (message.method === 'review.prepare') {
+              if (!history) throw new ReviewError('snapshot');
+              const { scan } = await Promise.race([history.promise, aborted]);
+              const snapshot = await prepareInsightReview(scan, input.filters, now(), contextSnapshot);
+              snapshot.guide = await loadReviewGuidance([...new Set(snapshot.payload.evidence.map(e => e.topic))]);
+              const catalog = config.reviewModel ? await reviewService.catalog(controller.signal) : { models: [] };
+              const supported = catalog.models.find(m => m.id === config.reviewModel)?.reasoningEfforts || [];
+              snapshot.model = config.reviewModel || '';
+              snapshot.savedReasoning = config.reviewReasoning;
+              snapshot.reasoningEffort = config.reviewReasoning || (supported.includes('medium') ? 'medium' : 'default');
+              controller.signal.throwIfAborted();
+              preparedReview = snapshot;
+              result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, capturedAt: snapshot.payload.capturedAt,
+                model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0 };
+            } else if (message.method === 'review.analyze') {
+              const snapshot = preparedReview;
+              if (!snapshot || snapshot.id !== input.snapshotId) throw new ReviewError('snapshot');
+              if (!input.expectedModel || input.expectedModel !== snapshot.model || config.reviewModel !== snapshot.model) throw new ReviewError('model');
+              if (input.expectedReasoning !== snapshot.reasoningEffort || config.reviewReasoning !== snapshot.savedReasoning) throw new ReviewError('effort');
+              preparedReview = undefined;
+              result = { ...await reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples: input.allowSamples }, controller.signal),
+                scope: snapshot.scope, capturedAt: snapshot.payload.capturedAt, filterKey: snapshot.filters };
+            } else result = message.method === 'review.catalog' ? await reviewService.catalog(controller.signal)
               : message.method === 'review.reconnect' ? await reviewService.reconnect(config.reviewModel, controller.signal)
                 : await reviewService.review({ model: config.reviewModel, prompt: input.prompt }, controller.signal);
           } catch (error) { throw safeReviewError(error); }
           finally {
             // Cancelled or failed reviews can also leave billed usage behind.
-            if (message.method === 'review.run') history = undefined;
+            if (['review.run', 'review.analyze'].includes(message.method)) history = undefined;
             clearTimeout(timer); controller.signal.removeEventListener('abort', rejectAborted); res.removeListener('close', disconnected);
             if (reviewRequest === controller) reviewRequest = undefined;
           }
@@ -153,6 +185,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       } else if (message.method === 'efficiency.context') {
         if (Object.keys(input).length) throw new TypeError('Context inspection does not accept options.');
         result = await diagnostics.measure('context.read', {}, readContext);
+        contextSnapshot = result;
       } else if (message.method === 'usage.inventory') {
         if (Object.keys(input).length) throw new TypeError('Inventory does not accept filters.');
         result = await diagnostics.measure('inventory.read', {}, readIntegrations);
@@ -227,6 +260,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         diagnostics.record('info', 'server.closing');
         const closed = new Promise((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
         reviewRequest?.abort(new ReviewError('cancelled'));
+        preparedReview = contextSnapshot = undefined;
         await reviewService.close();
         server.closeIdleConnections();
         await Promise.allSettled([...pending]);

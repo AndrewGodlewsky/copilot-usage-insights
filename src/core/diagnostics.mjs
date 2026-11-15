@@ -3,12 +3,12 @@ export const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 
   'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response',
   'wsl.discovery', 'history.scan', 'history.source']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
-for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
+for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', 'SNAPSHOT', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
-for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode']) numericFields.add(field);
+for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode', 'pass', 'inputChars', 'cards', 'samples']) numericFields.add(field);
 const enumFields = {
   method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels', 'efficiency.context']),
   range: new Set(['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']),
@@ -25,7 +25,7 @@ const enumFields = {
   arch: new Set(['x64', 'arm64', 'ia32', 'arm']),
   directive: new Set(['connect-src', 'default-src']),
 };
-for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
+for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
 
 // Error messages and arbitrary stack text can contain prompts, paths, or credentials.
 export function diagnosticError(error) {
@@ -51,7 +51,7 @@ export function createDiagnostics({ limit = 300, clock = () => new Date(), tick 
       else if (booleanFields.has(key) && typeof value === 'boolean') entry[key] = value;
       else if (Object.hasOwn(enumFields, key) && enumFields[key].has(value)) entry[key] = value;
       else if (key === 'errorType' && errorTypes.has(value) || key === 'errorCode' && errorCodes.has(value)) entry[key] = value;
-      else if (['pluginVersion', 'nodeVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
+      else if (['pluginVersion', 'nodeVersion', 'guidanceVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
       else if (key === 'locations' && Array.isArray(value)) entry.locations = value.filter(v => typeof v === 'string' && new RegExp(`^(?:(?:${sourceFiles})\\.mjs|panel/index\\.html):\\d+:\\d+$`).test(v)).slice(0, 5);
     }
     entries.push(entry);

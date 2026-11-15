@@ -162,7 +162,9 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 
 #projects-summary .model-toggle:hover,#projects-summary .model-toggle:focus-visible{background:transparent;text-decoration:underline;text-underline-offset:3px}
 
-#review-answer{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7;margin-top:16px;max-width:90ch}.review-settings-actions{margin-top:12px;flex-wrap:wrap}#review-connection-status,#review-send-model{overflow-wrap:anywhere}
+#review-answer{overflow-wrap:anywhere;margin-top:16px}.review-settings-actions{margin-top:12px;flex-wrap:wrap}#review-connection-status,#review-send-model{overflow-wrap:anywhere}
+.review-card-grid{--review-accent:#74b5ed;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px;align-items:start}
+.light .review-card-grid{--review-accent:#00686b}.review-insight{padding:0;background:var(--bg);min-width:0;overflow:hidden}.review-insight summary{display:block;padding:16px;color:var(--fg);list-style:none;min-height:165px}.review-insight summary::-webkit-details-marker{display:none}.review-insight summary:hover .review-card-title{text-decoration:underline;text-underline-offset:3px}.review-insight summary:focus-visible{outline-offset:-3px}.review-card-title{display:block;font-weight:600;font-size:calc(13px * var(--text-scale))}.review-stat{display:block;margin:12px 0;font-size:calc(32px * var(--text-scale));font-weight:600;color:var(--review-accent);line-height:1.15}.review-unit,.review-small-label{display:block;font-size:calc(11px * var(--text-scale));color:var(--muted-fg);font-weight:400;margin-top:5px}.review-confidence{display:flex;justify-content:space-between;color:var(--muted-fg);font-size:calc(11px * var(--text-scale));gap:8px}.review-confidence>span{font-size:calc(15px * var(--text-scale));color:var(--review-accent)}.review-insight[open]{grid-column:1/-1}.review-insight[open] summary{min-height:0;max-width:360px}.review-insight[open] .review-confidence>span{transform:rotate(45deg)}.review-card-detail{padding:0 16px 16px;max-width:95ch}.review-card-detail>p{margin-bottom:16px}.review-evidence{border-left:2px solid var(--border);padding-left:12px;margin:12px 0}.review-card-detail dl{margin:16px 0 0;display:grid;gap:14px}.review-card-detail dt{font-weight:600}.review-card-detail dd{margin:4px 0 0;color:var(--muted-fg)}.review-comparison{display:grid;gap:7px;margin:10px 0}.review-comparison b{color:var(--review-accent);font-size:calc(19px * var(--text-scale))}.review-mini-bar{display:block;height:4px;background:var(--review-accent);border-radius:2px;margin-top:3px}.review-trend{display:block;margin:10px 0;color:var(--review-accent)}.review-trend svg{display:block;width:100%;height:56px}.review-trend-endpoints{font-size:calc(19px * var(--text-scale));font-weight:600}.review-trend-endpoints>span{font-size:calc(11px * var(--text-scale));color:var(--muted-fg);font-weight:400}.review-preview,.review-sample-option{margin:14px 0}.review-preview textarea{margin-top:6px}.review-empty{padding:12px 0}.review-insight summary:focus-visible{outline-color:var(--review-accent)}
 
 #coverage{display:flex;align-items:flex-start;gap:12px}#coverage>div{flex:1;min-width:0}#coverage-review{margin-top:8px}#coverage-dismiss{flex-shrink:0;min-width:28px;min-height:28px;padding:0 6px;border:0;background:transparent;font-size:calc(18px * var(--text-scale));line-height:1.5}#coverage-dismiss:hover{background:var(--muted)}
 
@@ -247,14 +249,14 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
       </div>
       </section>
       <section id="efficiency-review-panel" aria-label="AI review" hidden>
-        <article class="card efficiency-review"><header><div><h2>A personal review of your usage</h2><p class="footnote">You choose when to involve AI</p></div></header><p>Preview your filtered statistics, then ask your selected GitHub Copilot model for up to three observations and practical experiments.</p><div class="controls"><button id="efficiency-review-open">Prepare AI review</button><button id="review-settings">Choose model in Settings</button></div><p class="footnote integration-note">Only the snapshot you preview is sent. Model and server names are aliases; prompts, session names, paths, and raw logs are excluded. Reviews use Copilot credits and run separately from this conversation. Responses stay in this canvas until it closes.</p></article>
-        <article id="review-result" class="card" hidden><header><h2>Your AI review</h2></header><p id="review-result-context" class="footnote"></p><pre id="review-answer" tabindex="0" aria-label="AI review response"></pre><p class="footnote">AI observations are hypotheses to check against your work, not measurements of its value.</p></article>
+        <article class="card efficiency-review"><header><div><h2>A personal review of your usage</h2><p class="footnote">A few patterns worth exploring</p></div></header><p>Turn your filtered statistics into up to five focused insights. Expand a card for the evidence, possible explanations, and one practical experiment.</p><div class="controls"><button id="efficiency-review-open">Prepare AI review</button><button id="review-settings">Model and reasoning settings</button></div><p class="footnote integration-note">Statistics first, with optional prompt excerpts for a more specific review. Analysis uses Copilot credits and runs separately from this conversation. It never runs on refresh. Results stay in this canvas until it closes.</p></article>
+        <article id="review-result" class="card" hidden><header><h2>Your AI review</h2></header><p id="review-result-context" class="footnote"></p><div id="review-answer" tabindex="-1" aria-label="AI review insights"></div><p class="footnote">Confidence describes the evidence for a pattern, not a probability that advice will help. These findings do not measure the value of your work.</p></article>
       </section>
       <details class="efficiency-method" id="efficiency-method"><summary>How to read this page</summary><p>Averages use only requests with the relevant measurement recorded. Credits per request excludes partial and missing charges; recorded zero charges are included. Cache reuse is cache-read input divided by total input from requests with a complete cache split.</p><p>Input always includes cached context, regardless of Include cache tokens. Output includes reported reasoning. Date, model, project, and session filters apply. Daily bar selection does not change this view.</p><p>Review rules: low cache reuse means below 50% across at least 5 measured requests and <span id="efficiency-cache-minimum">50K</span> input tokens, with 80% coverage. Increasing input means at least 2× and <span id="efficiency-growth-minimum">10K</span> more tokens between the median of the first and last three requests in the selected range, with 6 measurements and 80% coverage. Comparisons stay within one project, session, model, and initiator; subagents and overlapping sample timestamps are excluded. Credit concentration means at least 60% of complete charges on one model, 80% overall charge coverage, and at least two models with 5 complete charges each.</p><p>Tool definitions are already part of input, not tool results. A tool-overhead finding requires at least 5 matched samples, 80% coverage, <span id="efficiency-tools-minimum">1K</span> definition tokens per request and 10% of input. MCP findings require at least 3 failed calls; their failure rate excludes unknown outcomes. Current-context sources may overlap and are not added together. These rules identify places to investigate, not optimal targets or proof of waste. No score, task success, or savings estimate is inferred. <a href="https://docs.github.com/en/copilot/tutorials/optimize-ai-usage" target="_blank" rel="noopener noreferrer">GitHub efficiency guidance</a> · <a href="https://docs.github.com/en/copilot/tutorials/optimize-chat-usage" target="_blank" rel="noopener noreferrer">Managing conversation context</a></p></details>
     </section>
   </div>
   <details class="sources"><summary>Local data sources</summary><p class="footnote">Source availability and skipped-record diagnostics cover all enabled environments.</p><div id="sources"></div></details>
-  <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. Cloud activity, other computers, and missing logs may leave gaps compared with account billing. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. History stays local unless you choose to send an AI review snapshot. <span id="updated"></span></footer>
+  <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. Cloud activity, other computers, and missing logs may leave gaps compared with account billing. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is read when you expand a request or enable prompt excerpts for an AI review. History stays local unless you choose to send an AI review snapshot. <span id="updated"></span></footer>
   <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.87" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.87</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="coverage-open">Review coverage</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="coverage-dialog" aria-labelledby="coverage-title">
     <header><h2 id="coverage-title">Review data coverage</h2><button id="coverage-close" type="button">Close</button></header>
@@ -280,8 +282,8 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
     <footer class="footnote">Notes included with this installation. Each entry describes the changes in that version.</footer>
   </dialog>
   <dialog id="logs-dialog" aria-labelledby="logs-title"><header><h2 id="logs-title">Diagnostic logs</h2><button id="logs-close" aria-label="Close diagnostic logs">×</button></header><p class="muted">Recent dashboard errors, timings, and saved server diagnostics. Copy these into your GitHub issue along with what happened. Cached snapshots are labeled with their capture time.</p><label for="logs-output">Logs</label><textarea id="logs-output" rows="16" readonly spellcheck="false"></textarea><p id="logs-status" class="footnote" role="status"></p><footer><button id="logs-reload">Reload logs</button><button id="logs-import">Load saved logs</button><button id="logs-copy">Copy logs</button></footer><input id="logs-files" type="file" accept=".jsonl,.log,.txt" multiple hidden><details id="logs-help" class="footnote"><summary>When the server is unavailable</summary><p>Previously captured logs remain available above. To include newer saved logs, choose Load saved logs and select diagnostics.jsonl, and optionally diagnostics.previous.jsonl. No terminal is needed; files are read locally and filtered to supported diagnostic fields.</p><p>On Windows, paste <code>%LOCALAPPDATA%\copilot-usage-insights</code> into the file picker address bar. On macOS, use <code>~/Library/Application Support/copilot-usage-insights</code>. On Linux, use <code>$XDG_CONFIG_HOME/copilot-usage-insights</code>, or <code>~/.config/copilot-usage-insights</code> if XDG_CONFIG_HOME is unset.</p><p>Reopening the dashboard captures saved logs again. A stopped server cannot supply new entries to this page automatically.</p></details></dialog>
-  <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">AI review</h2><label for="review-model">GitHub Copilot model</label><select id="review-model"><option value="">Choose a model</option></select><div class="controls review-settings-actions"><button id="review-models-refresh">Refresh models</button><button id="review-reconnect">Reconnect to GitHub</button><button id="review-connection-cancel" hidden>Cancel</button></div><p id="review-connection-status" class="footnote" role="status">Uses your existing GitHub sign-in. Reconnect verifies a new helper connection without sending a prompt.</p><p class="footnote">If sign-in is needed, sign in to Copilot and GitHub CLI (gh auth login) with the same account, then reconnect. Credentials are never saved in this plugin.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label class="check"><input type="checkbox" id="include-wsl" checked> Include WSL usage sources (Windows)</label><p class="footnote">Automatically finds standard Copilot homes in running WSL distributions. Stopped distributions are listed in Local data sources; start them and refresh to include their history. VS Code Server storage is discovered alongside CLI homes.</p><label class="check"><input type="checkbox" id="read-wsl-databases" checked> Read locked usage databases inside WSL</label><p class="footnote">If Windows cannot read a WSL database because it is locked, use the running distribution's Python 3 SQLite reader. No database copy or software installation is made. Turn off to use only Windows-readable databases and journals.</p><label class="check"><input type="checkbox" id="include-vscode" checked> Include VS Code Copilot Chat</label><p class="footnote">Reads retained Copilot debug logs, including recorded AI credits. Logging may need to be enabled in VS Code; missing history cannot be reconstructed. Only calls with explicit Copilot charges are included. See the repository README for setup.</p><label>Additional VS Code User folders (one per line)<textarea id="extra-vscode-homes" rows="2" spellcheck="false" placeholder="C:\custom-vscode-data\User"></textarea></label><p class="footnote">Use the User folder containing workspaceStorage or globalStorage. Custom folders are read even with automatic VS Code discovery off. Disabled source folders below also apply to VS Code folders.</p><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled source folders<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too. For a custom WSL location, use a Windows path such as \\wsl.localhost\Ubuntu\home\your-user\.copilot. Explicit paths are read even when automatic discovery is off.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
-  <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Preview this snapshot before sending it to your selected GitHub Copilot model. Sending uses Copilot credits. Nothing is sent automatically.</p><p class="footnote">Model and server names are replaced with aliases. The report contains measurements and coverage, with no prompts, paths, session names, raw logs, or skill contents. Any inspected current context is labeled separately. This snapshot stays fixed until you reopen this dialog.</p><label for="efficiency-review-output">Data and review instructions</label><textarea id="efficiency-review-output" rows="15" readonly spellcheck="false"></textarea><p id="review-send-model" class="footnote"></p><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy review prompt</button><button id="review-send" disabled>Analyze my usage</button><button id="review-cancel" hidden>Cancel review</button></footer></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title"><header><h2 id="settings-title">Settings</h2><button id="settings-close" aria-label="Close settings">×</button></header><label>Text size<select id="text-size"><option value="small">Small (default)</option><option value="medium">Medium</option><option value="large">Large</option></select></label><label class="check settings-section-title"><input type="checkbox" id="simplify-numbers" checked> Simplify numbers</label><p class="footnote">Use K, M, B, and T for thousands, millions, billions, and trillions (for example, 2.1K), and shorten fractional AI credits (12.345 → 12.3). Turn off to show full numbers.</p><h2 class="settings-section-title">AI review</h2><label for="review-model">GitHub Copilot model</label><select id="review-model"><option value="">Choose a model</option></select><label for="review-reasoning">Reasoning</label><select id="review-reasoning"><option value="default">Model default</option><option value="medium">Medium (recommended)</option><option value="high">High</option></select><p id="review-reasoning-help" class="footnote">Refresh models to see supported reasoning levels. High can use more credits.</p><div class="controls review-settings-actions"><button id="review-models-refresh">Refresh models</button><button id="review-reconnect">Reconnect to GitHub</button><button id="review-connection-cancel" hidden>Cancel</button></div><p id="review-connection-status" class="footnote" role="status">Uses your existing GitHub sign-in. Reconnect verifies a new helper connection without sending a prompt.</p><p class="footnote">If sign-in is needed, sign in to Copilot and GitHub CLI (gh auth login) with the same account, then reconnect. Credentials are never saved in this plugin.</p><h2 class="settings-section-title">Copilot sources</h2><p class="muted">The default Copilot home is scanned automatically.</p><code id="default-home"></code><label class="check"><input type="checkbox" id="include-wsl" checked> Include WSL usage sources (Windows)</label><p class="footnote">Automatically finds standard Copilot homes in running WSL distributions. Stopped distributions are listed in Local data sources; start them and refresh to include their history. VS Code Server storage is discovered alongside CLI homes.</p><label class="check"><input type="checkbox" id="read-wsl-databases" checked> Read locked usage databases inside WSL</label><p class="footnote">If Windows cannot read a WSL database because it is locked, use the running distribution's Python 3 SQLite reader. No database copy or software installation is made. Turn off to use only Windows-readable databases and journals.</p><label class="check"><input type="checkbox" id="include-vscode" checked> Include VS Code Copilot Chat</label><p class="footnote">Reads retained Copilot debug logs, including recorded AI credits. Logging may need to be enabled in VS Code; missing history cannot be reconstructed. Only calls with explicit Copilot charges are included. See the repository README for setup.</p><label>Additional VS Code User folders (one per line)<textarea id="extra-vscode-homes" rows="2" spellcheck="false" placeholder="C:\custom-vscode-data\User"></textarea></label><p class="footnote">Use the User folder containing workspaceStorage or globalStorage. Custom folders are read even with automatic VS Code discovery off. Disabled source folders below also apply to VS Code folders.</p><label>Additional Copilot homes<textarea id="extra-homes" rows="4" placeholder="One absolute path per line, or ~/backup/.copilot"></textarea></label><label>Disabled source folders<textarea id="disabled-homes" rows="3" placeholder="One absolute path per line"></textarea></label><p class="muted">Use a Copilot home containing session-state and/or session-store.db. Mounted or copied homes work too. For a custom WSL location, use a Windows path such as \\wsl.localhost\Ubuntu\home\your-user\.copilot. Explicit paths are read even when automatic discovery is off.</p><p id="settings-error" class="notice warning" role="alert" hidden></p><footer><button id="settings-save">Save settings</button></footer></dialog>
+  <dialog id="efficiency-review-dialog" aria-labelledby="efficiency-review-title"><header><h2 id="efficiency-review-title">Review your usage with AI</h2><button id="efficiency-review-close" aria-label="Close AI review">×</button></header><p>Analyze a fixed snapshot with your selected Copilot model. This uses AI credits.</p><label class="check review-sample-option"><input type="checkbox" id="review-samples"> Allow targeted prompt excerpts</label><p class="footnote">If useful, the analysis can automatically review up to six excerpts (12,000 characters total) in one follow-up. Excerpts may contain private text and are sent to the same model. At most two passes; this is not a guaranteed token or credit ceiling.</p><details class="review-preview"><summary>Preview the statistics</summary><p class="footnote">Names are aliased; paths, session titles, raw logs and prompt text are excluded from these statistics. Previously inspected current context is separate. Optional excerpts are selected only during analysis.</p><label for="efficiency-review-output">Statistics sent with the bundled review guide</label><textarea id="efficiency-review-output" rows="10" readonly spellcheck="false"></textarea></details><p id="review-send-model" class="footnote"></p><p id="efficiency-review-status" class="footnote" role="status"></p><footer><button id="efficiency-review-copy">Copy statistics</button><button id="review-send" disabled>Analyze my usage</button><button id="review-cancel" hidden>Cancel review</button></footer></dialog>
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script type="application/json" id="initial-diagnostics">null</script><script>;(() => {
 'use strict'
@@ -404,12 +406,12 @@ const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 'extens
   'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response',
   'wsl.discovery', 'history.scan', 'history.source']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
-for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
+for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', 'SNAPSHOT', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
-for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode']) numericFields.add(field);
+for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode', 'pass', 'inputChars', 'cards', 'samples']) numericFields.add(field);
 const enumFields = {
   method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels', 'efficiency.context']),
   range: new Set(['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']),
@@ -426,7 +428,7 @@ const enumFields = {
   arch: new Set(['x64', 'arm64', 'ia32', 'arm']),
   directive: new Set(['connect-src', 'default-src']),
 };
-for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
+for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
 
 // Error messages and arbitrary stack text can contain prompts, paths, or credentials.
 function diagnosticError(error) {
@@ -452,7 +454,7 @@ function createDiagnostics({ limit = 300, clock = () => new Date(), tick = () =>
       else if (booleanFields.has(key) && typeof value === 'boolean') entry[key] = value;
       else if (Object.hasOwn(enumFields, key) && enumFields[key].has(value)) entry[key] = value;
       else if (key === 'errorType' && errorTypes.has(value) || key === 'errorCode' && errorCodes.has(value)) entry[key] = value;
-      else if (['pluginVersion', 'nodeVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
+      else if (['pluginVersion', 'nodeVersion', 'guidanceVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
       else if (key === 'locations' && Array.isArray(value)) entry.locations = value.filter(v => typeof v === 'string' && new RegExp(`^(?:(?:${sourceFiles})\\.mjs|panel/index\\.html):\\d+:\\d+$`).test(v)).slice(0, 5);
     }
     entries.push(entry);
@@ -1120,6 +1122,31 @@ function buildEfficiencyReview(report, context, scope = {}) {
     : reviewNumbers(e.interactions, ['prompts', 'promptSamples', 'promptSessions', 'averagePromptChars', 'averagePromptsPerSession', 'turns', 'turnSessions', 'averageTurnsPerSession', 'sessionErrors', 'observedSessions', 'omitted']);
   data.history.tools = toolOutcomeSummary(report.tools);
   return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations, including a pattern working well when the evidence supports it. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + JSON.stringify(data, null, 2);
+}
+
+// src/panel/review-cards.mjs
+
+function renderReviewCards(result, { number = n => Number(n).toLocaleString(), credits = number } = {}) {
+  if (!result.cards?.length) return `<p class="review-empty">${esc(result.emptyReason || 'There is not enough reliable evidence for a useful finding yet.')}</p>`;
+  const value = (n, unit) => unit?.startsWith('AI credits') ? credits(n) : number(n);
+  const graphic = e => {
+    if (e.template === 'statistic') return `<span class="review-stat">${esc(value(e.value, e.unit))}<span class="review-unit">${esc(e.unit)}</span></span>`;
+    const values = e.values || [], max = Math.max(1, ...values.map(p => p.value));
+    if (e.template === 'comparison') return `<span class="review-comparison">${values.map(p => `<span><span class="review-small-label">${esc(p.label)}</span><b>${esc(value(p.value, e.unit))}</b><span class="review-mini-bar" style="width:${Math.max(1, p.value / max * 100)}%"></span></span>`).join('')}<span class="review-unit">${esc(e.unit)}</span></span>`;
+    const points = values.map((p, i) => `${i * 220 / Math.max(1, values.length - 1)},${52 - p.value / max * 48}`).join(' ');
+    return `<span class="review-trend"><svg viewBox="0 0 220 56" aria-hidden="true" focusable="false"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2.5" vector-effect="non-scaling-stroke"/></svg><span class="review-trend-endpoints">${esc(value(values[0]?.value || 0, e.unit))} <span>to</span> ${esc(value(values.at(-1)?.value || 0, e.unit))}</span><span class="review-unit">${esc(e.unit)} per plotted period</span></span>`;
+  };
+  const measurement = e => `<div class="review-evidence"><strong>${esc(e.label)}</strong><p>${e.template === 'statistic' ? `${esc(value(e.value, e.unit))} ${esc(e.unit)}` : e.values.map(p => `${esc(p.label)}: ${esc(value(p.value, e.unit))} ${esc(e.unit)}`).join(' · ')}</p><p class="footnote">${esc(number(e.samples))} of ${esc(number(e.total))} recorded samples. ${esc(e.limitation || '')}</p></div>`;
+  return `<div class="review-card-grid">${result.cards.map(card => `<details class="review-insight"><summary><span class="review-card-title">${esc(card.title)}</span>${graphic(card.evidence)}<span class="review-confidence">${esc(card.confidence[0].toUpperCase() + card.confidence.slice(1))} confidence <span aria-hidden="true">+</span></span></summary><div class="review-card-detail"><p>${esc(card.observation)}</p>${measurement(card.evidence)}${(card.supportingEvidence || []).map(measurement).join('')}<dl>${[['Confidence', card.confidenceReason + (card.confidenceLimited ? ' Confidence is limited by sparse or incomplete recorded evidence.' : '')], ['Other explanations', card.alternatives], ['Try this', card.experiment], ['Compare afterward', card.compare], ['What is missing', card.missing]].map(([label, text]) => `<div><dt>${esc(label)}</dt><dd>${esc(text)}</dd></div>`).join('')}</dl></div></details>`).join('')}</div>`;
+}
+
+function reviewResultCaption(result, stale = false, { number = n => Number(n).toLocaleString(), credits = number } = {}) {
+  const u = result.usage || {}, scope = result.scope || {};
+  const cost = u.credits == null ? 'AI credits unavailable' : `${credits(u.credits)} AI credits${u.creditStatus !== 'complete' ? ' (partial recording)' : ''}`;
+  const tokens = u.tokens == null ? 'tokens unavailable' : `${number(u.tokens)} tokens${u.tokenStatus !== 'complete' ? ' (partial recording)' : ''}`;
+  const enrichment = result.enrichment === 'complete' ? `${number(result.samples)} prompt excerpts reviewed` : result.enrichment === 'failed' ? 'Optional follow-up failed; showing statistical findings' : result.enrichment === 'unavailable' ? 'Requested excerpts unavailable; showing statistical findings' : 'Statistics only';
+  const filters = ['model', 'project', 'session', 'environment'].filter(k => scope[`${k}Filtered`]);
+  return `${result.model || 'Copilot'} · ${result.reasoningEffort === 'default' ? 'model default reasoning' : (result.reasoningEffort || 'default') + ' reasoning'} · ${scope.startDate || ''} to ${scope.endDate || ''}${filters.length ? ' · ' + filters.join(', ') + ' filter active' : ''}. ${stale ? 'Previous filter snapshot. ' : ''}${enrichment}. Analysis usage: ${cost}, ${tokens}. ${number(result.passes || 1)} pass${result.passes === 1 ? '' : 'es'} · Guide ${result.guidanceVersion || 'unknown'}. Later filter changes do not change this review.`;
 }
 
 // src/panel/token-insights.mjs
@@ -1988,21 +2015,41 @@ function renderEfficiencyContext() {
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
   $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
-let reviewRunning = false, reviewConnectionPending = false, preparedReviewModel = '';
+let reviewRunning = false, reviewConnectionPending = false, preparedReview, reviewResult, reviewResultFormat;
+function renderReviewResult(force = false) {
+  if (!reviewResult) return;
+  $('review-result').hidden = false;
+  $('review-result-context').textContent = reviewResultCaption(reviewResult, reviewResult.filterKey !== JSON.stringify(query()), { number, credits: creditNumber });
+  if (force || reviewResultFormat !== state.simplifyNumbers) {
+    const open = [...$('review-answer').querySelectorAll('details[open]')].map(node => [...node.parentElement.children].indexOf(node));
+    $('review-answer').innerHTML = renderReviewCards(reviewResult, { number, credits: creditNumber });
+    const cards = $('review-answer').querySelectorAll('details');
+    for (const index of open) if (cards[index]) cards[index].open = true;
+    reviewResultFormat = state.simplifyNumbers;
+  }
+}
 $('efficiency-review-open').onclick = async () => {
-  if (!state.report) return;
-  $('efficiency-review-output').value = buildEfficiencyReview(state.report, efficiencyContextSnapshot, JSON.parse(state.filterKey || '{}'));
-  $('efficiency-review-status').textContent = 'Snapshot ready. Review the data before sending.';
+  if (!state.report || reviewRunning || reviewConnectionPending) return;
+  reviewRunning = true; preparedReview = null;
+  $('efficiency-review-output').value = '';
+  $('review-samples').checked = false; $('review-samples').disabled = false;
+  $('efficiency-review-status').textContent = 'Preparing a fixed snapshot. No prompt has been sent.';
   $('review-send').disabled = true;
-  preparedReviewModel = '';
-  $('review-send-model').textContent = 'Checking selected model…';
+  $('efficiency-review-open').disabled = true;
+  $('review-cancel').hidden = false;
+  $('review-send-model').textContent = 'Checking selected model and reasoning…';
   $('efficiency-review-dialog').showModal();
   try {
-    const config = await request('settings.get');
-    preparedReviewModel = config.reviewModel || '';
-    $('review-send-model').textContent = config.reviewModel ? `Review model: ${config.reviewModel}` : 'Choose and save a Copilot model in Settings first.';
-    $('review-send').disabled = !config.reviewModel || reviewRunning || reviewConnectionPending;
-  } catch { $('review-send-model').textContent = 'Could not read the review model. Open Settings and try again.'; }
+    const filters = JSON.parse(state.filterKey || '{}');
+    const result = await request('review.prepare', { filters });
+    if (!$('efficiency-review-dialog').open) return;
+    preparedReview = { ...result, filterKey: JSON.stringify(filters) };
+    $('efficiency-review-output').value = result.preview;
+    $('review-send-model').textContent = result.model ? `${result.model} · ${result.reasoningEffort === 'default' ? 'Model default' : result.reasoningEffort} reasoning` : 'Choose and save a Copilot model in Settings first.';
+    $('efficiency-review-status').textContent = result.hasEvidence ? 'Snapshot ready. Statistics are sent only when you select Analyze.' : 'No eligible evidence in this view. Change the filters before preparing a review.';
+    $('review-send').disabled = !result.model || !result.hasEvidence;
+  } catch (error) { $('efficiency-review-status').textContent = error.message; $('review-send-model').textContent = ''; }
+  finally { reviewRunning = false; $('efficiency-review-open').disabled = false; $('review-cancel').hidden = true; }
 };
 async function cancelReview() {
   if (!reviewRunning && !reviewConnectionPending) return;
@@ -2015,24 +2062,24 @@ $('review-cancel').onclick = cancelReview;
 $('review-connection-cancel').onclick = cancelReview;
 $('review-settings').onclick = () => $('settings-open').onclick();
 $('review-send').onclick = async () => {
-  if (reviewRunning || reviewConnectionPending) return;
+  if (reviewRunning || reviewConnectionPending || !preparedReview?.model) return;
+  const snapshot = preparedReview; preparedReview = null;
   reviewRunning = true;
   $('review-send').disabled = $('efficiency-review-open').disabled = true;
+  $('review-samples').disabled = true;
   $('review-cancel').hidden = false;
-  $('efficiency-review-status').textContent = 'Analyzing your snapshot with Copilot…';
-  const capturedAt = new Date().toLocaleString();
+  $('efficiency-review-status').textContent = $('review-samples').checked ? 'Analyzing statistics and, only if useful, a bounded set of prompt excerpts…' : 'Analyzing your statistics with Copilot…';
   try {
-    const result = await request('review.run', { prompt: $('efficiency-review-output').value, expectedModel: preparedReviewModel });
-    $('review-answer').textContent = result.text;
-    $('review-result-context').textContent = `${result.model} · Snapshot sent ${capturedAt}. Later filter changes do not change this review. Recorded usage is grouped under Usage Insights and follows your dashboard filters.`;
-    $('review-result').hidden = false;
+    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples: $('review-samples').checked });
+    reviewResult = { ...result, scope: result.scope || snapshot.scope, filterKey: snapshot.filterKey, reasoningEffort: result.reasoningEffort || snapshot.reasoningEffort };
+    renderReviewResult(true);
     $('efficiency-review-status').textContent = 'Review complete. Usage is recorded under Usage Insights; your current filters still apply.';
     $('efficiency-review-dialog').close();
     $('review-answer').focus();
   } catch (error) { $('efficiency-review-status').textContent = error.message; }
   finally {
     reviewRunning = false;
-    $('review-send').disabled = $('efficiency-review-open').disabled = false;
+    $('review-send').disabled = true; $('efficiency-review-open').disabled = false;
     $('review-cancel').hidden = true;
     await load(false, true);
   }
@@ -2041,7 +2088,7 @@ $('efficiency-review-copy').onclick = async () => {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
     await navigator.clipboard.writeText($('efficiency-review-output').value);
-    $('efficiency-review-status').textContent = 'Copied. Paste into a Copilot conversation when you want a review.';
+    $('efficiency-review-status').textContent = 'Copied the statistics snapshot.';
   } catch {
     $('efficiency-review-output').focus(); $('efficiency-review-output').select();
     $('efficiency-review-status').textContent = 'Clipboard access is unavailable. The report is selected; copy it manually.';
@@ -2213,6 +2260,7 @@ $('token-overview-panel').onclick = event => {
   $('efficiency-topic').focus({ preventScroll: true });
 };
 function renderEfficiency() {
+  renderReviewResult();
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
   const { summary, models, insights } = efficiency;
@@ -2533,12 +2581,24 @@ $('skills').onclick = async event => {
 };
 $('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 let settingsSources;
+let reviewModels = [], savedReviewReasoning;
+function reviewReasoningOptions(preferred = savedReviewReasoning) {
+  const model = reviewModels.find(m => m.id === $('review-model').value);
+  const choices = model ? ['default', ...(model.reasoningEfforts || [])] : ['default', 'medium', 'high'];
+  const selected = preferred || (model?.reasoningEfforts?.includes('medium') ? 'medium' : 'default');
+  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${effort}">${effort === 'default' ? 'Model default' : effort === 'medium' ? 'Medium (recommended)' : 'High'}</option>`).join('');
+  $('review-reasoning').value = selected;
+  $('review-reasoning-help').textContent = !model ? 'Refresh models to verify supported reasoning levels.' : !choices.includes(selected) ? 'The saved level is unsupported. Choose a supported level before analyzing.' : model.reasoningEfforts?.length ? 'High may use more credits. Medium is recommended for routine reviews.' : 'This model does not advertise configurable Medium or High reasoning. Model default is used.';
+}
 function reviewModelOptions(models, selected) {
+  reviewModels = models;
   $('review-model').innerHTML = '<option value="">Choose a model</option>' +
     (selected && !models.some(m => m.id === selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unavailable until verified)</option>` : '') +
     models.map(model => `<option value="${esc(model.id)}">${esc(model.label)}</option>`).join('');
   $('review-model').value = selected || '';
+  reviewReasoningOptions();
 }
+$('review-model').onchange = () => reviewReasoningOptions(null);
 async function refreshReviewConnection(reconnect) {
   if (reviewConnectionPending || reviewRunning) return;
   reviewConnectionPending = true;
@@ -2547,7 +2607,7 @@ async function refreshReviewConnection(reconnect) {
   $('review-connection-status').textContent = reconnect ? 'Verifying a fresh Copilot connection…' : 'Loading models from Copilot…';
   try {
     const result = await request(reconnect ? 'review.reconnect' : 'review.catalog');
-    reviewModelOptions(result.models, $('review-model').value);
+    reviewModelOptions(result.models, $('review-model').value || result.recommendedModel);
     $('review-connection-status').textContent = reconnect ? 'Connection verified with the same GitHub account. No prompt was sent. Choose a model and save settings.' : 'Models refreshed. Choose a model and save settings. The helper account is verified again before each review.';
   } catch (error) { $('review-connection-status').textContent = error.message; }
   finally {
@@ -2570,6 +2630,7 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('read-wsl-databases').checked = config.readWslDatabases !== false;
     $('include-vscode').checked = config.includeVSCode !== false;
     $('extra-vscode-homes').value = (config.extraVSCodeHomes || []).join('\n');
+    savedReviewReasoning = config.reviewReasoning;
     reviewModelOptions([], config.reviewModel);
     settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]);
     $('default-home').textContent = config.defaultHome;
@@ -2583,7 +2644,7 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, reviewReasoning: $('review-reasoning').value });
     applyPreferences(config); render();
     $('settings-dialog').close();
     await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));

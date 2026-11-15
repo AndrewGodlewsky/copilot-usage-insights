@@ -63,7 +63,7 @@ function leadingType(line) {
 export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false }) {
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
-  let summaryNeedsCoverage = false;
+  let summaryNeedsCoverage = false, reviewOrigin = false;
   const noteActivity = () => { if (!summaryNeedsCoverage) { summaryNeedsCoverage = true; revision++; } };
   const coverage = createCoverageCollector(source, logFile);
   let sessionStart = null, summaryEnd = null;
@@ -116,6 +116,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       if (activityTypes.has(e?.type)) noteActivity();
       if (e?.type !== 'session.usage_record') collectPrompt(e);
       if (e?.type === 'session.start') {
+        reviewOrigin = e.data?.usageInsightsReview === 1;
         sessionId = textValue(e.data?.sessionId) || sessionId;
         sessionStart = coverageTime(e.timestamp);
         note(sessions, sessionId);
@@ -207,7 +208,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (key && (records.has(key) || rejected.has(key))) return;
         revision++;
         if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
-        if (result.record) { result.record.logFile = logFile; records.set(key, result.record); }
+        if (result.record) { result.record.logFile = logFile; if (reviewOrigin) result.record.reviewOrigin = true; records.set(key, result.record); }
         else if (key) rejected.add(key);
         if (result.record) return;
         rejectedEvent(result.reason || 'invalid', e, key, u, sourceSession);

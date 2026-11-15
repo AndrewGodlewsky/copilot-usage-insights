@@ -330,7 +330,9 @@ function attributeSessions(all, records, recordByKey) {
       const initial = receiptEvents.some(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId && r.initiator === 'user');
       let identity = prompt.origin === 'user' || linksKnown && initial;
       if (identity) for (const e of origin.space.userEvents.get(prompt.promptId)) if (e.project !== prompt.project || e.origin !== prompt.origin || eventNode.get(e).scope) { identity = false; break; }
+      const sampleReceipt = receiptEvents.find(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId);
       prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity,
+        sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms },
         provider: linksKnown && charges.length ? receiptEvents.every(r => r.copilot) : attributed(prompt.sessionId),
         state: doubtful || prompt.origin === 'unspecified' && !initial ? ATTRIBUTION : incomplete ? ACCOUNTING : unfinished ? UNFINISHED : ELIGIBLE });
     }
@@ -401,6 +403,20 @@ function attributePrompts(events, records, nowMs, { memo, unique } = {}) {
   const result = { events, records, latest, next, sessions, outcomes };
   if (memo) memo.prompts = result;
   return result;
+}
+
+// Reuse the accounting graph's human identity and ambiguity checks; no prompt text is retained.
+export function reviewPromptCandidates(events, records, query, start, end, now, options) {
+  const { outcomes } = attributePrompts(events, records, now.getTime(), options), found = [], seen = new Set();
+  const byKey = new Map(records.map(r => [r.key, r]));
+  for (const outcome of outcomes) for (const p of outcome.prompts) {
+    if (!p.identity || !p.linksKnown || !p.provider || p.day < start || p.day > end || query.project && p.project !== query.project || query.session && p.sessionId !== query.session) continue;
+    if (query.models && !p.charges.some(r => query.models.includes(r.model))) continue;
+    const record = byKey.get(p.sample.recordKey), key = JSON.stringify([p.sessionId, p.sample.promptId]);
+    if (!record?.logFile || !record.apiCallId || !p.sample.interaction || seen.has(key)) continue;
+    seen.add(key); found.push({ ...p.sample, record, sessionId: p.sessionId });
+  }
+  return found;
 }
 
 export function summarizePromptCredits(events = [], records = [], query, start, end, now, options) {

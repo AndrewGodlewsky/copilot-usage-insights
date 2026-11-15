@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, rm, realpath } from 'node:fs/promises';
+import { access, rm, realpath, mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReviewService, hostRuntime, runtimeEnvironment } from '../src/node/ai-review.mjs';
@@ -8,7 +8,7 @@ import { createDiagnostics } from '../src/core/diagnostics.mjs';
 
 function fixture(t, overrides = {}) {
   const state = { login: 'person', tools: [], selected: 'model-a', provider: 'copilot', policy: 'enabled', sent: [], stopped: 0, prepared: 0, flushed: 0, ...overrides };
-  const models = () => ({ list: [{ id: 'model-a', name: 'Model A', provider: { kind: state.provider }, policy: { state: state.policy } }] });
+  const models = () => ({ list: [{ id: 'model-a', name: 'Model A', provider: { kind: state.provider }, policy: { state: state.policy }, capabilities: { supports: { reasoningEffort: !!state.efforts } }, supportedReasoningEfforts: state.efforts }] });
   const parent = { rpc: { model: { list: async () => models() }, gitHubAuth: { getStatus: async () => ({ isAuthenticated: true, login: 'person', host: 'github.com' }) } } };
   const sdk = {
     RuntimeConnection: { forStdio: options => options },
@@ -28,7 +28,7 @@ function fixture(t, overrides = {}) {
           config.onEvent({ type: 'assistant.usage' });
           if (state.hold) await new Promise(resolve => { state.release = resolve; });
           if (state.generateFailure) throw new Error('PRIVATE-prompt-token');
-          return { data: { content: state.output ?? 'Review response' } };
+          return { data: { content: state.outputs?.shift() ?? state.output ?? 'Review response' } };
         } };
       }
     },
@@ -39,7 +39,7 @@ function fixture(t, overrides = {}) {
       state.preparing = true;
       if (state.prepareHold) await new Promise(resolve => { state.releaseStorage = resolve; });
       if (state.prepareFailure) throw new Error('PRIVATE-disk'); state.prepared++;
-      return { record() { state.recorded = true; }, async flush() {
+      return { record() { state.recorded = true; }, summary() { return { requests: state.sent.length, credits: 0, creditStatus: 'complete', tokens: 120, tokenStatus: 'complete' }; }, async flush() {
         state.flushed++;
         if (state.flushHold) await new Promise(resolve => { state.releaseStorage = resolve; });
         if (state.flushFailure) throw new Error('PRIVATE-flush');
@@ -57,6 +57,50 @@ function fixture(t, overrides = {}) {
   return { state, service, diagnostics, parent };
 }
 const input = { model: 'model-a', prompt: 'Synthetic statistics only' };
+
+test('reasoning capabilities are preserved and unsupported effort fails before inference', async t => {
+  const f = fixture(t, { efforts: ['low', 'medium', 'high'] });
+  assert.deepEqual((await f.service.catalog()).models[0].reasoningEfforts, ['medium', 'high']);
+  await f.service.review({ ...input, reasoningEffort: 'high' });
+  assert.equal(f.state.config.reasoningEffort, 'high');
+  const unsupported = fixture(t);
+  await assert.rejects(unsupported.service.review({ ...input, reasoningEffort: 'medium' }), { code: 'REVIEW_EFFORT' });
+  assert.equal(unsupported.state.sent.length, 0);
+});
+
+test('structured analysis uses the isolated helper and returns reconciled usage without a plain-text retry', async t => {
+  const { prepareInsightReview } = await import('../src/node/review-evidence.mjs');
+  const { reviewFixture, reviewNow } = await import('./fixtures/review.mjs');
+  const data = reviewFixture(); data.user('p'); data.call('p', 'a');
+  const analysis = await prepareInsightReview(data.scan(), { range: 'all' }, reviewNow);
+  const f = fixture(t, { efforts: ['medium'], output: JSON.stringify({ cards: [], emptyReason: 'Only one recorded prompt.', followUp: null }) });
+  const result = await f.service.review({ model: 'model-a', reasoningEffort: 'medium', analysis, allowSamples: false });
+  assert.equal(result.cards.length, 0); assert.equal(result.usage.credits, 0); assert.equal(result.usage.creditStatus, 'complete');
+  assert.equal(f.state.sent.length, 1); assert.equal(f.state.sent[0].responseSchema.type, 'object');
+  assert.equal(f.state.config.enableSkills, false); assert.deepEqual(f.state.config.availableTools, []);
+  assert.equal(f.state.flushed, 1); assert.equal(f.state.stopped, 1);
+  const bad = fixture(t, { output: 'bad JSON' });
+  await assert.rejects(bad.service.review({ model: 'model-a', analysis }), { code: 'REVIEW_RESPONSE' });
+  assert.equal(bad.state.sent.length, 1, 'one failed call, no repair retry');
+});
+
+test('optional enrichment stays in one helper and records both structured submissions', async t => {
+  const { prepareInsightReview } = await import('../src/node/review-evidence.mjs');
+  const { reviewFixture, reviewNow } = await import('./fixtures/review.mjs');
+  const source = await mkdtemp(join(tmpdir(), 'sdk-review-samples-'));
+  t.after(() => rm(source, { recursive: true, force: true }));
+  const data = reviewFixture({ source }); data.user('p'); data.call('p', 'a');
+  const log = join(source, 'session-state', 'session-a', 'events.jsonl'); await mkdir(dirname(log), { recursive: true });
+  await writeFile(log, data.events.map(e => JSON.stringify(e)).join('\n'));
+  const analysis = await prepareInsightReview(data.scan(), { range: 'all' }, reviewNow);
+  const first = { cards: [], emptyReason: 'One prompt is a limited sample.', followUp: { category: 'prompts-sessions', hypothesis: 'The prompt may state an acceptance check.', why: 'See whether a visible check already exists.', candidates: ['prompt-1'] } };
+  const f = fixture(t, { outputs: [JSON.stringify(first), JSON.stringify({ ...first, followUp: null })] });
+  const result = await f.service.review({ model: 'model-a', analysis, allowSamples: true });
+  assert.equal(result.passes, 2); assert.equal(result.enrichment, 'complete'); assert.equal(result.samples, 1);
+  assert.equal(f.state.prepared, 1); assert.equal(f.state.sent.length, 2); assert.equal(f.state.stopped, 1);
+  assert.equal(result.usage.requests, 2); assert.ok(f.state.sent.every(p => p.responseSchema));
+  assert.doesNotMatch(JSON.stringify(f.diagnostics.snapshot()), /PRIVATE|session-a/);
+});
 async function waitFor(predicate) {
   for (let i = 0; i < 200 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));
   assert.ok(predicate());

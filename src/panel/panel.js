@@ -3,6 +3,7 @@ import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
+import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
@@ -653,21 +654,41 @@ function renderEfficiencyContext() {
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
   $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
-let reviewRunning = false, reviewConnectionPending = false, preparedReviewModel = '';
+let reviewRunning = false, reviewConnectionPending = false, preparedReview, reviewResult, reviewResultFormat;
+function renderReviewResult(force = false) {
+  if (!reviewResult) return;
+  $('review-result').hidden = false;
+  $('review-result-context').textContent = reviewResultCaption(reviewResult, reviewResult.filterKey !== JSON.stringify(query()), { number, credits: creditNumber });
+  if (force || reviewResultFormat !== state.simplifyNumbers) {
+    const open = [...$('review-answer').querySelectorAll('details[open]')].map(node => [...node.parentElement.children].indexOf(node));
+    $('review-answer').innerHTML = renderReviewCards(reviewResult, { number, credits: creditNumber });
+    const cards = $('review-answer').querySelectorAll('details');
+    for (const index of open) if (cards[index]) cards[index].open = true;
+    reviewResultFormat = state.simplifyNumbers;
+  }
+}
 $('efficiency-review-open').onclick = async () => {
-  if (!state.report) return;
-  $('efficiency-review-output').value = buildEfficiencyReview(state.report, efficiencyContextSnapshot, JSON.parse(state.filterKey || '{}'));
-  $('efficiency-review-status').textContent = 'Snapshot ready. Review the data before sending.';
+  if (!state.report || reviewRunning || reviewConnectionPending) return;
+  reviewRunning = true; preparedReview = null;
+  $('efficiency-review-output').value = '';
+  $('review-samples').checked = false; $('review-samples').disabled = false;
+  $('efficiency-review-status').textContent = 'Preparing a fixed snapshot. No prompt has been sent.';
   $('review-send').disabled = true;
-  preparedReviewModel = '';
-  $('review-send-model').textContent = 'Checking selected model…';
+  $('efficiency-review-open').disabled = true;
+  $('review-cancel').hidden = false;
+  $('review-send-model').textContent = 'Checking selected model and reasoning…';
   $('efficiency-review-dialog').showModal();
   try {
-    const config = await request('settings.get');
-    preparedReviewModel = config.reviewModel || '';
-    $('review-send-model').textContent = config.reviewModel ? `Review model: ${config.reviewModel}` : 'Choose and save a Copilot model in Settings first.';
-    $('review-send').disabled = !config.reviewModel || reviewRunning || reviewConnectionPending;
-  } catch { $('review-send-model').textContent = 'Could not read the review model. Open Settings and try again.'; }
+    const filters = JSON.parse(state.filterKey || '{}');
+    const result = await request('review.prepare', { filters });
+    if (!$('efficiency-review-dialog').open) return;
+    preparedReview = { ...result, filterKey: JSON.stringify(filters) };
+    $('efficiency-review-output').value = result.preview;
+    $('review-send-model').textContent = result.model ? `${result.model} · ${result.reasoningEffort === 'default' ? 'Model default' : result.reasoningEffort} reasoning` : 'Choose and save a Copilot model in Settings first.';
+    $('efficiency-review-status').textContent = result.hasEvidence ? 'Snapshot ready. Statistics are sent only when you select Analyze.' : 'No eligible evidence in this view. Change the filters before preparing a review.';
+    $('review-send').disabled = !result.model || !result.hasEvidence;
+  } catch (error) { $('efficiency-review-status').textContent = error.message; $('review-send-model').textContent = ''; }
+  finally { reviewRunning = false; $('efficiency-review-open').disabled = false; $('review-cancel').hidden = true; }
 };
 async function cancelReview() {
   if (!reviewRunning && !reviewConnectionPending) return;
@@ -680,24 +701,24 @@ $('review-cancel').onclick = cancelReview;
 $('review-connection-cancel').onclick = cancelReview;
 $('review-settings').onclick = () => $('settings-open').onclick();
 $('review-send').onclick = async () => {
-  if (reviewRunning || reviewConnectionPending) return;
+  if (reviewRunning || reviewConnectionPending || !preparedReview?.model) return;
+  const snapshot = preparedReview; preparedReview = null;
   reviewRunning = true;
   $('review-send').disabled = $('efficiency-review-open').disabled = true;
+  $('review-samples').disabled = true;
   $('review-cancel').hidden = false;
-  $('efficiency-review-status').textContent = 'Analyzing your snapshot with Copilot…';
-  const capturedAt = new Date().toLocaleString();
+  $('efficiency-review-status').textContent = $('review-samples').checked ? 'Analyzing statistics and, only if useful, a bounded set of prompt excerpts…' : 'Analyzing your statistics with Copilot…';
   try {
-    const result = await request('review.run', { prompt: $('efficiency-review-output').value, expectedModel: preparedReviewModel });
-    $('review-answer').textContent = result.text;
-    $('review-result-context').textContent = `${result.model} · Snapshot sent ${capturedAt}. Later filter changes do not change this review. Recorded usage is grouped under Usage Insights and follows your dashboard filters.`;
-    $('review-result').hidden = false;
+    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples: $('review-samples').checked });
+    reviewResult = { ...result, scope: result.scope || snapshot.scope, filterKey: snapshot.filterKey, reasoningEffort: result.reasoningEffort || snapshot.reasoningEffort };
+    renderReviewResult(true);
     $('efficiency-review-status').textContent = 'Review complete. Usage is recorded under Usage Insights; your current filters still apply.';
     $('efficiency-review-dialog').close();
     $('review-answer').focus();
   } catch (error) { $('efficiency-review-status').textContent = error.message; }
   finally {
     reviewRunning = false;
-    $('review-send').disabled = $('efficiency-review-open').disabled = false;
+    $('review-send').disabled = true; $('efficiency-review-open').disabled = false;
     $('review-cancel').hidden = true;
     await load(false, true);
   }
@@ -706,7 +727,7 @@ $('efficiency-review-copy').onclick = async () => {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
     await navigator.clipboard.writeText($('efficiency-review-output').value);
-    $('efficiency-review-status').textContent = 'Copied. Paste into a Copilot conversation when you want a review.';
+    $('efficiency-review-status').textContent = 'Copied the statistics snapshot.';
   } catch {
     $('efficiency-review-output').focus(); $('efficiency-review-output').select();
     $('efficiency-review-status').textContent = 'Clipboard access is unavailable. The report is selected; copy it manually.';
@@ -878,6 +899,7 @@ $('token-overview-panel').onclick = event => {
   $('efficiency-topic').focus({ preventScroll: true });
 };
 function renderEfficiency() {
+  renderReviewResult();
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
   const { summary, models, insights } = efficiency;
@@ -1198,12 +1220,24 @@ $('skills').onclick = async event => {
 };
 $('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 let settingsSources;
+let reviewModels = [], savedReviewReasoning;
+function reviewReasoningOptions(preferred = savedReviewReasoning) {
+  const model = reviewModels.find(m => m.id === $('review-model').value);
+  const choices = model ? ['default', ...(model.reasoningEfforts || [])] : ['default', 'medium', 'high'];
+  const selected = preferred || (model?.reasoningEfforts?.includes('medium') ? 'medium' : 'default');
+  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${effort}">${effort === 'default' ? 'Model default' : effort === 'medium' ? 'Medium (recommended)' : 'High'}</option>`).join('');
+  $('review-reasoning').value = selected;
+  $('review-reasoning-help').textContent = !model ? 'Refresh models to verify supported reasoning levels.' : !choices.includes(selected) ? 'The saved level is unsupported. Choose a supported level before analyzing.' : model.reasoningEfforts?.length ? 'High may use more credits. Medium is recommended for routine reviews.' : 'This model does not advertise configurable Medium or High reasoning. Model default is used.';
+}
 function reviewModelOptions(models, selected) {
+  reviewModels = models;
   $('review-model').innerHTML = '<option value="">Choose a model</option>' +
     (selected && !models.some(m => m.id === selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unavailable until verified)</option>` : '') +
     models.map(model => `<option value="${esc(model.id)}">${esc(model.label)}</option>`).join('');
   $('review-model').value = selected || '';
+  reviewReasoningOptions();
 }
+$('review-model').onchange = () => reviewReasoningOptions(null);
 async function refreshReviewConnection(reconnect) {
   if (reviewConnectionPending || reviewRunning) return;
   reviewConnectionPending = true;
@@ -1212,7 +1246,7 @@ async function refreshReviewConnection(reconnect) {
   $('review-connection-status').textContent = reconnect ? 'Verifying a fresh Copilot connection…' : 'Loading models from Copilot…';
   try {
     const result = await request(reconnect ? 'review.reconnect' : 'review.catalog');
-    reviewModelOptions(result.models, $('review-model').value);
+    reviewModelOptions(result.models, $('review-model').value || result.recommendedModel);
     $('review-connection-status').textContent = reconnect ? 'Connection verified with the same GitHub account. No prompt was sent. Choose a model and save settings.' : 'Models refreshed. Choose a model and save settings. The helper account is verified again before each review.';
   } catch (error) { $('review-connection-status').textContent = error.message; }
   finally {
@@ -1235,6 +1269,7 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('read-wsl-databases').checked = config.readWslDatabases !== false;
     $('include-vscode').checked = config.includeVSCode !== false;
     $('extra-vscode-homes').value = (config.extraVSCodeHomes || []).join('\n');
+    savedReviewReasoning = config.reviewReasoning;
     reviewModelOptions([], config.reviewModel);
     settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]);
     $('default-home').textContent = config.defaultHome;
@@ -1248,7 +1283,7 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, reviewReasoning: $('review-reasoning').value });
     applyPreferences(config); render();
     $('settings-dialog').close();
     await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));

@@ -64,5 +64,7 @@ test('saved review model rejects arbitrary settings values and preserves existin
   await settings.set({ reviewModel: 'gpt-5.1', textSize: 'large' });
   assert.equal((await createSettings(dir).get()).reviewModel, 'gpt-5.1');
   await settings.set({ reviewModel: '' }); assert.equal((await settings.get()).textSize, 'large');
+  await settings.set({ reviewReasoning: 'high' }); assert.equal((await createSettings(dir).get()).reviewReasoning, 'high');
+  for (const reviewReasoning of ['low', null, {}, 'x']) await assert.rejects(settings.set({ reviewReasoning }));
   for (const reviewModel of [null, {}, 'bad\nname', 'x'.repeat(129)]) await assert.rejects(settings.set({ reviewModel }));
 });

@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "evidenceSchema": "usage-insights-evidence-v1",
+  "responseSchema": "usage-insights-cards-v1",
+  "core": "core.md",
+  "topics": {
+    "context-cache": "topics/context-cache.md",
+    "tools-mcp": "topics/tools-mcp.md",
+    "skills-instructions": "topics/skills-instructions.md",
+    "prompts-sessions": "topics/prompts-sessions.md",
+    "delegation": "topics/delegation.md",
+    "model-spend": "topics/model-spend.md"
+  }
+}

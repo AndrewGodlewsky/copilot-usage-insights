@@ -1,6 +1,22 @@
 # AI Review integration
 
-Added in 0.1.66. The panel previews the existing filtered, allowlisted statistics snapshot, sends it only on **Analyze my usage**, and displays plain-text feedback. Choosing which additional insights to include is separate work; this release establishes the model request/response path.
+The integration was added in 0.1.66. AI review now prepares a server-owned, filtered statistics snapshot and returns up to five expandable insight cards. Analyze is the only action that sends a model prompt. Cards show local statistics, comparisons or trends, plus the model's explanation, qualitative evidence confidence, alternative explanations and a small experiment. Sparse data may produce no findings.
+
+## Bounded analysis
+
+Statistics are the default. **Allow targeted prompt excerpts** starts unchecked for every preparation. Enabling it permits one automatic follow-up if the first pass identifies a hypothesis worth checking. There are at most two submissions, six distinct reliably attributed human prompts, 2,000 characters per excerpt and 12,000 combined. Selection is from at most 24 candidates spanning observed prompt lengths; this is targeted evidence, not a representative sample. Missing/unreadable excerpts skip enrichment, and a failed follow-up preserves valid statistical findings. There is no retry/repair loop.
+
+The server reuses already-loaded history; preparation does not scan logs. It excludes known own-review sources before building the report. New receipts carry a source marker that survives copying; older copied receipts without a marker may be unrecognized. Existing project/session/date/environment rules apply. Skill statistics still ignore the model filter, session-wide interaction measures are unavailable under it, and model-filtered prompt costs remain explicitly labelled contributions. A prepared snapshot is consumed once. Changing the saved model or effort requires preparing again; refresh/filter changes neither run inference nor change completed cards.
+
+The application sends aliases and allowlisted numeric evidence, not paths or session titles. Opted-in prompt excerpts can contain private text; this is disclosed before Analyze. The application alone chooses validated source records and reads them in batches with the existing file/line limits. Excerpts, raw errors and generated prose never enter structured diagnostics or permanent usage receipts. Current context remains an explicit separate inspection; preparing a review does not invoke it.
+
+The selected model receives a JSON schema. Local validation checks card counts, field lengths, confidence, candidate IDs and evidence references; numbers and charts are resolved from local evidence. AI prose is escaped, not interpreted as markup. Confidence is capped for sparse/incomplete evidence; it is not a calibrated success probability. Semantic accuracy of prose still requires judgment. Results stay in canvas memory, while usage receipts persist.
+
+Model and reasoning are saved in Settings. Opus is recommended from the eligible catalog for new choices; existing saved models remain selected. Medium is recommended when advertised; High and model default are available as supported. A saved unsupported effort fails before inference. No silent model/effort fallback occurs.
+
+The whole SDK operation retains its three-minute deadline. Guidance is at most 8 KiB; each submission including system instructions/schema is at most 48 KiB; returned content is validated at 64 KiB. These are application limits, not an exact credit or hidden-reasoning token cap. Per-review recorded usage distinguishes complete, partial and unavailable charges, including valid zero charges. Input already includes cache, so usage totals add input and output once. The two submissions share one helper/session and recorder.
+
+Review knowledge ships in [src/review-guides](../src/review-guides/README.md): versioned core instructions, six topic guides and synthetic counterexamples. Only relevant guides are included. Changing guidance is a normal tested release, not a downloaded skill or filesystem permission. Each result identifies its guidance revision.
 
 ## Implementation
 
@@ -8,10 +24,12 @@ Added in 0.1.66. The panel previews the existing filtered, allowlisted statistic
 - `src/node/review-usage.mjs`: allowlisted accounting, atomic writes, live/durable receipt deduplication, and stopped-journal reconciliation.
 - `src/node/canvas-server.mjs`: same-origin, per-canvas secret URL endpoints for catalog, reconnect, run, and cancel. Request ownership starts before asynchronous settings reads. A disconnected request cannot start a later review or cancel another request.
 - `src/node/canvas.mjs`: separate server and cancellation ownership for each canvas instance. Closing one does not stop another canvas's work.
-- `src/node/settings.mjs`: saved model preference and optional usage-source path. No credentials are stored.
-- `src/panel/efficiency.mjs`: existing snapshot projection; no new history scan or automatic context inspection.
+- `src/node/settings.mjs`: saved model/reasoning preference and optional usage-source path. No credentials are stored.
+- `src/node/review-evidence.mjs`: frozen numeric evidence, local label mapping and bounded sampling candidates.
+- `src/node/review-insights.mjs`: guidance loading, schema validation and two-pass orchestration.
+- `src/panel/review-cards.mjs`: escaped, accessible disclosure cards with fixed numeric templates.
 
-The service uses the attached session only for identity/catalog checks. It never changes its model, sends it a prompt, or stops it. A fresh helper uses the verified desktop executable, `mode: empty`, an empty workspace, separate temporary home, restricted environment, replacement system instructions, disabled discovery/skills/hooks/memory, no tools/plugins/MCP, and denied permissions. Tool metadata, canonical workspace, account, eligible model, and actual selected model are checked before inference. No provider fallback or automatic retry can incur a second charge.
+The service uses the attached session only for identity/catalog checks. It never changes its model, sends it a prompt, or stops it. A fresh helper uses the verified desktop executable, `mode: empty`, an empty workspace, separate temporary home, restricted environment, replacement system instructions, disabled discovery/skills/hooks/memory, no tools/plugins/MCP, and denied permissions. Tool metadata, canonical workspace, account, eligible model, and actual selected model are checked before inference. The account is checked again before each analysis submission. No provider fallback or automatic retry occurs; only the explicitly enabled bounded enrichment can add a submission.
 
 The panel starts no automatic review. One operation per canvas runs at a time, with a three-minute overall limit and shorter startup/access deadlines. Input is limited to 48 KiB and accepted output to 64 KiB. The output limit validates the received answer; it is not a billing/token cap. Cancellation stops the owned helper. Shutdown awaits cleanup, with bounded storage and stop waits. Responses and preview snapshots are not persisted by the plugin.
 

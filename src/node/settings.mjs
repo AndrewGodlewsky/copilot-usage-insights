@@ -18,6 +18,11 @@ function validate(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Settings must be an object');
   const result = {};
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'reviewReasoning') {
+      if (!['default', 'medium', 'high'].includes(value)) throw new TypeError('Choose model default, medium, or high reasoning');
+      result[key] = value;
+      continue;
+    }
     if (key === 'reviewModel') {
       if (typeof value !== 'string' || value.length > 128 || value && !/^[a-z0-9][a-z0-9._:+/-]*$/i.test(value)) throw new TypeError('Choose a valid Copilot review model');
       result.reviewModel = value;

@@ -1,0 +1,8 @@
+[
+  { "topic": "context-cache", "signal": "High cache-read share with measured coverage", "valid": "Repeated context was reused in these calls", "invalid": "Your prompting is always efficient" },
+  { "topic": "tools-mcp", "signal": "Repeated explicit MCP tool failures", "valid": "Inspect that integration and its inputs", "invalid": "Your MCP server is offline" },
+  { "topic": "skills-instructions", "signal": "No observed skill uses", "valid": "No claim about loaded skill overhead", "invalid": "Unused skills are polluting your context" },
+  { "topic": "prompts-sessions", "signal": "Short prompts", "valid": "Requirements may already exist in prior context", "invalid": "You give incomplete instructions" },
+  { "topic": "delegation", "signal": "Many agent continuations", "valid": "Work per prompt is high; task difficulty is unknown", "invalid": "These turns were wasted" },
+  { "topic": "model-spend", "signal": "One sampled planning prompt", "valid": "This example asks for planning", "invalid": "This model is mostly used for planning" }
+]

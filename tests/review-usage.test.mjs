@@ -7,6 +7,20 @@ import { createUsageRecorder, reconcileUsageJournal, usageHome } from '../src/no
 const first = '12345678-1234-4234-8234-123456789abc';
 const second = '87654321-4321-4321-8321-cba987654321';
 const timestamp = '2026-11-14T12:00:00.000Z';
+
+test('analysis usage summary preserves zero, unknown and partial accounting and deduplicates receipts', async () => fixture(async root => {
+    const recorder = await createUsageRecorder(first, root);
+    assert.equal(recorder.summary().creditStatus, 'unavailable');
+    recorder.record(event()); recorder.record(event()); await recorder.flush();
+    assert.deepEqual(recorder.summary(), { requests: 1, credits: 0, creditStatus: 'complete', tokens: 4, tokenStatus: 'complete' });
+    recorder.record(event('partial', { accounting: { sourceSessionId: first, usageId: 'partial', sequence: 2 }, copilotUsage: { totalNanoAiu: 1e9 }, aiCreditsStatus: 'partial', inputTokens: undefined }));
+    await recorder.flush();
+    assert.equal(recorder.summary().requests, 2); assert.equal(recorder.summary().credits, 1); assert.equal(recorder.summary().creditStatus, 'partial'); assert.equal(recorder.summary().tokenStatus, 'partial');
+    const { createReceiptParser } = await import('../src/core/copilot.mjs');
+    const parser = createReceiptParser({ sessionId: first, source: 'copied-elsewhere' });
+    for (const line of (await entries(root)).lines) parser.push(JSON.stringify(line));
+    assert.ok(parser.snapshot().records.every(r => r.reviewOrigin === true), 'copied review receipts retain source provenance');
+}));
 async function fixture(run) {
     const root = await mkdtemp(join(tmpdir(), 'enhance-usage-'));
     try {

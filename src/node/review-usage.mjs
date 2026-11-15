@@ -5,6 +5,7 @@ import { reviewUsageHome } from './settings.mjs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { normalizeUsage } from '../core/copilot.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const identifier = /^[a-z0-9][a-z0-9._:+\/-]*$/i;
 const numericFields = [
@@ -162,6 +163,7 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
         timestamp: started,
         data: {
             sessionId,
+            usageInsightsReview: 1,
             context: {
                 repository: 'Usage Insights'
             }
@@ -169,9 +171,23 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
     }) + '\n';
     await replace(file, lines);
     const seen = new Set();
+    const receipts = [];
     let pending = Promise.resolve();
     let failure = false;
     return {
+        summary() {
+            let nano = 0n, creditsKnown = 0, completeCredits = 0, tokens = 0, tokensKnown = 0, completeTokens = 0;
+            for (const receipt of receipts) {
+                const r = normalizeUsage(receipt.data.usage, { key: receipt.id, timestamp: receipt.timestamp, sessionId }).record;
+                if (!r) continue;
+                if (r.nanoAiu !== null) { nano += BigInt(r.nanoAiu); creditsKnown++; if (r.creditStatus === 'complete') completeCredits++; }
+                if (r.inputTotal !== null || r.output !== null) { tokens += (r.inputTotal ?? 0) + (r.output ?? 0); tokensKnown++; }
+                if (r.inputTotal !== null && r.output !== null) completeTokens++;
+            }
+            return { requests: receipts.length, credits: creditsKnown ? Number(nano) / 1e9 : null,
+                creditStatus: !creditsKnown ? 'unavailable' : completeCredits === receipts.length ? 'complete' : 'partial',
+                tokens: tokensKnown ? tokens : null, tokenStatus: !tokensKnown ? 'unavailable' : completeTokens === receipts.length ? 'complete' : 'partial' };
+        },
         record (event) {
             if (failure) return;
             let receipt;
@@ -187,6 +203,7 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
             const key = accounting ? `${sessionId}:${accounting.usageId}` : `event:${receipt.id}`;
             if (seen.has(key)) return;
             seen.add(key);
+            receipts.push(receipt);
             pending = pending.then(async ()=>{
                 const next = lines + JSON.stringify(receipt) + '\n';
                 await replace(file, next);
