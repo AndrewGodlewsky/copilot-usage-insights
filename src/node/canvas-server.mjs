@@ -3,7 +3,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels, recordedSkillPath } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
@@ -206,10 +206,10 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();
-        const { scan } = await readHistory(config, { refresh: true });
-        const row = reportFor(scan, { range: 'all' }, now()).entry.report.skills.rows.find(skill => skill.id === input.id);
-        if (!row?.path) throw new TypeError('This skill location is not available in the current sources. Refresh the dashboard and try again.');
-        await openFolder(row.path);
+        const { scan } = await readHistory(config);
+        const file = recordedSkillPath(scan.records, scan, input.id, now());
+        if (!file) throw new TypeError('This skill location is not available in the current sources. Refresh the dashboard and try again.');
+        await diagnostics.measure('skills.openFolder', {}, () => openFolder(file));
         result = { ok: true };
       } else throw new TypeError('Unknown dashboard method');
       json(res, 200, result);

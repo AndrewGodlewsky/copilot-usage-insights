@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.80",
+    "summary": "Skill-folder links respond faster when you open a recorded skill location. New folder-opening timings help diagnose any remaining delays."
+  },
+  {
     "version": "0.1.79",
     "summary": "Restores VS Code calls that share a response ID and includes recorded conversation-compaction charges, correcting understated historical totals. Source-discovery diagnostics now survive reopening to help investigate missing WSL history."
   },

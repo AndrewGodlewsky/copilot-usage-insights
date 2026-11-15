@@ -53,11 +53,20 @@ function copilotSessionsAt(records, nowMs) {
   for (const r of records) if (r.ms <= nowMs) sessions.add(r.sessionId);
   return sessions;
 }
+const skillIdentity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
+
+// Folder actions need only recorded identity/provider evidence, not a full usage report.
+export function recordedSkillPath(records, activity, id, now = new Date()) {
+  const nowMs = now.getTime(), sessions = copilotSessionsAt(records, nowMs);
+  const excluded = new Set(activity.skillExcludedSessions || []);
+  return (activity.skills || []).find(skill => skill.ms <= nowMs && sessions.has(skill.sessionId) &&
+    !excluded.has(skill.sessionId) && skillIdentity(skill) === id)?.path || '';
+}
+
 function skillReport(copilotSessions, activity, input, start, end, now) {
   const nowMs = now.getTime();
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
   const candidates = new Map(), seenFailures = new Set();
-  const identity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
   const attributed = event => copilotSessions.has(event.sessionId) && !excluded.has(event.sessionId);
   const scope = (event, name) => JSON.stringify([event.sessionId, event.project, name]);
   const matching = event => {
@@ -65,7 +74,7 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     return day >= start && day <= end && (!input.project || input.project === event.project) && (!input.session || input.session === event.sessionId);
   };
   function rowFor(skill, event) {
-    const key = skill.unresolved ? JSON.stringify(['skill-load-failure', skill.name]) : identity(skill);
+    const key = skill.unresolved ? JSON.stringify(['skill-load-failure', skill.name]) : skillIdentity(skill);
     if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin || '', version: skill.version || '', path: skill.path || '', unresolved: !!skill.unresolved,
       invocations: 0, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), projects: new Set(), lastUsed: event.ts });
     const row = groups.get(key);
@@ -82,7 +91,7 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
       // Use all available identities, so narrowing dates cannot make an ambiguous name look unique.
       const key = scope(skill, skill.name);
       if (!candidates.has(key)) candidates.set(key, new Map());
-      candidates.get(key).set(identity(skill), skill);
+      candidates.get(key).set(skillIdentity(skill), skill);
     }
     if (!matching(skill)) continue;
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
