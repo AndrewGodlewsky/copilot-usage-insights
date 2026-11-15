@@ -1,7 +1,7 @@
 import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, coverageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
-import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
+import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
@@ -29,6 +29,9 @@ const recordedValue = (row, key, format = number) => usageValue(row, key, format
 const markedValue = (value, incomplete, format = number) => coverageValue(value, incomplete, format, !$('coverage').hidden);
 let dismissedCoverage = '';
 let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
+try { cachedServerDiagnostics = JSON.parse($('initial-diagnostics').textContent || 'null') || undefined; }
+catch { clientDiagnostics.record('warn', 'diagnostics.initial'); }
+let importedRuntimeLogs;
 $('coverage-dismiss').onclick = () => {
   dismissedCoverage = $('coverage-message').textContent;
   $('coverage').hidden = true;
@@ -81,8 +84,11 @@ function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   if (server) lines.push(`Server started: ${server.startedAt}; retained ${server.entries.length}/${server.limit} entries; dropped ${server.dropped}`);
   if (server && cached) lines.push(`Cached server snapshot from ${server.capturedAt || server.startedAt}; this is not a live connection check.`);
   if (server?.persisted) lines.push(`Recent local runtime logs: ${server.persisted.available ? 'available' : 'partly unavailable'}; retained ${server.persisted.entries.length} entries. These can include earlier extension processes.`);
+  if (importedRuntimeLogs) lines.push(`Manually loaded runtime logs: ${importedRuntimeLogs.entries.length} entries; loaded ${importedRuntimeLogs.at}. These are a file snapshot, not a live connection check.`);
   lines.push('Structured diagnostics only: no prompts, names, paths, raw error messages, or credentials.', 'Timings are milliseconds; UI timings measure JavaScript/DOM updates, not final browser paint.', '');
-  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...(server?.persisted?.entries || []).map(entry => ({ ...entry, source: 'runtime' }))];
+  const runtime = new Map();
+  for (const entry of [...(server?.persisted?.entries || []), ...(importedRuntimeLogs?.entries || [])]) runtime.set(JSON.stringify(entry), entry);
+  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...[...runtime.values()].map(entry => ({ ...entry, source: 'runtime' }))];
   entries.sort((a, b) => a.at.localeCompare(b.at));
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
@@ -139,10 +145,29 @@ async function showLogs() {
     clientDiagnostics.record('error', 'diagnostics.read', diagnosticError(error));
     $('logs-output').value = diagnosticText();
     $('logs-status').textContent = cachedServerDiagnostics ? 'The server is unreachable. Dashboard logs and the last server snapshot are ready to copy.' : 'Server logs are unavailable. Dashboard logs are still ready to copy.';
+    $('logs-help').open = true;
   } finally { clearTimeout(timeout); logsLoading = false; $('logs-reload').disabled = $('logs-copy').disabled = false; }
 }
 $('logs-open').onclick = $('logs-reload').onclick = showLogs;
 $('logs-close').onclick = () => $('logs-dialog').close();
+$('logs-import').onclick = () => $('logs-files').click();
+$('logs-files').onchange = async () => {
+  const files = [...($('logs-files').files || [])];
+  $('logs-files').value = '';
+  if (!files.length) return;
+  try {
+    if (files.length > 2 || files.some(file => file.size > 1024 * 1024)) throw new Error('Choose up to two runtime log files, each no larger than 1 MB.');
+    const unique = new Map();
+    for (const text of await Promise.all(files.map(file => file.text()))) for (const entry of parseRuntimeDiagnostics(text)) unique.set(JSON.stringify(entry), entry);
+    const entries = [...unique.values()].sort((a, b) => a.at.localeCompare(b.at)).slice(-300);
+    if (!entries.length) throw new Error('No supported runtime diagnostics found. Choose diagnostics.jsonl or diagnostics.previous.jsonl.');
+    importedRuntimeLogs = { at: new Date().toISOString(), entries };
+    $('logs-output').value = diagnosticText();
+    $('logs-status').textContent = 'Saved runtime logs included. Copy logs includes these and the dashboard diagnostics. Files are read locally; nothing is uploaded.';
+  } catch {
+    $('logs-status').textContent = 'Could not load runtime logs. Choose diagnostics.jsonl and optionally diagnostics.previous.jsonl, up to 1 MB each. Existing logs are still available to copy.';
+  }
+};
 $('logs-copy').onclick = async () => {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');

@@ -1,8 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDiagnostics, diagnosticError } from '../src/core/diagnostics.mjs';
+import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../src/core/diagnostics.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { createReceiptParser } from '../src/core/copilot.mjs';
+
+test('runtime file parsing rejects unknown events and redacts edited or malformed fields', () => {
+  const at = '2026-11-15T21:00:00.000Z';
+  const text = ['null', '{partial', JSON.stringify({ at, level: 'error', event: 'private.secret', durationMs: 1 }),
+    JSON.stringify({ at: 'PRIVATE', level: 'error', event: 'extension.crash' }),
+    JSON.stringify({ at, level: 'error', event: 'extension.crash', errorCode: 'EIO', processId: 42, pluginVersion: '0.1.82', message: '</script>PRIVATE',
+      source: 'SECRET', path: 'PRIVATE', errorType: 'PRIVATE', method: 'SECRET', locations: ['PRIVATE', 'copilot-source.mjs:12:3'] })].join('\n');
+  const parsed = parseRuntimeDiagnostics(text);
+  assert.equal(parsed.length, 1);
+  assert.deepEqual(parsed[0], { at, level: 'error', event: 'extension.crash', errorCode: 'EIO', processId: 42, pluginVersion: '0.1.82', locations: ['copilot-source.mjs:12:3'] });
+  assert.doesNotMatch(JSON.stringify(parsed), /PRIVATE|SECRET|script/);
+});
 
 test('diagnostic sinks receive only approved metadata and cannot break logging', () => {
   const entries = [];

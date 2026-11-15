@@ -80,3 +80,23 @@ test('server closure produces a fetch failure and leaves lifecycle evidence for 
   assert.ok(logs.persisted.entries.some(e => e.event === 'server.closing'));
   assert.ok(logs.persisted.entries.some(e => e.event === 'server.closed'));
 });
+
+test('the served page carries saved runtime evidence before any usage request can fail', async t => {
+  const directory = await fixture(t), diagnostics = createRuntimeDiagnostics({ directory });
+  diagnostics.record('error', 'extension.crash', { errorType: 'Error', errorCode: 'EIO', message: 'PRIVATE' });
+  diagnostics.record('info', 'history.scan', { phase: 'started' });
+  let scans = 0;
+  const server = await startServer({ diagnostics, scanner: { scan: async () => { scans++; throw new Error('Unavailable'); } } });
+  t.after(() => server.close());
+  const page = await (await fetch(server.url)).text();
+  const payload = page.match(/<script type="application\/json" id="initial-diagnostics">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(payload, 'initial HTML includes a diagnostics snapshot');
+  const snapshot = JSON.parse(payload);
+  assert.ok(snapshot.persisted.entries.some(e => e.event === 'extension.crash'));
+  assert.ok(snapshot.persisted.entries.some(e => e.event === 'history.scan' && e.phase === 'started'));
+  assert.doesNotMatch(payload, /PRIVATE/);
+  assert.ok(snapshot.runtime.node && snapshot.capturedAt);
+  assert.equal(scans, 0, 'capturing logs never scans usage');
+  await server.close();
+  assert.ok(JSON.parse(payload).persisted.entries.length, 'page retains evidence after its server stops');
+});

@@ -1,4 +1,7 @@
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
+export const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 'extension.signal', 'extension.exit', 'extension.crash',
+  'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response',
+  'wsl.discovery', 'history.scan', 'history.source']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
 for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
@@ -67,4 +70,20 @@ export function createDiagnostics({ limit = 300, clock = () => new Date(), tick 
     } catch (error) { return failure(error); }
   }
   return { record, measure, snapshot: () => ({ startedAt, limit, dropped, entries: entries.map(e => ({ ...e, ...(e.locations ? { locations: [...e.locations] } : {}) })) }) };
+}
+
+// Apply the same privacy rules to files read by the server and files chosen in Show logs.
+export function parseRuntimeDiagnostics(text) {
+  let at;
+  const safe = createDiagnostics({ clock: () => at || new Date() });
+  for (const line of text.split('\n')) {
+    try {
+      const entry = JSON.parse(line);
+      if (!entry || !RUNTIME_EVENTS.has(entry.event) || typeof entry.at !== 'string'
+        || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(entry.at) || !Number.isFinite(Date.parse(entry.at))) continue;
+      at = new Date(entry.at);
+      safe.record(entry.level, entry.event, entry);
+    } catch {}
+  }
+  return safe.snapshot().entries;
 }

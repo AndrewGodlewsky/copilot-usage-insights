@@ -25,3 +25,13 @@ There is no automatic upload. Logs omit prompts, names, session IDs, paths, cred
 `tests/panel.test.mjs` covers preserving matching reports during failures, hiding mismatched filter results, keeping filters reachable, recovery, cached server evidence without extra requests, and redacted connection logs. `tests/runtime-diagnostics.test.mjs` covers real loopback shutdown/reopen, lifecycle persistence, bounded files/reads, corrupted input, redaction, and unavailable storage. `tests/diagnostics.test.mjs` checks safe fields and confirms that handled data errors still leave diagnostics reachable.
 
 No automatic retry is added to paid AI review or other actions. Report calculations, log scanning, polling frequency, and host/server lifecycle remain unchanged.
+
+## First-load evidence in 0.1.83
+
+The reported 0.1.82 incident failed before any successful usage or inventory response: the first request failed at the fetch stage after 19.5 seconds, and diagnostics then failed in about 20 ms. No HTTP response or server snapshot was available. This establishes loss of access to the endpoint, not why it happened. The connection failure has not been reproduced or fixed by this logging update.
+
+The server now embeds a sanitized runtime snapshot, including recent persisted entries, in the initial page response. This survives failure of the first usage request. Subsequent inventory snapshots include persisted entries too. Reading these bounded diagnostic files does not rescan usage or add a background polling loop. Scan-start events now persist alongside completions, so a later export can show an unfinished scan.
+
+An already-open page cannot read new disk records through a stopped server. **Show logs → Load saved logs** provides a local file picker for that case. Select `diagnostics.jsonl`, optionally with `diagnostics.previous.jsonl`, then copy the combined export. The dialog contains folder instructions for Windows, macOS, and Linux. Reads are limited to two 1 MiB files; only known runtime events and allowlisted fields survive, with up to 300 imported entries. Filenames and raw text are not added to exports, and no upload occurs. Reopening the dashboard captures persisted records without manual file selection when its server can start again.
+
+Synthetic tests cover failure of the first request, copying retained snapshots, malformed and oversized imports, overlapping rotated files, redaction, disk persistence, and log collection without usage scans. Actual file-picker behavior in the Copilot canvas requires a manual check.

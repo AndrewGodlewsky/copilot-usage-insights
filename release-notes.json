@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.83",
+    "summary": "Show logs now retains saved server diagnostics even if the first usage load loses its connection. You can also load saved runtime logs directly in the panel and copy everything without using a terminal."
+  },
+  {
     "version": "0.1.82",
     "summary": "Recovers older usage from locked WSL databases using a read-only reader inside the running distribution, with a setting to turn it off. Skill copy buttons now stay at the right edge of their column."
   },

@@ -7,7 +7,7 @@ import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModel
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
-async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory) {
+async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory, initial = {}) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
   if (releaseNotes) html = html.replace(/const RELEASE_NOTES = .*;/, () => `const RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};`);
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
@@ -19,10 +19,12 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       before(node) { node.nextElementSibling = this; },
       focus() { document.activeElement = this; },
       select() { this.selected = true; },
+      click() { this.clicked = true; },
       showModal() { this.open = true; }, close() { this.open = false; },
       querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
   }));
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
+  get('initial-diagnostics').textContent = initial.diagnostics ? JSON.stringify(initial.diagnostics) : 'null';
   // Model the persistent navigation children without running a browser.
   for (const id of ['token-topic-stops', 'token-track-nodes', 'token-overview-insight']) {
     let markup = '', children = [];
@@ -45,7 +47,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
-  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now() };
+  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now(), transportError: initial.transportError };
   const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
@@ -147,6 +149,51 @@ test('inventory retains server diagnostics for a later outage without an extra r
   assert.match(logs, /ui.connectionPolicy/);
   assert.doesNotMatch(logs, /PRIVATE|SECRET/);
   assert.match(get('logs-status').textContent, /last server snapshot/);
+});
+
+test('Show logs keeps initial saved evidence when the very first usage request cannot connect', async () => {
+  const at = '2026-11-15T21:02:43.000Z';
+  const diagnostics = { version: '0.1.83', runtime: { node: 'v24.0.0', platform: 'win32', arch: 'x64' }, capturedAt: at, startedAt: at, limit: 300, dropped: 0,
+    entries: [{ at, level: 'info', event: 'server.listening' }], persisted: { available: true, entries: [{ at, level: 'error', event: 'extension.crash', errorType: 'Error', errorCode: 'EIO' }] } };
+  const { get, requests, server } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} }, undefined, undefined, undefined, { diagnostics, transportError: true });
+  assert.deepEqual(requests.map(r => r.method), ['usage.report'], 'no additional startup request');
+  await get('logs-open').onclick();
+  assert.match(get('logs-output').value, /Cached server snapshot from/);
+  assert.match(get('logs-output').value, /extension.crash/);
+  assert.match(get('logs-output').value, /Recent local runtime logs/);
+  await get('logs-copy').onclick();
+  assert.match(server.copied.at(-1), /"source":"runtime"/);
+  assert.doesNotMatch(server.copied.at(-1), /PRIVATE/);
+});
+
+test('offline runtime files are sanitized, bounded, and copyable without a server or upload', async () => {
+  const { get, server, requests } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  server.transportError = true;
+  await get('logs-open').onclick();
+  const before = requests.length;
+  get('logs-import').onclick();
+  assert.equal(get('logs-files').clicked, true);
+  const entries = Array.from({ length: 305 }, (_, i) => ({ at: new Date(Date.UTC(2026, 10, 15, 21, 0, i)).toISOString(), level: 'info', event: 'history.scan', phase: 'started', processId: i, message: 'PRIVATE message', path: 'SECRET path' }));
+  const current = entries.slice(150).map(e => JSON.stringify(e)).join('\n');
+  const previous = entries.slice(0, 160).map(e => JSON.stringify(e)).join('\n');
+  get('logs-files').files = [{ name: 'PRIVATE file.jsonl', size: current.length, text: async () => current }, { size: previous.length, text: async () => previous }];
+  await get('logs-files').onchange();
+  const output = get('logs-output').value;
+  assert.match(output, /Manually loaded runtime logs: 300 entries/);
+  assert.match(output, /"processId":304/);
+  assert.doesNotMatch(output, /"processId":0\b|PRIVATE|SECRET/);
+  assert.equal(output.match(/"processId":155\b/g).length, 1, 'overlapping rotated entries count once');
+  assert.equal(requests.length, before, 'loading files never contacts the server');
+  await get('logs-copy').onclick();
+  assert.equal(server.copied.at(-1), output);
+  for (const files of [[], [{ size: 1024 * 1024 + 1, text: async () => { throw new Error('must not read'); } }], [{ size: 5, text: async () => 'wrong' }], [{ size: 5, text: async () => { throw new Error('SECRET read error'); } }]]) {
+    get('logs-files').files = files;
+    await get('logs-files').onchange();
+    assert.equal(get('logs-output').value, output, 'cancel or invalid file leaves useful logs intact');
+    assert.doesNotMatch(get('logs-status').textContent, /PRIVATE|SECRET/);
+  }
+  await get('logs-reload').onclick();
+  assert.match(get('logs-output').value, /"processId":304/);
 });
 
 test('Rolling 30 is selected by default and remains selectable alongside Last 30 days', async () => {

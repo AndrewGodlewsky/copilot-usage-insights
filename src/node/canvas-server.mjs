@@ -30,6 +30,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
   const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() });
+  const savedDiagnosticSnapshot = () => ({ ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) });
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
@@ -91,7 +92,11 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'");
     if (req.headers.host !== new URL(origin).host || req.headers.origin && req.headers.origin !== origin) return json(res, 403, { error: 'Origin not allowed' });
-    if (req.method === 'GET' && req.url === prefix) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return; }
+    if (req.method === 'GET' && req.url === prefix) {
+      const page = html.replace('<script type="application/json" id="initial-diagnostics">null</script>',
+        () => `<script type="application/json" id="initial-diagnostics">${JSON.stringify(savedDiagnosticSnapshot()).replaceAll('<', '\\u003c')}</script>`);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(page); return;
+    }
     if (req.method !== 'POST' || req.url !== prefix + 'api') return json(res, 404, { error: 'Not found' });
     if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'Expected JSON' });
     let size = 0, body = '';
@@ -115,7 +120,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       let result;
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
-        result = { ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) };
+        result = savedDiagnosticSnapshot();
       } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.cancel'].includes(message.method)) {
         if (Object.keys(input).some(key => message.method !== 'review.run' || !['prompt', 'expectedModel'].includes(key))) throw new TypeError('Unexpected review options.');
         if (message.method === 'review.cancel') { reviewRequest?.abort(new ReviewError('cancelled')); reviewService.cancel(); result = { ok: true }; }
@@ -154,7 +159,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         for (const kind of ['mcp', 'plugins']) if (!result[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...result[kind].diagnostic });
         // Reuse an existing response, so the panel retains server evidence even if it later
         // loses its connection. No heartbeat, extra scan, or extra request is necessary.
-        result = { ...result, diagnostics: diagnosticSnapshot() };
+        result = { ...result, diagnostics: savedDiagnosticSnapshot() };
       } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
