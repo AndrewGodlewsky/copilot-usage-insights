@@ -36,8 +36,8 @@ export function parseDateDay(value) {
   if (dayKey(day) !== value) throw new RangeError('date must be a real calendar date');
   return day;
 }
-export function normalizeQuery({ range = '7d', startDate, endDate, models, includeCache = true } = {}, now = new Date()) {
-  if (range !== 'all' && range !== 'custom' && !RANGE_DAYS.has(range)) throw new RangeError(`Unknown range: ${range}`);
+export function normalizeQuery({ range = 'mtd', startDate, endDate, models, includeCache = true } = {}, now = new Date()) {
+  if (range !== 'mtd' && range !== 'all' && range !== 'custom' && !RANGE_DAYS.has(range)) throw new RangeError(`Unknown range: ${range}`);
   if (typeof includeCache !== 'boolean') throw new TypeError('includeCache must be a boolean');
   if (models !== undefined && (!Array.isArray(models) || !models.every((m) => typeof m === 'string' && m.trim() !== ''))) throw new TypeError('models must be an array of non-empty strings');
   const out = { range, includeCache };

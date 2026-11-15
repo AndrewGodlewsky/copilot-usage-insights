@@ -10,8 +10,8 @@ test('local calendar day arithmetic remains aligned across DST and year boundari
   assert.equal(dayKey(localDay(new Date(2026, 10, 3, 0))), '2026-11-03');
 });
 test('query normalization provides defaults and canonical model sets', () => {
-  assert.deepEqual(normalizeQuery(), { range: '7d', includeCache: true });
-  assert.deepEqual(normalizeQuery({ models: ['z', 'a', 'z'], includeCache: false }), { range: '7d', includeCache: false, models: ['a', 'z'] });
+  assert.deepEqual(normalizeQuery(), { range: 'mtd', includeCache: true });
+  assert.deepEqual(normalizeQuery({ models: ['z', 'a', 'z'], includeCache: false }), { range: 'mtd', includeCache: false, models: ['a', 'z'] });
 });
 
 test('custom usage ranges bound supported history while calendar parsing stays general', () => {

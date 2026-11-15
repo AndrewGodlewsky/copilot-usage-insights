@@ -19,7 +19,7 @@ export function buildEfficiencyReview(report, context, scope = {}) {
   const data = {
     schema: 'usage-insights-efficiency-v1', capturedAt: reviewDate(report.generatedAt),
     units: 'Tokens are counts; credits are Copilot AI credits; shares/rates are percentages (0–100). Counts may have different coverage.',
-    scope: { range: ['1d', '7d', '30d', '90d', 'all', 'custom'].includes(report.query.range) ? report.query.range : null,
+    scope: { range: ['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom'].includes(report.query.range) ? report.query.range : null,
       startDate: reviewDate(report.query.startDate), endDate: reviewDate(report.query.endDate),
       modelFiltered: Boolean(scope.models?.length), projectFiltered: Boolean(scope.project), sessionFiltered: Boolean(scope.session) },
     history: { summary: reviewNumbers(e.summary, reviewMetricKeys),

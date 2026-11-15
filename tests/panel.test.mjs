@@ -95,6 +95,23 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
 }
 
+test('Rolling 30 is selected by default and remains selectable alongside Last 30 days', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, requests, server } = await mountPanel(report);
+  assert.equal(get('range').value, 'mtd');
+  assert.equal(requests[0].input.range, 'mtd');
+  assert.match(get('tiles').innerHTML, /Rolling 30/);
+  server.report = input => ({ ...buildReport([], input), sources: [], coverage: {} });
+  for (const [range, label] of [['30d', 'Last 30 days'], ['mtd', 'Rolling 30']]) {
+    get('range').value = range;
+    get('range').onchange();
+    await new Promise(setImmediate);
+    assert.equal(requests.findLast(r => r.method === 'usage.report').input.range, range);
+    assert.match(get('tiles').innerHTML, new RegExp(label));
+    assert.equal(get('custom').hidden, true);
+  }
+});
+
 test('coverage notice can be dismissed across renders and refreshes without suppressing changed warnings', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: { aggregateOnly: 2 } };
   const { get, document } = await mountPanel(report);
@@ -1172,7 +1189,7 @@ test('banner renders each report range and keeps the full scene width in narrow 
   const { get } = await mountPanel(report);
   for (const width of [1080, 500, 280]) {
     get('banner').clientWidth = width;
-    for (const [range, count] of [['1d', 1], ['7d', 1], ['30d', 1], ['90d', 1], ['all', 4], ['custom', 0]]) {
+    for (const [range, count] of [['1d', 1], ['7d', 1], ['mtd', 1], ['30d', 1], ['90d', 1], ['all', 4], ['custom', 0]]) {
       const query = range === 'custom' ? { range, startDate: '2026-11-01', endDate: '2026-11-14' } : { range };
       Object.assign(report, buildReport([], query, now));
       await get('refresh').onclick();

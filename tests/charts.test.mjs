@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue } from '../src/panel/charts.mjs'
-import { pixelBanner, paintScene, skyFor } from '../src/panel/art.mjs'
+import { pixelBanner, paintScene, skyFor, nextBuildingPatterns } from '../src/panel/art.mjs'
 import { formatNumber, formatCredits } from '../src/core/format.mjs'
 
 const day = (d, v) => ({ day: d, input: v, output: v / 2, cacheRead: v * 4, cacheWrite: v / 4, total: v * 5.75, credits: 0 })
@@ -199,6 +199,18 @@ test('banner presets use the requested fixed positions; all shows four and custo
       assert.deepEqual(paintScene({ ...report, query: { range }, daily: [], totals: { total: 0, output: 0 } }, { w, h }), grid, 'data volume does not control these decorative buildings');
     }
     assert.equal(buildings(paintScene({ ...report, query: { range: 'custom' } }, { w, h })).length, 0);
+  }
+});
+
+test('Rolling 30 shares the 30-day building and light cycle', () => {
+  const report = { generatedAt: new Date(2026, 10, 15, 22).toISOString() };
+  let patterns = nextBuildingPatterns({}, null, 'mtd');
+  for (let visit = 0; visit < 4; visit++) {
+    assert.equal(patterns['30d'], visit % 3);
+    assert.deepEqual(paintScene({ ...report, query: { range: 'mtd' } }, { patterns }), paintScene({ ...report, query: { range: '30d' } }, { patterns }));
+    assert.deepEqual(nextBuildingPatterns(patterns, 'mtd', '30d'), patterns, 'same visible building keeps its pattern');
+    assert.deepEqual(nextBuildingPatterns(patterns, '30d', 'mtd'), patterns);
+    patterns = nextBuildingPatterns(nextBuildingPatterns(patterns, 'mtd', '7d'), '7d', 'mtd');
   }
 });
 

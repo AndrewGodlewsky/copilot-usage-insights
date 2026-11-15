@@ -9,7 +9,11 @@ const BUILDINGS = [
   { range: '90d', center: .93, height: .74, seed: 53 },
 ]
 
+const buildingRange = range => range === 'mtd' ? '30d' : range
+
 export function nextBuildingPatterns(patterns, previousRange, range) {
+  previousRange = buildingRange(previousRange)
+  range = buildingRange(range)
   const next = { ...patterns }
   for (const building of BUILDINGS) {
     const visible = range === 'all' || range === building.range
@@ -59,7 +63,7 @@ function mix(a, b, t) {
 export function paintScene(report, { w = 120, h = 34, patterns = {} } = {}) {
   const generated = report?.generatedAt ? new Date(report.generatedAt) : new Date()
   const sky = SKIES[skyFor(generated.getHours())]
-  const range = report?.query?.range || '7d'
+  const range = buildingRange(report?.query?.range || 'mtd')
   // Changing the date range should not reshuffle the background.
   const rand = rng(1)
   const grid = Array.from({ length: h }, () => Array(w).fill(null))

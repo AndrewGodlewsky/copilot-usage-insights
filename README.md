@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.71** adds an X button to the orange data coverage notice. Dismissal lasts while that message is unchanged in the current dashboard, including refreshes; changed warnings and newly opened dashboards show it again. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.72** adds **Rolling 30** as the default date filter, showing the first of the current month through today with the same header building as Last 30 days. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -119,13 +119,17 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 
 **Copilot credits** beneath the header subtitle shows recorded credits for the active date, model, project, and session filters on all three tabs. It uses the same total as the AI credits card, including fractional credits, an asterisk for incomplete coverage, and Unavailable when charges are missing. Selecting an individual daily bar changes the token detail only; the header keeps the overall filtered credit total. This is usage, not an account balance, and uses the loaded report without another lookup.
 
+**Rolling 30** is the default date filter. It means the first day of the current calendar month through today, inclusive, in your local time zone. It resets on the first of each month and can contain 1–31 days; **Last 30 days** remains a separate trailing-day option. The selected range applies throughout Usage, Breakdown, and Efficiency using the existing metric-specific filtering rules. If the dashboard stays open into a new month, the next refresh uses the new month.
+
+The orange data coverage notice can be closed with its X button. The same message stays dismissed through tab changes and refreshes in that dashboard; changed warnings and newly opened dashboards show it again.
+
 The decorative header has four buildings with fixed sizes and positions for the date-range presets:
 
 | Filter | Buildings shown |
 | --- | --- |
 | Today | One, around 26% across the banner |
 | Last 7 days | One, around 43% across |
-| Last 30 days | One, around 60% across |
+| Rolling 30 / Last 30 days | One, around 60% across; both share the same light pattern |
 | Last 90 days | One, around 93% across |
 | All history | All four in their fixed positions, even with limited recorded history |
 | Custom dates | None |

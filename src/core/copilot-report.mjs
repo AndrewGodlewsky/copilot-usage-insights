@@ -1,4 +1,4 @@
-import { normalizeQuery, localDay, dayOfMs, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
+import { normalizeQuery, localDay, dayOfMs, dayKey, dayNumber, parseDateDay, RANGE_DAYS } from './query.mjs';
 import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
@@ -158,7 +158,8 @@ function usageScope(records, input, now) {
     history.push(r);
     first = Math.min(first, dayOfMs(r.ms));
   }
-  const start = q.range === 'custom' ? parseDateDay(q.startDate) : q.range === 'all' ? first : today - RANGE_DAYS.get(q.range) + 1;
+  const start = q.range === 'custom' ? parseDateDay(q.startDate) : q.range === 'all' ? first
+    : q.range === 'mtd' ? dayNumber(now.getFullYear(), now.getMonth(), 1) : today - RANGE_DAYS.get(q.range) + 1;
   const end = q.range === 'custom' ? parseDateDay(q.endDate) : today;
   return { q, today, history, start, end };
 }
