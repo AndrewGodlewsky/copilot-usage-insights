@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue } from '../src/panel/charts.mjs'
+import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue, coverageValue } from '../src/panel/charts.mjs'
 import { pixelBanner, paintScene, skyFor, nextBuildingPatterns } from '../src/panel/art.mjs'
 import { formatNumber, formatCredits } from '../src/core/format.mjs'
 
@@ -63,9 +63,9 @@ test('small positive days remain visible beside large days without inventing usa
     assert.doesNotMatch(chart, /<clipPath id="sb-c1">/, 'zero days must not gain a colored stack');
     const stack = chart.split(`<g clip-path="url(#sb-c${count - 1})">`)[1].split('</g>')[0];
     const segments = [...stack.matchAll(/height="([^"]+)" fill=/g)].map(match => Number(match[1]));
-    const total = keys.reduce((sum, key) => sum + today[key], 0);
-    assert.equal(segments.length, keys.length);
-    for (const [i, key] of keys.entries()) assert.ok(Math.abs(segments[i] / hits.at(-1) - today[key] / total) < 1e-10, 'minimum-height stacks retain their token mix');
+    assert.deepEqual(segments, [4], 'minimum bars use one solid color');
+    assert.ok(stack.includes(`fill="${keys.length > 1 ? 'var(--s3)' : 'var(--s1)'}"`), 'color matches the largest displayed category');
+    if (keys.length > 1) assert.match(chart, /Input: 1000; Output: 900; Cache read: 6000; Cache write: 1000/, 'all categories remain available in the tooltip');
     assert.match(chart, /Minimum height for visibility/);
     assert.ok(chart.includes(keys.length > 1 ? 'Total: 8900' : 'credits: 0.001'), 'accessible tooltip values retain the real amount');
     assert.ok(chart.includes(`data-day="${days.at(-1).day}" role="button" tabindex="0" aria-pressed="true"`));
@@ -73,6 +73,37 @@ test('small positive days remain visible beside large days without inventing usa
   }
   const single = stackedBars([{ ...today, day: '2026-11-15' }], { height: 230, selectable: true });
   assert.doesNotMatch(single, /Minimum height for visibility/, 'Today-only charts retain their normal scale');
+});
+
+test('minimum bars choose each dominant category, use stable ties, and preserve ordinary stacks', () => {
+  const keys = ['input', 'cacheRead', 'cacheWrite', 'output', 'unclassifiedInput'];
+  const colors = Object.fromEntries(keys.map(key => [key, key + '-color']));
+  for (const largest of keys) {
+    const values = Object.fromEntries(keys.map(key => [key, key === largest ? 10 : 1]));
+    const chart = stackedBars([{ day: '2026-11-14', input: 1000000 }, { day: '2026-11-15', ...values }], { keys, colors });
+    const small = chart.split('<g clip-path="url(#sb-c1)">')[1].split('</g>')[0];
+    assert.equal((small.match(/<rect /g) || []).length, 1);
+    assert.ok(small.includes(`fill="${largest}-color"`));
+  }
+  const small = { day: '2026-11-15', input: 10, cacheRead: 10 };
+  const tied = stackedBars([{ day: '2026-11-14', input: 1000000 }, small], { keys, colors });
+  assert.match(tied.split('<g clip-path="url(#sb-c1)">')[1], /fill="input-color"/);
+  const normal = stackedBars([small], { keys, colors });
+  assert.equal((normal.match(/fill="(?:input|cacheRead)-color"/g) || []).length, 2, 'ordinary columns remain stacked');
+});
+
+test('coverage markers can be hidden without changing partial values or unavailable data', () => {
+  const row = { day: '2026-11-15', input: 100, total: 100, output: 0, credits: 2, requests: 2, knownTokenRequests: 1, missingTokens: 1, partialCredits: 1, missing: { input: 1, output: 2 } };
+  assert.equal(usageValue(row, 'total', String), '100 *');
+  assert.equal(usageValue(row, 'total', String, false), '100');
+  assert.equal(usageValue(row, 'credits', String, false), '2');
+  assert.equal(usageValue(row, 'output', String, false), 'Unavailable');
+  assert.equal(coverageValue(0, true, String, false), '0');
+  assert.equal(coverageValue(null, true, String, true), 'Unavailable');
+  for (const chart of [stackedBars, calendarHeatmap]) {
+    assert.match(chart([row]), /100 \*/);
+    assert.doesNotMatch(chart([row], { showCoverage: false }), /100 \*/);
+  }
 });
 
 test('column tooltips preserve full numbers and partial, unavailable, and zero charges', () => {

@@ -1,4 +1,4 @@
-import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
+import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, coverageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
@@ -25,11 +25,15 @@ const AUTO_REFRESH_MS = 15 * 60 * 1000;
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+const recordedValue = (row, key, format = number) => usageValue(row, key, format, !$('coverage').hidden);
+const markedValue = (value, incomplete, format = number) => coverageValue(value, incomplete, format, !$('coverage').hidden);
 let dismissedCoverage = '';
 let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
 $('coverage-dismiss').onclick = () => {
   dismissedCoverage = $('coverage-message').textContent;
   $('coverage').hidden = true;
+  $('tip').hidden = true;
+  render();
   if (document.activeElement === $('coverage-dismiss')) $('refresh').focus({ preventScroll: true });
 };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
@@ -251,12 +255,12 @@ function options(id, values, all) {
   select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
-  return usageValue(row, 'credits', creditNumber);
+  return recordedValue(row, 'credits', creditNumber);
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
   $('hero-credits').textContent = totals ? creditLabel(totals) : 'Unavailable';
-  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' An asterisk marks incomplete credit coverage.' : '') : 'Credits could not be loaded for the current filters.';
+  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' Credit coverage is incomplete.' : '') : 'Credits could not be loaded for the current filters.';
 }
 function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
@@ -278,7 +282,7 @@ function table(rows, heading, details = false, expansion = '', depth = 0) {
   if (!rows.length) return depth ? '' : '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', ...(details ? ['averageTokens'] : []), 'total', 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
-  const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
+  const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. Coverage reflects requests with complete counts.' };
   const modelExpansion = expansion === 'model', projectExpansion = expansion === 'project';
   const projectFilter = expansion === 'projectFilter';
   const sessionExpansion = expansion === 'session', requestExpansion = expansion === 'request', sessionModelsExpansion = expansion === 'sessionModels';
@@ -294,15 +298,15 @@ function table(rows, heading, details = false, expansion = '', depth = 0) {
     const controlled = child ? [region, ...[...childRows.matchAll(/\sid="([^"]+)"/g)].map(m => m[1])].join(' ') : '';
     const choice = projectFilter ? `<td class="text-cell"><button class="model-toggle cell-text" data-usage-project="${esc(r.name)}" aria-pressed="${$('project').value === r.name}" title="${esc(r.name)}: ${$('project').value === r.name ? 'clear project filter' : 'filter dashboard'}">${esc(r.name)}</button></td>` : '';
     const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${controlled}"` : ''} aria-label="${esc(heading)}: ${esc(label)}" title="${esc(title)}"><span aria-hidden="true">${open ? '\u25be' : '\u25b8'}</span> ${esc(label)}</button></td>` : textCell(label, title);
-    const cells = `<tr${details ? ` class="usage-row" data-depth="${depth}" id="usage-row-${depth}-${index}"` : projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? '\u2014' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    const cells = `<tr${details ? ` class="usage-row" data-depth="${depth}" id="usage-row-${depth}-${index}"` : projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? '\u2014' : markedValue(r.userPrompts, r.uncertainPrompts)}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(recordedValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
     return cells + `<tr class="usage-context" data-depth="${depth + 1}"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${child.header}</div></td></tr>${childRows}`;
   }).join('');
-  const header = `<tr${details ? ` class="usage-header" data-depth="${depth}" id="usage-header-${depth}"` : ''}><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr>`;
+  const header = `<tr${details ? ` class="usage-header" data-depth="${depth}" id="usage-header-${depth}"` : ''}><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; hover over a count for known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr>`;
   if (depth) return header + body;
   // Reserve column space from the whole report before any child rows are loaded.
   const totals = state.report.totals;
-  const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => usageValue(totals, key, key === 'credits' ? creditNumber : number).length));
+  const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => recordedValue(totals, key, key === 'credits' ? creditNumber : number).length));
   const layout = details ? ` class="usage-table" style="--usage-metric-width:${metricWidth}ch"` : '';
   return `<table${layout}>${details ? '<colgroup><col class="usage-name-column"><col span="9"></colgroup>' : ''}<thead>${header}</thead><tbody>${body}</tbody></table>`;
 }
@@ -460,7 +464,7 @@ function renderIntegrations(report) {
     if (row.toolsLoaded !== undefined && row.toolsLoaded !== null) details.push(`Tools loaded: ${row.toolsLoaded ? 'Yes' : 'No'}`);
     if (row.error) details.push(`Connection error: ${row.error}`);
     const tone = row.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(row.status) ? 'attention' : 'neutral';
-    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${number(row.successRate, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
+    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : markedValue(row.successRate, row.unknown > 0, value => number(value, { maximumFractionDigits: 1 }) + '%')}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
   }).join('')}</tbody></table>` : `<p class="muted">${mcp.available ? 'No configured MCP servers or recorded MCP calls match this view.' : 'No recorded MCP calls match these filters. Live inventory is unavailable; open this dashboard in an updated Copilot session.'}</p>`;
   $('mcp-note').textContent = `Status: current session${inventoryPending ? ' (refreshing)' : mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
   if (inventoryPending && !mcp.available && !mcp.rows.length) $('mcp').innerHTML = '<p class="muted">Loading current MCP inventory. Usage data is ready.</p>';
@@ -528,17 +532,17 @@ const efficiencyMeasures = [
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${number(value, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
   { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: creditNumber, hint: 'Only complete credit charges are included.' },
 ];
-const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
+const efficiencyValue = (row, metric) => markedValue(row[metric.key], row[metric.count] < row.requests, metric.format);
 const efficiencyHint = (row, metric) => `${efficiencyValue(row, metric)} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
 function renderEfficiencyFlow(s) {
   const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
   const share = total > 0 ? s.pairedInput / total * 100 : null;
   $('efficiency-flow').innerHTML = share === null
     ? '<p class="muted">Input and output counts from the same requests are needed to show where tokens go. Try a wider range if these records are incomplete.</p>'
-    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${number(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${number(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
+    : `<div class="efficiency-flow-heading"><strong>${markedValue(share, s.pairedRequests < s.requests, value => number(value) + '<span>%</span>')}</strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${markedValue(share, s.pairedRequests < s.requests)} percent; output ${markedValue(100 - share, s.pairedRequests < s.requests)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${markedValue(s.pairedInput, s.pairedRequests < s.requests)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${markedValue(s.pairedOutput, s.pairedRequests < s.requests)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
   $('efficiency-cache').innerHTML = s.cacheHitRate == null
     ? `<strong>Cache reuse is not measurable here.</strong><p class="muted">${number(s.cacheRequests ?? 0)} of ${number(s.requests)} requests have a complete cache split. Missing cache detail is not zero reuse.</p>`
-    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${number(s.cacheRead)} of ${number(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
+    : `<strong>${markedValue(s.cacheHitRate, s.cacheRequests < s.requests, value => number(value) + '%')} of measured input was reused from cache</strong><p class="muted">${markedValue(s.cacheRead, s.cacheRequests < s.requests)} of ${markedValue(s.cacheInput, s.cacheRequests < s.requests)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
 }
 
 let efficiencyContextSnapshot;
@@ -569,7 +573,7 @@ function renderEfficiencyContext() {
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
   const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
-  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, credits: creditNumber, context: c })}`;
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
 let reviewRunning = false, reviewConnectionPending = false, preparedReviewModel = '';
 $('efficiency-review-open').onclick = async () => {
@@ -666,15 +670,15 @@ function renderEfficiencyHabits() {
   const metrics = [
     ['User messages', habits?.prompts, 'Recorded user-origin messages'],
     ['Messages / session', habits?.averagePromptsPerSession, `${number(habits?.promptSessions ?? 0)} sessions with messages`],
-    ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`],
-    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`],
+    ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`, habits?.promptSamples < habits?.prompts],
+    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`, summary?.inputRequests < summary?.requests],
     ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],
   ];
   $('efficiency-habits').innerHTML = habits?.reason === 'model-filter'
     ? '<p class="muted">Clear the model filter to see conversation habits. User messages cannot reliably be assigned to one model when a session uses several.</p>'
     : !habits?.observedSessions ? `<p class="muted">${habits?.omitted ? 'No interaction metadata could be attributed exclusively to Copilot.' : 'No matching message or turn metadata was recorded. Usage receipts alone cannot tell us how many times you chatted.'}</p>`
-      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
-  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${number(summary?.averageInput)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
+      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail, incomplete]) => `<div><span class="label">${label}</span><strong class="value">${markedValue(value, incomplete)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${markedValue(summary?.averageInput, summary?.inputRequests < summary?.requests)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
   if (habits?.omitted && habits.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">${number(habits.omitted)} events excluded because Copilot attribution was missing or mixed.</p>`;
   const instructions = efficiencyContextSnapshot?.available ? efficiencyContextSnapshot.categories?.customInstructions : null;
   $('efficiency-instructions').innerHTML = instructions == null
@@ -687,7 +691,7 @@ function renderEfficiencyReliability() {
   const report = state.report, rows = toolOutcomeSummary(report.tools), habits = report.efficiency.interactions;
   const failed = (report.tools?.rows || []).filter(row => row.failures > 0).sort((a, b) => b.failures - a.failures).slice(0, 5);
   $('efficiency-reliability').innerHTML = rows.some(row => row.calls)
-    ? `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${rows.map(row => `<tr>${textCell(row.name)}<td>${number(row.calls)}</td><td>${number(row.successes)}</td><td>${number(row.failures)}</td><td>${number(row.unknown)}</td><td>${row.successRate == null ? 'Unavailable' : number(row.successRate, { maximumFractionDigits: 1 }) + '%'}</td></tr>`).join('')}</tbody></table></div><p class="footnote">Success rate uses only known outcomes. Calls follow the date and usage filters.</p>${failed.length ? `<details><summary>Tools with the most recorded failures</summary><ul>${failed.map(row => `<li>${esc(row.server ? row.server + ' / ' + (row.mcpTool || row.name) : row.name)}: ${number(row.failures)} failures in ${number(row.calls)} calls</li>`).join('')}</ul></details>` : ''}`
+    ? `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${rows.map(row => `<tr>${textCell(row.name)}<td>${number(row.calls)}</td><td>${number(row.successes)}</td><td>${number(row.failures)}</td><td>${number(row.unknown)}</td><td>${row.successRate == null ? 'Unavailable' : markedValue(row.successRate, row.unknown > 0, value => number(value, { maximumFractionDigits: 1 }) + '%')}</td></tr>`).join('')}</tbody></table></div><p class="footnote">Success rate uses only known outcomes. Calls follow the date and usage filters.</p>${failed.length ? `<details><summary>Tools with the most recorded failures</summary><ul>${failed.map(row => `<li>${esc(row.server ? row.server + ' / ' + (row.mcpTool || row.name) : row.name)}: ${number(row.failures)} failures in ${number(row.calls)} calls</li>`).join('')}</ul></details>` : ''}`
     : '<p class="muted">No matching tool execution records. Missing records do not mean no tools were used.</p>';
   $('efficiency-reliability').innerHTML += habits?.reason === 'model-filter'
     ? '<p class="footnote">Session error counts are unavailable under a model filter.</p>'
@@ -734,8 +738,8 @@ function renderSelectedTokenTopic() {
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
-    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, credits: creditNumber });
-    if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, credits: creditNumber });
+    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
+    if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
     if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
     return;
   }
@@ -743,7 +747,7 @@ function renderSelectedTokenTopic() {
   $('token-topic-title').textContent = topic.label;
   $('token-topic-question').textContent = topic.question;
   $('token-topic-scope').textContent = ['tools', 'results', 'skills'].includes(tokenTopic) ? 'Selected history + current conversation snapshot' : 'Selected history · current filters';
-  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber, context: efficiencyContextSnapshot });
+  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
@@ -776,7 +780,7 @@ function showPatternTopic(id) {
   $('pattern-topic-title').textContent = topic.label;
   $('pattern-topic-question').textContent = topic.question;
   $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
-  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, credits: creditNumber });
+  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
 }
 $('efficiency-pattern-topic').onchange = () => showPatternTopic($('efficiency-pattern-topic').value);
 function openTokenContext() {
@@ -881,7 +885,6 @@ function renderContent() {
   else delete $('content').dataset.metric;
   $('tiles').hidden = state.view === 'efficiency';
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
-  renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
   const focusedChoice = document.activeElement?.dataset;
   const selected = r.daily.find(d => d.day === state.selectedDay);
@@ -893,10 +896,20 @@ function renderContent() {
   renderLoadStatus();
   const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
   if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
+  const p = r.promptCredits, promptIncomplete = p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0;
   const warnings = [];
   if (t.missingCredits) warnings.push(`${number(t.missingCredits)} requests have unavailable AI credits`);
   if (t.partialCredits) warnings.push(`${number(t.partialCredits)} requests have partial credit charges`);
   if (t.missingTokens) warnings.push(`${number(t.missingTokens)} requests have incomplete token counts`);
+  if (p.eligiblePrompts < p.prompts) warnings.push(`${number(p.prompts - p.eligiblePrompts)} prompts are excluded from cost averages`);
+  if (p.unlinkedRequests) warnings.push(`${number(p.unlinkedRequests)} model calls could not be linked to user prompts`);
+  if (p.work?.tokenPrompts > 0 && p.work.tokenPrompts < p.eligiblePrompts) warnings.push('Some eligible prompts have incomplete token counts across their linked calls');
+  const measurements = r.efficiency?.summary;
+  if (t.missing?.reasoning > 0 && t.missing.reasoning < t.requests || measurements?.reasoningRequests > 0 && measurements.reasoningRequests < measurements.requests) warnings.push('Reasoning counts are only partly measured');
+  if (measurements && ['toolRequests', 'toolCountRequests'].some(key => measurements[key] > 0 && measurements[key] < measurements.requests)) warnings.push('Some tool-footprint measurements are only partly recorded');
+  const interactions = r.efficiency?.interactions;
+  if (interactions?.promptSamples > 0 && interactions.promptSamples < interactions.prompts) warnings.push('Some prompt lengths are not recorded');
+  if (r.tools?.rows.some(row => row.unknown > 0)) warnings.push('Some tool calls have no recorded outcome');
   if (t.missingCache) warnings.push(`${number(t.missingCache)} requests have an unknown cache split`);
   if (r.coverage.unclassified) warnings.push(`${number(r.coverage.unclassified)} records lack Copilot attribution and were excluded`);
   if (r.coverage.excluded) warnings.push(`${number(r.coverage.excluded)} custom-provider or BYOK records were excluded`);
@@ -906,48 +919,48 @@ function renderContent() {
   const coverageMessage = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   $('coverage-message').textContent = coverageMessage;
   $('coverage').hidden = !warnings.length || coverageMessage === dismissedCoverage;
-  const rateValue = (value, samples, total = t.requests) => creditNumber(value) + (value != null && samples < total ? ' *' : '');
+  renderHeaderCredits();
+  const rateValue = (value, samples, total = t.requests) => markedValue(value, samples < total, creditNumber);
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
-  const p = r.promptCredits;
   const promptCoverage = `${number(p.eligiblePrompts)} of ${number(p.prompts)} prompts`;
   $('prompt-coverage-note').hidden = p.eligiblePrompts === p.prompts && !p.unlinkedRequests;
-  $('prompt-coverage-note').textContent = `* AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
+  $('prompt-coverage-note').textContent = `${!$('coverage').hidden ? '* ' : ''}AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
   const promptHint = `Complete recorded AI credits for initial calls, agent continuations and reliably linked subagents, divided by eligible user prompts. ${promptCoverage} eligible. Prompts are dated by submission; all linked work is grouped before filters. ${p.modelFiltered ? 'Selected-model contribution only, per eligible prompt using the selected models; whole-prompt accounting must still be complete. ' : ''}Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} requests could not be linked to prompts. Unlinked calls make prompt attribution uncertain for their journal session. Local logs cannot establish work they never recorded.`;
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
-    ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', creditNumber(p.averageCredits), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['Tokens', recordedValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
+    ['AI credits / prompt', markedValue(p.averageCredits, promptIncomplete, creditNumber), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
   $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
-  $('token-total').textContent = usageValue(scope, 'total', number);
-  $('token-total').title = usageValue(scope, 'total', number);
+  $('token-total').textContent = recordedValue(scope, 'total', number);
+  $('token-total').title = recordedValue(scope, 'total', number);
   $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
   $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
   $('all-days').hidden = !selected;
   const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
   const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
-  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(recordedValue(scope, key, number))}">${esc(recordedValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache. Percentages show shares of recorded tokens.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   renderBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale, showCoverage: !$('coverage').hidden });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
-  $('calendar').innerHTML = calendarHeatmap(r.calendar);
+  $('calendar').innerHTML = calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
-  const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k] }));
+  const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
-  $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
+  $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(recordedValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(recordedValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: recordedValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
   $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10, $('projects-sort').value), 'Project', false, 'projectFilter');
   $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
   $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';

@@ -247,7 +247,7 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
   </div>
   <details class="sources"><summary>Local data sources</summary><div id="sources"></div></details>
   <footer class="footnote">Only GitHub Copilot-attributed usage in available local records is counted. AI credits are reported by Copilot, not an estimated dollar bill or your remaining account balance. Prompt lengths are counted locally; original text is shown only when you expand a request. History stays local unless you choose to send an AI review snapshot. <span id="updated"></span></footer>
-  <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.75" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.75</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
+  <nav class="support-footer" aria-label="Usage Insights support"><a id="repository-link" href="https://github.com/AndrewGodlewsky/copilot-usage-insights" target="_blank" rel="noopener noreferrer" title="Open the Usage Insights GitHub repository">Usage Insights</a><span aria-hidden="true">·</span><button id="plugin-version" aria-label="View release notes for version 0.1.76" aria-haspopup="dialog" aria-controls="release-notes-dialog" title="View release notes">v0.1.76</button><span aria-hidden="true">·</span><button id="footer-refresh">Refresh</button><span aria-hidden="true">·</span><button id="footer-settings">Settings</button><span aria-hidden="true">·</span><button id="logs-open">Show logs</button><span aria-hidden="true">·</span><a id="feedback" href="https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/new" target="_blank" rel="noopener noreferrer">Feedback</a></nav>
   <dialog id="release-notes-dialog" aria-labelledby="release-notes-title">
     <header><h2 id="release-notes-title">Release notes</h2><button id="release-notes-close" aria-label="Close release notes">Close</button></header>
     <div class="release-browser">
@@ -266,8 +266,8 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
   <div id="tip" class="tip" role="tooltip" hidden></div><span class="sr-only" id="live" aria-live="polite"></span>
 </main><script>;(() => {
 'use strict'
-const BUILD_VERSION = "0.1.75";
-const RELEASE_NOTES = [{"version":"0.1.75","summary":"Small amounts of daily usage remain visible and clickable beside much busier days in token and AI credit charts. Tooltips keep the recorded amounts and explain when a bar uses a minimum visible height."},{"version":"0.1.74","summary":"Usage loads immediately and refreshes every 15 minutes while visible, reducing background work. Returning to the dashboard refreshes only when its last successful scan is at least 15 minutes old; the Refresh button still updates on demand."},{"version":"0.1.73","summary":"If a refresh loses its connection, the dashboard keeps the last loaded data with a clear notice. Improved connection diagnostics and small local lifecycle logs help investigate failures, including after reopening the dashboard."},{"version":"0.1.72","summary":"Rolling 30 is now the default date filter, showing usage from the first of the current month through today. Last 30 days remains available separately, and both options share the same header building and light patterns."},{"version":"0.1.71","summary":"Close the orange data coverage notice with its new X button. The same notice stays dismissed as you browse and refresh; changed warnings and newly opened dashboards still show it."},{"version":"0.1.70","summary":"Usage now appears while Copilot's plugin and MCP inventories load in the background. Faster number formatting and less work in hidden token sections improve responsiveness; filters reuse the latest inventory."},{"version":"0.1.69","summary":"Explore all ten token-efficiency sections with measured breakdowns and practical experiments. See work per prompt, delegated calls, cache reuse, reasoning, tool and skill footprints, and spend concentration, with clear coverage and limits."},{"version":"0.1.68","summary":"All AI Review usage now appears under one project named Usage Insights, with a separate session for each review. Earlier reviews join the same project without changing their saved accounting."},{"version":"0.1.67","summary":"AI Review now refreshes recorded usage as soon as a run finishes, including cancelled or failed runs. New reviews also handle long Copilot call identifiers correctly so live and saved copies of the same charge count only once."},{"version":"0.1.66","summary":"Ask a selected GitHub Copilot model to review your usage directly in AI Review. Choose a model and verify your connection in Settings, preview what will be sent, and cancel a review at any time. Review usage appears in its own project."},{"version":"0.1.65","summary":"The Projects table now shows a dash when a user-prompt count is unavailable, including for Enhanced Prompt background usage. Recorded model turns, tokens, and AI credits are unchanged."},{"version":"0.1.64","summary":"Automatically includes retained Enhance Prompt background usage under the Enhanced Prompt project, with separate sessions for each helper. Recorded tokens and AI credits stay available after helpers finish; prompts and responses are not retained."},{"version":"0.1.63","summary":"Made the token explorer shorter and flexible enough to fit narrow panels without a horizontal scrollbar. Small topic icons replace the labels, the blue lens changes its symbol as you move, and the selected section's full title stays visible."},{"version":"0.1.62","summary":"Replaced the token-section dropdown with a draggable blue inspection lens and labelled stops. Explore all ten sections by dragging, clicking, using the keyboard, or choosing Previous and Next; your selection stays in place when data refreshes."},{"version":"0.1.61","summary":"Moved Filter usage beneath the Efficiency section buttons. Your filter selections and expanded state stay intact when switching tabs, and Usage and Breakdown keep their original layout."},{"version":"0.1.60","summary":"Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."},{"version":"0.1.59","summary":"Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."},{"version":"0.1.58","summary":"Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."},{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
+const BUILD_VERSION = "0.1.76";
+const RELEASE_NOTES = [{"version":"0.1.76","summary":"Minimum-height daily bars use the color of their largest token category. Incomplete-data asterisks follow the coverage notice: closing it hides the markers while keeping recorded values and coverage details available."},{"version":"0.1.75","summary":"Small amounts of daily usage remain visible and clickable beside much busier days in token and AI credit charts. Tooltips keep the recorded amounts and explain when a bar uses a minimum visible height."},{"version":"0.1.74","summary":"Usage loads immediately and refreshes every 15 minutes while visible, reducing background work. Returning to the dashboard refreshes only when its last successful scan is at least 15 minutes old; the Refresh button still updates on demand."},{"version":"0.1.73","summary":"If a refresh loses its connection, the dashboard keeps the last loaded data with a clear notice. Improved connection diagnostics and small local lifecycle logs help investigate failures, including after reopening the dashboard."},{"version":"0.1.72","summary":"Rolling 30 is now the default date filter, showing usage from the first of the current month through today. Last 30 days remains available separately, and both options share the same header building and light patterns."},{"version":"0.1.71","summary":"Close the orange data coverage notice with its new X button. The same notice stays dismissed as you browse and refresh; changed warnings and newly opened dashboards still show it."},{"version":"0.1.70","summary":"Usage now appears while Copilot's plugin and MCP inventories load in the background. Faster number formatting and less work in hidden token sections improve responsiveness; filters reuse the latest inventory."},{"version":"0.1.69","summary":"Explore all ten token-efficiency sections with measured breakdowns and practical experiments. See work per prompt, delegated calls, cache reuse, reasoning, tool and skill footprints, and spend concentration, with clear coverage and limits."},{"version":"0.1.68","summary":"All AI Review usage now appears under one project named Usage Insights, with a separate session for each review. Earlier reviews join the same project without changing their saved accounting."},{"version":"0.1.67","summary":"AI Review now refreshes recorded usage as soon as a run finishes, including cancelled or failed runs. New reviews also handle long Copilot call identifiers correctly so live and saved copies of the same charge count only once."},{"version":"0.1.66","summary":"Ask a selected GitHub Copilot model to review your usage directly in AI Review. Choose a model and verify your connection in Settings, preview what will be sent, and cancel a review at any time. Review usage appears in its own project."},{"version":"0.1.65","summary":"The Projects table now shows a dash when a user-prompt count is unavailable, including for Enhanced Prompt background usage. Recorded model turns, tokens, and AI credits are unchanged."},{"version":"0.1.64","summary":"Automatically includes retained Enhance Prompt background usage under the Enhanced Prompt project, with separate sessions for each helper. Recorded tokens and AI credits stay available after helpers finish; prompts and responses are not retained."},{"version":"0.1.63","summary":"Made the token explorer shorter and flexible enough to fit narrow panels without a horizontal scrollbar. Small topic icons replace the labels, the blue lens changes its symbol as you move, and the selected section's full title stays visible."},{"version":"0.1.62","summary":"Replaced the token-section dropdown with a draggable blue inspection lens and labelled stops. Explore all ten sections by dragging, clicking, using the keyboard, or choosing Previous and Next; your selection stays in place when data refreshes."},{"version":"0.1.61","summary":"Moved Filter usage beneath the Efficiency section buttons. Your filter selections and expanded state stay intact when switching tabs, and Usage and Breakdown keep their original layout."},{"version":"0.1.60","summary":"Added Sort by controls to Models and Projects so you can rank usage by tokens, credits, model turns, or name, plus user prompts for projects. Removed the daily bars' hover outline while keeping their gentle enlargement."},{"version":"0.1.59","summary":"Made chart selections quieter: other days gently fade, model selections lose their background highlight, and project names underline on hover. Moved the prompt-cost coverage asterisk into a note below Projects."},{"version":"0.1.58","summary":"Linked the footer product name to GitHub. Daily charts now fit without scrolling or labels above the bars; hovering gently enlarges only the stacked column, with detailed values in its tooltip."},{"version":"0.1.57","summary":"Added daily totals above the chart bars and removed the maximum scale label. Crowded date ranges scroll horizontally so totals remain readable at every text size and number format."},{"version":"0.1.56","summary":"Expanded release notes into a larger panel with clickable release families and versions, making it easier to browse updates while keeping the selected notes in view."},{"version":"0.1.55","summary":"Made the footer version clickable and added an offline release-history panel with short notes for each Copilot release."},{"version":"0.1.54","summary":"Added explicit credit to the original project and preserved the full MIT notice in the standalone dashboard."},{"version":"0.1.53","summary":"Separated consumption views from workflow findings, with independent section pickers in both Efficiency dashboards."},{"version":"0.1.52","summary":"Removed the extra introductory text from the Efficiency header."},{"version":"0.1.51","summary":"Added a section picker with all proposed token-efficiency topics, showing one section at a time."},{"version":"0.1.50","summary":"Restored column headings within expanded breakdown sections without changing alignment."},{"version":"0.1.49","summary":"Aligned the columns across expanded usage breakdowns while retaining alternating background colors."},{"version":"0.1.48","summary":"Added model and project selection on the Usage tab, user-prompt counts, and an unselected measurement default."},{"version":"0.1.47","summary":"Kept chart tooltips readable near screen edges by moving them to the other side of the pointer."},{"version":"0.1.46","summary":"Ordered token types as input, cache read, cache write, and output, with alternating percentage labels."},{"version":"0.1.45","summary":"Added model breakdowns within project sessions and spaced the slashes in credit-rate card titles."},{"version":"0.1.44","summary":"Added model-to-session-to-request expansion with matching metric columns and original prompts available on demand."},{"version":"0.1.43","summary":"Added sorting by recorded failures in the Skills breakdown."},{"version":"0.1.42","summary":"Changed AI credits per prompt to include complete linked agent work, with coverage for excluded or incomplete prompts."},{"version":"0.1.41","summary":"Added a blue accent for dark mode and allowed clicking the selected measurement again to clear emphasis."},{"version":"0.1.40","summary":"Used an accent color for the selected measurement and readable gray for other metrics."},{"version":"0.1.39","summary":"Replaced shaded metric highlighting with bold values."},{"version":"0.1.38","summary":"Replaced streak and model-count cards with credit-rate cards and clarified the token card labels."},{"version":"0.1.37","summary":"Moved Refresh and Settings to the right side of the toolbar."},{"version":"0.1.36","summary":"Added recorded skill-load failure counts, including skills with failed loads and no successful uses."},{"version":"0.1.35","summary":"Emphasized the selected measurement, reordered usage columns, and made the token card follow the selected date range."},{"version":"0.1.34","summary":"Split Efficiency into Where did the tokens go?, Worth a closer look, and AI review."},{"version":"0.1.33","summary":"Restored the Usage Insights tab title and applied simplified formatting to fractional AI credits."},{"version":"0.1.32","summary":"Shortened the canvas tab title to reduce clipping in the host app."},{"version":"0.1.31","summary":"Added a saved Simplify numbers setting across the dashboard, using K, M, B, and T."},{"version":"0.1.30","summary":"Redesigned Efficiency around context usage and practical experiments, with explicit context inspection and a manual AI-review snapshot."},{"version":"0.1.29","summary":"Introduced the Efficiency tab with measured usage patterns and model comparisons."},{"version":"0.1.28","summary":"Added filtered Copilot AI credits to the dashboard header."},{"version":"0.1.27","summary":"Added project rows that expand into their sessions."},{"version":"0.1.26","summary":"Added a support footer with refresh, settings, feedback, and copyable diagnostic logs and timings."},{"version":"0.1.25","summary":"Reused scanned usage data for faster filtering, reduced prompt loading, and changed automatic refresh to 60 seconds."},{"version":"0.1.24","summary":"Made model links neutral until hover and removed misleading busy cursors from request paging."},{"version":"0.1.23","summary":"Added expandable model-request details with original prompts loaded only when requested."},{"version":"0.1.22","summary":"Added three rotating window-light patterns per building, without animation."},{"version":"0.1.21","summary":"Assigned buildings to fixed date-range positions, with all buildings for All history and none for custom dates."},{"version":"0.1.20","summary":"Added consistent activity-panel headers and independent sorting for skills, plugins, and MCP servers."},{"version":"0.1.19","summary":"Adjusted the banner positioning to reduce jumps when changing date ranges."},{"version":"0.1.18","summary":"Added Skills, Plugins, and MCP buttons so Breakdown displays one activity panel at a time."},{"version":"0.1.17","summary":"Added MCP server activity and status, plus an inventory of installed plugins."},{"version":"0.1.16","summary":"Updated session names from Copilot desktop metadata so manually renamed chats appear correctly."},{"version":"0.1.15","summary":"Added column dividers to the usage breakdown and replaced missing source-plugin labels with a dash."},{"version":"0.1.14","summary":"Made long names wrap more gracefully and shortened the Last used date format."},{"version":"0.1.13","summary":"Tightened the skills table, aligned its columns, and added subtle column dividers."},{"version":"0.1.12","summary":"Added saved Small, Medium, and Large text-size settings."},{"version":"0.1.11","summary":"Added readable session names and enlarged the GitHub Copilot heading."},{"version":"0.1.10","summary":"Counted another recorded skill-use format and simplified the skills table with By user and By agent columns."},{"version":"0.1.9","summary":"Added user and agent skill-use counts, reasoning-token metrics, and recorded tool outcomes."},{"version":"0.1.8","summary":"Added installed skill versions separately from source-plugin versions."},{"version":"0.1.7","summary":"Removed routine status and explanatory text below the skills table."},{"version":"0.1.6","summary":"Added a copy button beside each skill name for its folder path."},{"version":"0.1.5","summary":"Improved opening skill folders in Windows File Explorer."},{"version":"0.1.4","summary":"Made skill names open their recorded folders."},{"version":"0.1.3","summary":"Added daily token selection and a breakdown of recorded skill uses."},{"version":"0.1.2","summary":"Added a token overview with input, output, and cache breakdowns."},{"version":"0.1.1","summary":"Added the Usage Insights icon to the plugin listing."},{"version":"0.1.0","summary":"Introduced the GitHub Copilot desktop plugin, with a local usage dashboard and marketplace installation."}];
 // src/core/query.mjs
 // Shared by the pure report builder, worker boundary and panel. Dates are local calendar
 // dates represented as whole days, never parsed as UTC instants or added as 24-hour durations.
@@ -489,11 +489,14 @@ function esc(value) {
 }
 
 // Keep unavailable values distinct from zero in both charts and tables.
-function usageValue(row, key, fmt = compact) {
+function coverageValue(value, incomplete, fmt = compact, showCoverage = true) {
+  return value == null ? 'Unavailable' : `${fmt(value)}${incomplete && showCoverage ? ' *' : ''}`;
+}
+function usageValue(row, key, fmt = compact, showCoverage = true) {
   const missing = key === 'credits' ? row.missingCredits || row.partialCredits : key === 'total' || key === 'averageTokens' ? row.missingTokens : row.missing?.[key];
   const unavailable = row[key] === null || row.requests > 0 && (key === 'total' ? row.knownTokenRequests === 0 : row.missing?.[key] === row.requests);
   if (unavailable) return 'Unavailable';
-  return `${fmt(row[key] ?? 0)}${missing ? ' *' : ''}`;
+  return coverageValue(row[key] ?? 0, missing, fmt, showCoverage);
 }
 
 // Which day indices get an axis label: all of them when each has `minPx` of room, otherwise
@@ -528,7 +531,7 @@ function empty(w, h, label) {
 
 // Daily stacked bars. Segments stack bottom-up in `keys` order with a 2px surface gap,
 // the bar's top is rounded via a clip path, and every bar carries a tooltip payload.
-function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null, textScale = 1 } = {}) {
+function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null, textScale = 1, showCoverage = true } = {}) {
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
@@ -552,13 +555,14 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
     const h = total > 0 ? Math.max(4, scaledH) : 0
     const minimumHeight = h > scaledH
     const corner = Math.min(radius, h / 2)
+    const drawKeys = minimumHeight ? [keys.reduce((largest, key) => (d[key] || 0) > (d[largest] || 0) ? key : largest)] : keys
     const show = (v) => (fmt ? fmt(v) : v)
-    const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show)])
+    const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show, showCoverage)])
     if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
     if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
     if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
-    if (minimumHeight) rows.push(['Display', 'Minimum height for visibility'])
-    const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined
+    if (minimumHeight) rows.push(['Display', `Minimum height for visibility; color: ${labels[drawKeys[0]] ?? drawKeys[0]}`])
+    const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show, showCoverage) : undefined
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: shownTotal }))
     const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown" aria-describedby="${id}-d${i}"` : ''
     body += `<g class="mark" data-tip="${tip}"${selection}>`
@@ -572,12 +576,12 @@ function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id =
       body += `<g clip-path="url(#${cid})">`
       let y = top + plotH
       let drawn = 0
-      for (const k of keys) {
-        const v = d[k] || 0
+      for (const k of drawKeys) {
+        const v = minimumHeight ? total : d[k] || 0
         if (v <= 0) continue
         const sh = (v / total) * h
         y -= sh
-        const gap = drawn++ > 0 && !minimumHeight ? Math.min(2, sh / 2) : 0 // Small markers keep their full token mix visible.
+        const gap = drawn++ > 0 ? Math.min(2, sh / 2) : 0
         body += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(0, sh - gap)}" fill="${colors[k] ?? 'var(--s1)'}"/>`
       }
       body += `</g>`
@@ -616,7 +620,7 @@ function levels(values) {
 }
 
 // GitHub-style calendar: columns are weeks (Sun..Sat rows), oldest left.
-function calendarHeatmap(calendar, { cell = 11, gap = 2 } = {}) {
+function calendarHeatmap(calendar, { cell = 11, gap = 2, fmt = compact, showCoverage = true } = {}) {
   const label = 'Daily activity calendar'
   if (!calendar?.length) return empty(300, 100, label)
   const first = new Date(calendar[0].day + 'T00:00:00')
@@ -643,7 +647,7 @@ function calendarHeatmap(calendar, { cell = 11, gap = 2 } = {}) {
         lastMonth = month
       }
     }
-    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: [['Tokens', d.total]] }))
+    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: [['Tokens', usageValue(d, 'total', fmt, showCoverage)]] }))
     body += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2" class="mark cell q${lv[i]}" data-tip="${tip}"/>`
   })
   for (const r of [1, 3, 5]) body += `<text x="0" y="${top + r * step + cell - 2}" class="t-muted">${WEEKDAYS[r]}</text>`
@@ -715,7 +719,7 @@ function hBars(items, { width = 360, textScale = 1, row = 24 * textScale, labelW
     const w = max > 0 ? Math.max(it.value > 0 ? 3 : 0, (it.value / max) * barMax) : 0
     const maxChars = Math.floor(labelW / (6.6 * textScale))
     const name = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label
-    const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.value], ...(it.note ? [['', it.note]] : [])] }))
+    const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.note ?? it.value]] }))
     const selection = selectable ? ` data-usage-model="${esc(it.label)}" role="button" tabindex="0" aria-pressed="${it.label === selectedLabel}" aria-label="${esc(it.label)}: ${esc(it.note ?? compact(it.value))} tokens; ${it.label === selectedLabel ? 'clear model filter' : 'filter dashboard'}"` : ''
     body += `<g class="mark${selectable && selectedLabel && selectedLabel !== it.label ? ' choice-muted' : ''}" data-tip="${tip}"${selection}><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
     body += `<text x="0" y="${y + row / 2 + 4 * textScale}" class="t-label">${esc(name)}</text>`
@@ -850,8 +854,8 @@ function segmentBar(segments, { width = 360, height = 10, id = 'sbar', textScale
   for (const [i, s] of live.entries()) {
     const w = small.includes(s) ? minW : (s.value / bigTotal) * bigAvail
     const percent = s.value / total * 100
-    const share = percent < .1 ? '<0.1%' : percent > 99.9 && percent < 100 ? '>99.9%' : `${percent.toFixed(1).replace(/\.0$/, '')}%`
-    const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.value], ['Share of recorded tokens', share]] }))
+    const share = (percent < .1 ? '<0.1%' : percent > 99.9 && percent < 100 ? '>99.9%' : `${percent.toFixed(1).replace(/\.0$/, '')}%`) + (s.incomplete ? ' *' : '')
+    const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.note ?? s.value], ['Share of recorded tokens', share]] }))
     body += `<rect class="mark" data-tip="${tip}" x="${xpos.toFixed(1)}" y="${barY}" width="${w.toFixed(1)}" height="${height}" fill="${esc(s.color)}"/>`
     const half = (share.length * 7 + 8) * textScale / 2, center = xpos + w / 2
     callouts.push({ ...s, share, tip, half, center, start: xpos, end: xpos + w, above: i % 2 === 0, x: Math.max(half, Math.min(width - half, center)) })
@@ -1079,7 +1083,7 @@ function buildEfficiencyReview(report, context, scope = {}) {
 // src/panel/token-insights.mjs
 
 // Render from the report and the explicitly requested context snapshot only.
-function renderTokenInsight(id, report, { number, credits, context } = {}) {
+function renderTokenInsight(id, report, { number, credits, context, showCoverage = true } = {}) {
   const s = report.efficiency?.summary || {}, models = report.efficiency?.models || [];
   const valid = value => Number.isFinite(value) && value >= 0;
   const percent = value => valid(value) ? `${number(value, { maximumFractionDigits: 1 })}%` : 'Unavailable';
@@ -1087,18 +1091,20 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
   const note = text => `<p class="footnote token-insight-note">${esc(text)}</p>`;
   const empty = text => `<p class="muted token-insight-note">${esc(text)}</p>`;
   const section = (title, body) => `<section class="token-insight-section"><h3>${esc(title)}</h3>${body}</section>`;
-  const metric = (label, value, detail, format = number) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(value == null ? 'Unavailable' : format(value))}</strong><span class="sub">${esc(detail)}</span></div>`;
+  const metric = (label, value, detail, format = number, incomplete = false) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(coverageValue(value, incomplete, format, showCoverage))}</strong><span class="sub">${esc(detail)}</span></div>`;
   const metrics = (...items) => `<div class="efficiency-metrics">${items.join('')}</div>`;
   const coverage = (count, total = s.requests) => `${number(count ?? 0)} of ${number(total ?? 0)} model calls`;
+  const partial = (count, total = s.requests) => count < total;
+  const measured = (value, count, total = s.requests, format = number) => coverageValue(value, partial(count, total), format, showCoverage);
   const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const jump = (topic, label) => `<button data-token-jump="${topic}">${esc(label)}</button>`;
   const inspect = '<button data-token-context="true">Open context inspector</button>';
-  const bars = parts => {
+  const bars = (parts, incomplete = false) => {
     if (parts.some(p => !valid(p.value))) return '';
     const total = parts.reduce((n, p) => n + p.value, 0);
     if (!total) return '';
-    return `<div class="token-insight-bars"><div class="efficiency-track" role="img" aria-label="${esc(parts.map(p => `${p.label}: ${percent(p.value / total * 100)}`).join('; '))}">${parts.map(p => `<span style="width:${p.value / total * 100}%;background:${p.color}"></span>`).join('')}</div><div class="efficiency-flow-labels">${parts.map(p => `<span><i style="background:${p.color}"></i>${esc(p.label)} <b>${esc(number(p.value))}</b> · ${esc(percent(p.value / total * 100))}</span>`).join('')}</div></div>`;
+    return `<div class="token-insight-bars"><div class="efficiency-track" role="img" aria-label="${esc(parts.map(p => `${p.label}: ${percent(p.value / total * 100)}`).join('; '))}">${parts.map(p => `<span style="width:${p.value / total * 100}%;background:${p.color}"></span>`).join('')}</div><div class="efficiency-flow-labels">${parts.map(p => `<span><i style="background:${p.color}"></i>${esc(p.label)} <b>${esc(coverageValue(p.value, incomplete, number, showCoverage))}</b> · ${esc(coverageValue(p.value / total * 100, incomplete, percent, showCoverage))}</span>`).join('')}</div></div>`;
   };
   const current = context?.available === true;
   const category = key => current && valid(context.categories?.[key]) && context.categories[key] <= context.totalTokens ? context.categories[key] : null;
@@ -1135,11 +1141,11 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
   }
   if (id === 'tools') {
     const rows = measuredModels('toolRequests', 'toolTokens');
-    return metrics(metric('Definitions / call', s.averageToolTokens, coverage(s.toolRequests)),
-      metric('Share of measured input', s.toolShare, 'Tool and input counts from the same calls', percent),
-      metric('Definition tokens', s.toolRequests ? s.toolTokens : null, 'Already included in input tokens'),
-      metric('Available tools / call', s.averageAvailableTools, coverage(s.toolCountRequests)))
-      + (rows.length ? section('Models carrying the most tool-definition tokens', table(['Model', 'Measured calls', 'Definitions / call', 'Input share'], rows.map(r => [r.name, coverage(r.toolRequests, r.requests), number(r.averageToolTokens), percent(r.toolShare)]))) : empty('No paired tool-definition and input measurements in these filters.'))
+    return metrics(metric('Definitions / call', s.averageToolTokens, coverage(s.toolRequests), number, partial(s.toolRequests)),
+      metric('Share of measured input', s.toolShare, 'Tool and input counts from the same calls', percent, partial(s.toolRequests)),
+      metric('Definition tokens', s.toolRequests ? s.toolTokens : null, 'Already included in input tokens', number, partial(s.toolRequests)),
+      metric('Available tools / call', s.averageAvailableTools, coverage(s.toolCountRequests), number, partial(s.toolCountRequests)))
+      + (rows.length ? section('Models carrying the most tool-definition tokens', table(['Model', 'Measured calls', 'Definitions / call', 'Input share'], rows.map(r => [r.name, coverage(r.toolRequests, r.requests), measured(r.averageToolTokens, r.toolRequests, r.requests), measured(r.toolShare, r.toolRequests, r.requests, percent)]))) : empty('No paired tool-definition and input measurements in these filters.'))
       + insight(s.toolShare == null ? 'Tool-definition overhead is not measurable in this history.' : `${percent(s.toolShare)} of matched input described available tools.`,
         'Inspect which definitions occupy the current conversation. Try disabling an unrelated integration for a comparable task; a tool can add definitions even when it is never called.',
         'definition tokens per call and input share on the same model. Fewer definitions are useful only if the needed tools remain available.')
@@ -1161,11 +1167,11 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
   }
   if (id === 'cache') {
     const rows = measuredModels('cacheRequests', 'cacheInput');
-    return metrics(metric('Uncached input', s.uncachedInput, 'Complete cache splits only'),
-      metric('Cache read', s.cacheRequests ? s.cacheRead : null, 'Previously cached input reused'),
-      metric('Cache write', s.cacheRequests ? s.cacheWrite : null, 'Input recorded as a cache write'))
-      + bars([{ label: 'Uncached', value: s.uncachedInput, color: 'var(--s1)' }, { label: 'Cache read', value: s.cacheRequests ? s.cacheRead : null, color: 'var(--s3)' }, { label: 'Cache write', value: s.cacheRequests ? s.cacheWrite : null, color: 'var(--s4)' }])
-      + (rows.length ? section('Cache reuse by model', table(['Model', 'Measured calls', 'Input tokens', 'Read share'], rows.map(r => [r.name, coverage(r.cacheRequests, r.requests), number(r.cacheInput), percent(r.cacheHitRate)]))) : empty('No complete cache splits were recorded.'))
+    return metrics(metric('Uncached input', s.uncachedInput, 'Complete cache splits only', number, partial(s.cacheRequests)),
+      metric('Cache read', s.cacheRequests ? s.cacheRead : null, 'Previously cached input reused', number, partial(s.cacheRequests)),
+      metric('Cache write', s.cacheRequests ? s.cacheWrite : null, 'Input recorded as a cache write', number, partial(s.cacheRequests)))
+      + bars([{ label: 'Uncached', value: s.uncachedInput, color: 'var(--s1)' }, { label: 'Cache read', value: s.cacheRequests ? s.cacheRead : null, color: 'var(--s3)' }, { label: 'Cache write', value: s.cacheRequests ? s.cacheWrite : null, color: 'var(--s4)' }], partial(s.cacheRequests))
+      + (rows.length ? section('Cache reuse by model', table(['Model', 'Measured calls', 'Input tokens', 'Read share'], rows.map(r => [r.name, coverage(r.cacheRequests, r.requests), measured(r.cacheInput, r.cacheRequests, r.requests), measured(r.cacheHitRate, r.cacheRequests, r.requests, percent)]))) : empty('No complete cache splits were recorded.'))
       + insight(s.cacheHitRate == null ? 'Missing cache data is not zero reuse.' : `${percent(s.cacheHitRate)} of measured input came from cache.`,
         s.cacheRead > 0 ? 'Keep stable instructions and relevant context for related follow-ups. Use a fresh conversation when the task actually changes.' : 'Compare related follow-ups on the same model before changing your workflow based on this range.',
         'weighted cache-read share and actual credits on comparable work. Cache writes prepare context for reuse; they are not themselves cache hits or proof of waste.');
@@ -1184,11 +1190,12 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
   }
   if (id === 'prompts') {
     const p = report.promptCredits || {}, w = p.work || {};
+    const incomplete = p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0;
     return (p.modelFiltered ? '<p class="token-topic-status">Selected-model contribution only</p>' : '')
-      + metrics(metric('Model calls / prompt', w.averageRequests, `${number(p.eligiblePrompts ?? 0)} of ${number(p.prompts ?? 0)} prompts eligible`),
-        metric('AI credits / prompt', p.averageCredits, 'Complete recorded charges only', credits),
-        metric('Tokens / prompt', w.averageTokens, `${number(w.tokenPrompts ?? 0)} eligible prompts with complete token counts`),
-        metric('Most calls for one prompt', w.maxRequests, 'Within the eligible prompt set'))
+      + metrics(metric('Model calls / prompt', w.averageRequests, `${number(p.eligiblePrompts ?? 0)} of ${number(p.prompts ?? 0)} prompts eligible`, number, incomplete),
+        metric('AI credits / prompt', p.averageCredits, 'Complete recorded charges only', credits, incomplete),
+        metric('Tokens / prompt', w.averageTokens, `${number(w.tokenPrompts ?? 0)} eligible prompts with complete token counts`, number, incomplete || w.tokenPrompts < p.eligiblePrompts),
+        metric('Most calls for one prompt', w.maxRequests, 'Within the eligible prompt set', number, incomplete))
       + note(`Includes initial calls, agent continuations, and subagent work with reliable parent links. ${number(w.requests ?? 0)} linked calls in this view. Tokens include cached input once. Prompts are dated by submission, grouping all linked work before filters; model filters show only selected-model contributions.`)
       + section('Accounting coverage', table(['Excluded for attribution', 'Incomplete charges', 'Unfinished work', 'Unlinked requests'], [[number(p.excluded?.attribution ?? 0), number(p.excluded?.accounting ?? 0), number(p.excluded?.unfinished ?? 0), number(p.unlinkedRequests ?? 0)]]))
       + insight(w.averageRequests == null ? 'Complete prompt chains are needed for this comparison.' : `One submitted prompt led to ${number(w.averageRequests)} model calls on average${p.modelFiltered ? ' on the selected models' : ''}.`,
@@ -1201,22 +1208,22 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
     const rows = (report.efficiency?.delegatedModels || []).slice(0, 5);
     return metrics(metric('Recorded subagent calls', delegated?.requests ?? null, 'Explicit sub-agent initiator only'),
       metric('Share of model calls', share(delegated?.requests, s.requests), 'Includes unknown initiators in the denominator', percent),
-      metric('Subagent input + output', delegated?.pairedRequests ? delegated.pairedInput + delegated.pairedOutput : null, coverage(delegated?.pairedRequests, delegated?.requests)),
+      metric('Subagent input + output', delegated?.pairedRequests ? delegated.pairedInput + delegated.pairedOutput : null, coverage(delegated?.pairedRequests, delegated?.requests), number, partial(delegated?.pairedRequests, delegated?.requests)),
       metric('Unknown initiator', unknown?.requests ?? null, 'May contain additional delegated work'))
-      + (by.length ? section('Who initiated the model calls?', table(['Recorded initiator', 'Calls', 'Measured tokens', 'Complete credits'], by.map(r => [labels[r.id] || r.id, number(r.requests), r.pairedRequests ? `${number(r.pairedInput + r.pairedOutput)} (${coverage(r.pairedRequests, r.requests)})` : 'Unavailable', r.creditRequests ? `${credits(r.credits)} (${coverage(r.creditRequests, r.requests)})` : 'Unavailable']))) : empty('No initiator measurements are available.'))
-      + (rows.length ? section('Models used by subagents', table(['Model', 'Calls', 'Input / call', 'Output / call'], rows.map(r => [r.name, number(r.requests), `${number(r.averageInput)} (${coverage(r.inputRequests, r.requests)})`, `${number(r.averageOutput)} (${coverage(r.outputRequests, r.requests)})`]))) : '')
+      + (by.length ? section('Who initiated the model calls?', table(['Recorded initiator', 'Calls', 'Measured tokens', 'Complete credits'], by.map(r => [labels[r.id] || r.id, number(r.requests), r.pairedRequests ? `${measured(r.pairedInput + r.pairedOutput, r.pairedRequests, r.requests)} (${coverage(r.pairedRequests, r.requests)})` : 'Unavailable', r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${coverage(r.creditRequests, r.requests)})` : 'Unavailable']))) : empty('No initiator measurements are available.'))
+      + (rows.length ? section('Models used by subagents', table(['Model', 'Calls', 'Input / call', 'Output / call'], rows.map(r => [r.name, number(r.requests), `${measured(r.averageInput, r.inputRequests, r.requests)} (${coverage(r.inputRequests, r.requests)})`, `${measured(r.averageOutput, r.outputRequests, r.requests)} (${coverage(r.outputRequests, r.requests)})`]))) : '')
       + insight(delegated?.requests ? `${number(delegated.requests)} calls are explicitly labelled as subagent work.` : 'No explicitly labelled subagent calls in this view.',
         'When delegating, give each agent a bounded task, the relevant context, and a concise return format so the parent does not need to repeat the investigation.',
         'delegated token volume and total credits for similar work. These calls are already part of usage totals; this table does not infer parent links or the value of delegation.');
   }
   if (id === 'output') {
     const rows = measuredModels('outputRequests', 'outputTokens');
-    return metrics(metric('Generated output', s.outputRequests ? s.outputTokens : null, coverage(s.outputRequests)),
-      metric('Reported reasoning', s.reasoningRequests ? s.reasoningTokens : null, coverage(s.reasoningRequests)),
-      metric('Reasoning share', s.reasoningShare, 'Only calls with valid reasoning and output counts', percent),
-      metric('Other output, matched calls', s.otherOutput, 'Not necessarily user-visible answer text'))
-      + bars([{ label: 'Reasoning', value: s.reasoningRequests ? s.reasoningTokens : null, color: 'var(--s5)' }, { label: 'Other output', value: s.otherOutput, color: 'var(--s2)' }])
-      + (rows.length ? section('Output by model', table(['Model', 'Output / call', 'Output coverage', 'Reasoning share', 'Reasoning coverage'], rows.map(r => [r.name, number(r.averageOutput), coverage(r.outputRequests, r.requests), percent(r.reasoningShare), coverage(r.reasoningRequests, r.requests)]))) : empty('No output measurements were recorded for these filters.'))
+    return metrics(metric('Generated output', s.outputRequests ? s.outputTokens : null, coverage(s.outputRequests), number, partial(s.outputRequests)),
+      metric('Reported reasoning', s.reasoningRequests ? s.reasoningTokens : null, coverage(s.reasoningRequests), number, partial(s.reasoningRequests)),
+      metric('Reasoning share', s.reasoningShare, 'Only calls with valid reasoning and output counts', percent, partial(s.reasoningRequests)),
+      metric('Other output, matched calls', s.otherOutput, 'Not necessarily user-visible answer text', number, partial(s.reasoningRequests)))
+      + bars([{ label: 'Reasoning', value: s.reasoningRequests ? s.reasoningTokens : null, color: 'var(--s5)' }, { label: 'Other output', value: s.otherOutput, color: 'var(--s2)' }], partial(s.reasoningRequests))
+      + (rows.length ? section('Output by model', table(['Model', 'Output / call', 'Output coverage', 'Reasoning share', 'Reasoning coverage'], rows.map(r => [r.name, measured(r.averageOutput, r.outputRequests, r.requests), coverage(r.outputRequests, r.requests), measured(r.reasoningShare, r.reasoningRequests, r.requests, percent), coverage(r.reasoningRequests, r.requests)]))) : empty('No output measurements were recorded for these filters.'))
       + note('Reasoning is part of output. The split subtracts only on the same measured calls; it can cover fewer calls than Generated output. Other output can include tool-call arguments and is not an answer-length estimate.')
       + insight(s.reasoningShare == null ? 'Reasoning share needs matched output measurements.' : `${percent(s.reasoningShare)} of matched output was reported reasoning.`,
         'Specify the deliverable and useful level of detail. For routine work, compare an available lighter model while keeping the same validation checks.',
@@ -1226,10 +1233,10 @@ function renderTokenInsight(id, report, { number, credits, context } = {}) {
     const all = (report.sessions || []).filter(r => valid(r.credits)).slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name));
     if (!all.length) return empty('No session charges are recorded for these filters. Unavailable charges are not zero.') + insight('Start with complete charge records.', 'Try a wider range or check enabled data sources before comparing spend.', 'charge coverage and whether the same workload is represented.');
     const rows = all.slice(0, 5), total = all.reduce((sum, r) => sum + r.credits, 0), top = rows.reduce((sum, r) => sum + r.credits, 0);
-    return metrics(metric('Recorded AI credits', total, 'Includes partial reported charges', credits),
-      metric('Top five groups', share(top, total), `${number(rows.length)} of ${number(all.length)} groups with charges`, percent))
-      + section('Largest session / project groups', table(['Session', 'Project', 'Calls', 'AI credits', 'Recorded share'], rows.map(r => [r.name, r.project, number(r.requests), usageValue(r, 'credits', credits), percent(share(r.credits, total))])))
-      + note('An asterisk marks incomplete charges, which can affect the ranking. Shares use recorded charges only. Unavailable charges are excluded; a session spanning projects can appear more than once.')
+    return metrics(metric('Recorded AI credits', total, 'Includes partial reported charges', credits, !!(report.totals?.missingCredits || report.totals?.partialCredits)),
+      metric('Top five groups', share(top, total), `${number(rows.length)} of ${number(all.length)} groups with charges`, percent, !!(report.totals?.missingCredits || report.totals?.partialCredits)))
+      + section('Largest session / project groups', table(['Session', 'Project', 'Calls', 'AI credits', 'Recorded share'], rows.map(r => [r.name, r.project, number(r.requests), usageValue(r, 'credits', credits, showCoverage), coverageValue(share(r.credits, total), !!(report.totals?.missingCredits || report.totals?.partialCredits), percent, showCoverage)])))
+      + note('Incomplete charges can affect the ranking. Shares use recorded charges only. Unavailable charges are excluded; a session spanning projects can appear more than once.')
       + insight(total ? `The largest group accounts for ${percent(share(rows[0].credits, total))} of recorded charges.` : 'The recorded charges in this range are zero.',
         'Start with a high-spend session in Breakdown. Compare its model mix, calls, and context against a similar task before changing models or workflow.',
         'actual credits for similar completed work, including follow-ups. A costly session can still be valuable; this ranking does not estimate waste.');
@@ -1311,11 +1318,15 @@ const AUTO_REFRESH_MS = 15 * 60 * 1000;
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+const recordedValue = (row, key, format = number) => usageValue(row, key, format, !$('coverage').hidden);
+const markedValue = (value, incomplete, format = number) => coverageValue(value, incomplete, format, !$('coverage').hidden);
 let dismissedCoverage = '';
 let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
 $('coverage-dismiss').onclick = () => {
   dismissedCoverage = $('coverage-message').textContent;
   $('coverage').hidden = true;
+  $('tip').hidden = true;
+  render();
   if (document.activeElement === $('coverage-dismiss')) $('refresh').focus({ preventScroll: true });
 };
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
@@ -1537,12 +1548,12 @@ function options(id, values, all) {
   select.title = active ? title(active) : all;
 }
 function creditLabel(row) {
-  return usageValue(row, 'credits', creditNumber);
+  return recordedValue(row, 'credits', creditNumber);
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
   $('hero-credits').textContent = totals ? creditLabel(totals) : 'Unavailable';
-  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' An asterisk marks incomplete credit coverage.' : '') : 'Credits could not be loaded for the current filters.';
+  $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' Credit coverage is incomplete.' : '') : 'Credits could not be loaded for the current filters.';
 }
 function textCell(value, title = value) {
   return `<td class="text-cell" title="${esc(title)}"><span class="cell-text">${esc(value)}</span></td>`;
@@ -1564,7 +1575,7 @@ function table(rows, heading, details = false, expansion = '', depth = 0) {
   if (!rows.length) return depth ? '' : '<p class="muted">No matching usage.</p>';
   const keys = ['input', 'output', ...(details ? ['reasoning'] : []), 'cacheRead', 'cacheWrite', ...(details ? ['averageTokens'] : []), 'total', 'credits'];
   const titles = { input: 'Input', output: 'Output', reasoning: 'Reasoning', cacheRead: 'Cache read', cacheWrite: 'Cache write', total: 'Tokens', averageTokens: 'Avg. tokens / request', credits: 'AI credits' };
-  const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. An asterisk marks incomplete coverage.' };
+  const hints = { reasoning: 'Reported reasoning tokens are part of output; they are not added to the total again.', averageTokens: 'Average over requests with complete token counts. Follows Include cache tokens. Coverage reflects requests with complete counts.' };
   const modelExpansion = expansion === 'model', projectExpansion = expansion === 'project';
   const projectFilter = expansion === 'projectFilter';
   const sessionExpansion = expansion === 'session', requestExpansion = expansion === 'request', sessionModelsExpansion = expansion === 'sessionModels';
@@ -1580,15 +1591,15 @@ function table(rows, heading, details = false, expansion = '', depth = 0) {
     const controlled = child ? [region, ...[...childRows.matchAll(/\sid="([^"]+)"/g)].map(m => m[1])].join(' ') : '';
     const choice = projectFilter ? `<td class="text-cell"><button class="model-toggle cell-text" data-usage-project="${esc(r.name)}" aria-pressed="${$('project').value === r.name}" title="${esc(r.name)}: ${$('project').value === r.name ? 'clear project filter' : 'filter dashboard'}">${esc(r.name)}</button></td>` : '';
     const name = projectFilter ? choice : expandable ? `<td class="text-cell"><button class="${requestExpansion ? 'request-toggle' : 'model-toggle'} cell-text" ${attribute}="${esc(modelExpansion || projectExpansion ? r.name : r.id)}" aria-expanded="${!!open}"${open ? ` aria-controls="${controlled}"` : ''} aria-label="${esc(heading)}: ${esc(label)}" title="${esc(title)}"><span aria-hidden="true">${open ? '\u25be' : '\u25b8'}</span> ${esc(label)}</button></td>` : textCell(label, title);
-    const cells = `<tr${details ? ` class="usage-row" data-depth="${depth}" id="usage-row-${depth}-${index}"` : projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? '\u2014' : number(r.userPrompts) + (r.uncertainPrompts ? ' *' : '')}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(usageValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
+    const cells = `<tr${details ? ` class="usage-row" data-depth="${depth}" id="usage-row-${depth}-${index}"` : projectFilter && $('project').value && $('project').value !== r.name ? ' class="choice-muted"' : ''}>${name}${projectFilter ? `<td title="${number(r.uncertainPrompts)} prompt candidates have uncertain attribution. Counts reflect available local logs.">${r.userPrompts == null ? '\u2014' : markedValue(r.userPrompts, r.uncertainPrompts)}</td>` : ''}<td data-measure="requests">${number(r.requests)}</td>${keys.map(key => `<td data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${key === 'averageTokens' ? ` title="${number(r.completeTokenRequests)} of ${number(r.requests)} requests have complete token counts"` : ''}>${esc(recordedValue(r, key, key === 'credits' ? creditNumber : number))}</td>`).join('')}</tr>`;
     if (!open) return cells;
     return cells + `<tr class="usage-context" data-depth="${depth + 1}"><td colspan="${keys.length + 2}"><div id="${region}" class="${requestExpansion ? 'request-detail' : 'request-list'}" aria-label="${requestExpansion ? 'Original prompt' : `${modelExpansion || projectExpansion ? 'Sessions' : sessionModelsExpansion ? 'Models' : 'Requests'} for ${esc(label)}`}">${child.header}</div></td></tr>${childRows}`;
   }).join('');
-  const header = `<tr${details ? ` class="usage-header" data-depth="${depth}" id="usage-header-${depth}"` : ''}><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; an asterisk marks known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr>`;
+  const header = `<tr${details ? ` class="usage-header" data-depth="${depth}" id="usage-header-${depth}"` : ''}><th scope="col">${esc(heading)}</th>${projectFilter ? '<th title="Distinct confirmed user submissions, dated by submission. Continuations and subagent messages are not additional prompts. Unknown attribution is excluded; hover over a count for known gaps. Model filters require reliable links. Missing billing alone does not exclude a prompt. Local logs may be incomplete.">User prompts</th><th>Model turns</th>' : '<th scope="col">Requests</th>'}${keys.map(key => `<th scope="col" data-measure="${key === 'credits' ? 'credits' : 'tokens'}"${hints[key] ? ` title="${hints[key]}"` : ''}>${titles[key]}</th>`).join('')}</tr>`;
   if (depth) return header + body;
   // Reserve column space from the whole report before any child rows are loaded.
   const totals = state.report.totals;
-  const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => usageValue(totals, key, key === 'credits' ? creditNumber : number).length));
+  const metricWidth = Math.max(11, number(totals.requests).length, ...keys.map(key => recordedValue(totals, key, key === 'credits' ? creditNumber : number).length));
   const layout = details ? ` class="usage-table" style="--usage-metric-width:${metricWidth}ch"` : '';
   return `<table${layout}>${details ? '<colgroup><col class="usage-name-column"><col span="9"></colgroup>' : ''}<thead>${header}</thead><tbody>${body}</tbody></table>`;
 }
@@ -1746,7 +1757,7 @@ function renderIntegrations(report) {
     if (row.toolsLoaded !== undefined && row.toolsLoaded !== null) details.push(`Tools loaded: ${row.toolsLoaded ? 'Yes' : 'No'}`);
     if (row.error) details.push(`Connection error: ${row.error}`);
     const tone = row.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(row.status) ? 'attention' : 'neutral';
-    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${number(row.successRate, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
+    return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : markedValue(row.successRate, row.unknown > 0, value => number(value, { maximumFractionDigits: 1 }) + '%')}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
   }).join('')}</tbody></table>` : `<p class="muted">${mcp.available ? 'No configured MCP servers or recorded MCP calls match this view.' : 'No recorded MCP calls match these filters. Live inventory is unavailable; open this dashboard in an updated Copilot session.'}</p>`;
   $('mcp-note').textContent = `Status: current session${inventoryPending ? ' (refreshing)' : mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
   if (inventoryPending && !mcp.available && !mcp.rows.length) $('mcp').innerHTML = '<p class="muted">Loading current MCP inventory. Usage data is ready.</p>';
@@ -1814,17 +1825,17 @@ const efficiencyMeasures = [
   { key: 'cacheHitRate', label: 'Cache reuse', count: 'cacheRequests', format: value => `${number(value, { maximumFractionDigits: 1 })}%`, hint: 'Weighted by measured input tokens.' },
   { key: 'averageCredits', label: 'Credits / request', count: 'creditRequests', format: creditNumber, hint: 'Only complete credit charges are included.' },
 ];
-const efficiencyValue = (row, metric) => row[metric.key] == null ? 'Unavailable' : metric.format(row[metric.key]);
+const efficiencyValue = (row, metric) => markedValue(row[metric.key], row[metric.count] < row.requests, metric.format);
 const efficiencyHint = (row, metric) => `${efficiencyValue(row, metric)} · ${number(row[metric.count])} of ${number(row.requests)} requests. ${metric.hint}`;
 function renderEfficiencyFlow(s) {
   const total = (s.pairedInput || 0) + (s.pairedOutput || 0);
   const share = total > 0 ? s.pairedInput / total * 100 : null;
   $('efficiency-flow').innerHTML = share === null
     ? '<p class="muted">Input and output counts from the same requests are needed to show where tokens go. Try a wider range if these records are incomplete.</p>'
-    : `<div class="efficiency-flow-heading"><strong>${number(share)}<span>%</span></strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${number(share)} percent; output ${number(100 - share)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${number(s.pairedInput)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${number(s.pairedOutput)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
+    : `<div class="efficiency-flow-heading"><strong>${markedValue(share, s.pairedRequests < s.requests, value => number(value) + '<span>%</span>')}</strong><div><h3>of measured tokens were input</h3><p class="muted">The model reads context on every request—not just the words you type.</p></div></div><div class="efficiency-track" role="img" aria-label="Input ${markedValue(share, s.pairedRequests < s.requests)} percent; output ${markedValue(100 - share, s.pairedRequests < s.requests)} percent"><span style="width:${share}%;background:var(--s1)"></span><span style="width:${100 - share}%;background:var(--s2)"></span></div><div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Input <b>${markedValue(s.pairedInput, s.pairedRequests < s.requests)}</b></span><span><i style="background:var(--s2)"></i>Output <b>${markedValue(s.pairedOutput, s.pairedRequests < s.requests)}</b></span></div><p class="footnote">Both counts recorded for ${number(s.pairedRequests)} of ${number(s.requests)} requests. Cached input is included; these are token volumes, not credit shares.</p>`;
   $('efficiency-cache').innerHTML = s.cacheHitRate == null
     ? `<strong>Cache reuse is not measurable here.</strong><p class="muted">${number(s.cacheRequests ?? 0)} of ${number(s.requests)} requests have a complete cache split. Missing cache detail is not zero reuse.</p>`
-    : `<strong>${number(s.cacheHitRate)}% of measured input was reused from cache</strong><p class="muted">${number(s.cacheRead)} of ${number(s.cacheInput)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
+    : `<strong>${markedValue(s.cacheHitRate, s.cacheRequests < s.requests, value => number(value) + '%')} of measured input was reused from cache</strong><p class="muted">${markedValue(s.cacheRead, s.cacheRequests < s.requests)} of ${markedValue(s.cacheInput, s.cacheRequests < s.requests)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
 }
 
 let efficiencyContextSnapshot;
@@ -1855,7 +1866,7 @@ function renderEfficiencyContext() {
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
   const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
-  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, credits: creditNumber, context: c })}`;
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
 let reviewRunning = false, reviewConnectionPending = false, preparedReviewModel = '';
 $('efficiency-review-open').onclick = async () => {
@@ -1952,15 +1963,15 @@ function renderEfficiencyHabits() {
   const metrics = [
     ['User messages', habits?.prompts, 'Recorded user-origin messages'],
     ['Messages / session', habits?.averagePromptsPerSession, `${number(habits?.promptSessions ?? 0)} sessions with messages`],
-    ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`],
-    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`],
+    ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`, habits?.promptSamples < habits?.prompts],
+    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`, summary?.inputRequests < summary?.requests],
     ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],
   ];
   $('efficiency-habits').innerHTML = habits?.reason === 'model-filter'
     ? '<p class="muted">Clear the model filter to see conversation habits. User messages cannot reliably be assigned to one model when a session uses several.</p>'
     : !habits?.observedSessions ? `<p class="muted">${habits?.omitted ? 'No interaction metadata could be attributed exclusively to Copilot.' : 'No matching message or turn metadata was recorded. Usage receipts alone cannot tell us how many times you chatted.'}</p>`
-      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail]) => `<div><span class="label">${label}</span><strong class="value">${number(value)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
-  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${number(summary?.averageInput)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
+      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail, incomplete]) => `<div><span class="label">${label}</span><strong class="value">${markedValue(value, incomplete)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
+  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${markedValue(summary?.averageInput, summary?.inputRequests < summary?.requests)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
   if (habits?.omitted && habits.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">${number(habits.omitted)} events excluded because Copilot attribution was missing or mixed.</p>`;
   const instructions = efficiencyContextSnapshot?.available ? efficiencyContextSnapshot.categories?.customInstructions : null;
   $('efficiency-instructions').innerHTML = instructions == null
@@ -1973,7 +1984,7 @@ function renderEfficiencyReliability() {
   const report = state.report, rows = toolOutcomeSummary(report.tools), habits = report.efficiency.interactions;
   const failed = (report.tools?.rows || []).filter(row => row.failures > 0).sort((a, b) => b.failures - a.failures).slice(0, 5);
   $('efficiency-reliability').innerHTML = rows.some(row => row.calls)
-    ? `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${rows.map(row => `<tr>${textCell(row.name)}<td>${number(row.calls)}</td><td>${number(row.successes)}</td><td>${number(row.failures)}</td><td>${number(row.unknown)}</td><td>${row.successRate == null ? 'Unavailable' : number(row.successRate, { maximumFractionDigits: 1 }) + '%'}</td></tr>`).join('')}</tbody></table></div><p class="footnote">Success rate uses only known outcomes. Calls follow the date and usage filters.</p>${failed.length ? `<details><summary>Tools with the most recorded failures</summary><ul>${failed.map(row => `<li>${esc(row.server ? row.server + ' / ' + (row.mcpTool || row.name) : row.name)}: ${number(row.failures)} failures in ${number(row.calls)} calls</li>`).join('')}</ul></details>` : ''}`
+    ? `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${rows.map(row => `<tr>${textCell(row.name)}<td>${number(row.calls)}</td><td>${number(row.successes)}</td><td>${number(row.failures)}</td><td>${number(row.unknown)}</td><td>${row.successRate == null ? 'Unavailable' : markedValue(row.successRate, row.unknown > 0, value => number(value, { maximumFractionDigits: 1 }) + '%')}</td></tr>`).join('')}</tbody></table></div><p class="footnote">Success rate uses only known outcomes. Calls follow the date and usage filters.</p>${failed.length ? `<details><summary>Tools with the most recorded failures</summary><ul>${failed.map(row => `<li>${esc(row.server ? row.server + ' / ' + (row.mcpTool || row.name) : row.name)}: ${number(row.failures)} failures in ${number(row.calls)} calls</li>`).join('')}</ul></details>` : ''}`
     : '<p class="muted">No matching tool execution records. Missing records do not mean no tools were used.</p>';
   $('efficiency-reliability').innerHTML += habits?.reason === 'model-filter'
     ? '<p class="footnote">Session error counts are unavailable under a model filter.</p>'
@@ -2020,8 +2031,8 @@ function renderSelectedTokenTopic() {
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
-    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, credits: creditNumber });
-    if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, credits: creditNumber });
+    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
+    if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
     if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
     return;
   }
@@ -2029,7 +2040,7 @@ function renderSelectedTokenTopic() {
   $('token-topic-title').textContent = topic.label;
   $('token-topic-question').textContent = topic.question;
   $('token-topic-scope').textContent = ['tools', 'results', 'skills'].includes(tokenTopic) ? 'Selected history + current conversation snapshot' : 'Selected history · current filters';
-  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber, context: efficiencyContextSnapshot });
+  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
@@ -2062,7 +2073,7 @@ function showPatternTopic(id) {
   $('pattern-topic-title').textContent = topic.label;
   $('pattern-topic-question').textContent = topic.question;
   $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
-  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, credits: creditNumber });
+  $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
 }
 $('efficiency-pattern-topic').onchange = () => showPatternTopic($('efficiency-pattern-topic').value);
 function openTokenContext() {
@@ -2167,7 +2178,6 @@ function renderContent() {
   else delete $('content').dataset.metric;
   $('tiles').hidden = state.view === 'efficiency';
   const t = r.totals, credits = state.metric === 'credits', textScale = TEXT_SCALES[state.textSize];
-  renderHeaderCredits();
   const focusedDay = $('daily').contains(document.activeElement) ? document.activeElement.dataset.day : null;
   const focusedChoice = document.activeElement?.dataset;
   const selected = r.daily.find(d => d.day === state.selectedDay);
@@ -2179,10 +2189,20 @@ function renderContent() {
   renderLoadStatus();
   const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
   if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
+  const p = r.promptCredits, promptIncomplete = p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0;
   const warnings = [];
   if (t.missingCredits) warnings.push(`${number(t.missingCredits)} requests have unavailable AI credits`);
   if (t.partialCredits) warnings.push(`${number(t.partialCredits)} requests have partial credit charges`);
   if (t.missingTokens) warnings.push(`${number(t.missingTokens)} requests have incomplete token counts`);
+  if (p.eligiblePrompts < p.prompts) warnings.push(`${number(p.prompts - p.eligiblePrompts)} prompts are excluded from cost averages`);
+  if (p.unlinkedRequests) warnings.push(`${number(p.unlinkedRequests)} model calls could not be linked to user prompts`);
+  if (p.work?.tokenPrompts > 0 && p.work.tokenPrompts < p.eligiblePrompts) warnings.push('Some eligible prompts have incomplete token counts across their linked calls');
+  const measurements = r.efficiency?.summary;
+  if (t.missing?.reasoning > 0 && t.missing.reasoning < t.requests || measurements?.reasoningRequests > 0 && measurements.reasoningRequests < measurements.requests) warnings.push('Reasoning counts are only partly measured');
+  if (measurements && ['toolRequests', 'toolCountRequests'].some(key => measurements[key] > 0 && measurements[key] < measurements.requests)) warnings.push('Some tool-footprint measurements are only partly recorded');
+  const interactions = r.efficiency?.interactions;
+  if (interactions?.promptSamples > 0 && interactions.promptSamples < interactions.prompts) warnings.push('Some prompt lengths are not recorded');
+  if (r.tools?.rows.some(row => row.unknown > 0)) warnings.push('Some tool calls have no recorded outcome');
   if (t.missingCache) warnings.push(`${number(t.missingCache)} requests have an unknown cache split`);
   if (r.coverage.unclassified) warnings.push(`${number(r.coverage.unclassified)} records lack Copilot attribution and were excluded`);
   if (r.coverage.excluded) warnings.push(`${number(r.coverage.excluded)} custom-provider or BYOK records were excluded`);
@@ -2192,48 +2212,48 @@ function renderContent() {
   const coverageMessage = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   $('coverage-message').textContent = coverageMessage;
   $('coverage').hidden = !warnings.length || coverageMessage === dismissedCoverage;
-  const rateValue = (value, samples, total = t.requests) => creditNumber(value) + (value != null && samples < total ? ' *' : '');
+  renderHeaderCredits();
+  const rateValue = (value, samples, total = t.requests) => markedValue(value, samples < total, creditNumber);
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
-  const p = r.promptCredits;
   const promptCoverage = `${number(p.eligiblePrompts)} of ${number(p.prompts)} prompts`;
   $('prompt-coverage-note').hidden = p.eligiblePrompts === p.prompts && !p.unlinkedRequests;
-  $('prompt-coverage-note').textContent = `* AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
+  $('prompt-coverage-note').textContent = `${!$('coverage').hidden ? '* ' : ''}AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
   const promptHint = `Complete recorded AI credits for initial calls, agent continuations and reliably linked subagents, divided by eligible user prompts. ${promptCoverage} eligible. Prompts are dated by submission; all linked work is grouped before filters. ${p.modelFiltered ? 'Selected-model contribution only, per eligible prompt using the selected models; whole-prompt accounting must still be complete. ' : ''}Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} requests could not be linked to prompts. Unlinked calls make prompt attribution uncertain for their journal session. Local logs cannot establish work they never recorded.`;
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
-    ['Tokens', usageValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', creditNumber(p.averageCredits), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['Tokens', recordedValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
+    ['AI credits / prompt', markedValue(p.averageCredits, promptIncomplete, creditNumber), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
   $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
-  $('token-total').textContent = usageValue(scope, 'total', number);
-  $('token-total').title = usageValue(scope, 'total', number);
+  $('token-total').textContent = recordedValue(scope, 'total', number);
+  $('token-total').title = recordedValue(scope, 'total', number);
   $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
   $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
   $('all-days').hidden = !selected;
   const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
   const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
-  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(recordedValue(scope, key, number))}">${esc(recordedValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache. Percentages show shares of recorded tokens.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   renderBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
   const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale });
+  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale, showCoverage: !$('coverage').hidden });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
-  $('calendar').innerHTML = calendarHeatmap(r.calendar);
+  $('calendar').innerHTML = calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
-  const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k] }));
+  const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
-  $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(usageValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(usageValue(scope, k, number))}</b></span>`).join('');
+  $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(recordedValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(recordedValue(scope, k, number))}</b></span>`).join('');
   // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: usageValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: recordedValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
   $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10, $('projects-sort').value), 'Project', false, 'projectFilter');
   $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
   $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';

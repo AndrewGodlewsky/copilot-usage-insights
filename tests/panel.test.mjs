@@ -193,6 +193,109 @@ test('coverage notice can be dismissed across renders and refreshes without supp
   assert.equal(reopened.get('coverage').hidden, false, 'dismissal lasts only for this dashboard instance');
 });
 
+test('coverage dismissal hides only relevant markers across cards, charts, and expanded tables without fetching', async () => {
+  const { get, report, records, now, requests, server, click } = await requestPanel();
+  const history = [records[0], { ...records[1], input: null, inputTotal: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null, nanoAiu: null, creditStatus: 'unavailable' }];
+  Object.assign(report, buildReport(history, {}, now));
+  Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 1, averageCredits: .25, excluded: { attribution: 0, accounting: 1, unfinished: 0 } });
+  for (const row of [...report.projects, ...report.usageChoices.projects]) Object.assign(row, { userPrompts: 1, uncertainPrompts: 1 });
+  server.sessionPage = input => buildModelSessionPage(history, input, now);
+  server.requestPage = input => buildRequestPage(history, input, now);
+  await get('refresh').onclick();
+  const before = JSON.stringify(report);
+  const markedSurfaces = ['tiles', 'token-stats', 'token-legend', 'models-summary', 'projects-summary', 'daily', 'calendar', 'token-bar', 'breakdown', 'efficiency-summary', 'efficiency-models'];
+  assert.equal(get('coverage').hidden, false);
+  assert.equal(get('hero-credits').textContent, '0.25 *');
+  assert.match(get('prompt-coverage-note').textContent, /^\*/);
+  for (const id of markedSurfaces) assert.match(get(id).innerHTML, /\d(?:[KM]|%)? \*/, `${id} marks its partial measurements`);
+  await click({ requestModel: '<Sonnet>' });
+  await click({ requestSession: 's1' });
+  assert.match(get('breakdown').innerHTML, /id="session-requests"/);
+  const requestCount = requests.length;
+  get('tip').hidden = false;
+  get('coverage-dismiss').onclick();
+  assert.equal(requests.length, requestCount, 'dismissing the notice uses only the existing report');
+  assert.equal(get('tip').hidden, true, 'an already open tooltip cannot retain a stale marker');
+  assert.equal(get('hero-credits').textContent, '0.25');
+  assert.equal(get('token-total').textContent, '120');
+  for (const id of markedSurfaces) assert.doesNotMatch(get(id).innerHTML, /\d(?:[KM]|%)? \*/, `${id} clears its markers`);
+  assert.doesNotMatch(get('prompt-coverage-note').textContent, /^\*/);
+  assert.match(get('prompt-coverage-note').textContent, /incomplete charges/, 'coverage explanations remain available');
+  assert.match(get('breakdown').innerHTML, /id="session-requests"/, 'expanded sessions stay open');
+  assert.match(get('breakdown').innerHTML, /Unavailable/, 'missing readings are not turned into zeros');
+  assert.equal(JSON.stringify(report), before, 'dismissing the notice never changes accounting');
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, true);
+  assert.equal(get('hero-credits').textContent, '0.25');
+  get('efficiency-topic').value = '9'; get('efficiency-topic').oninput();
+  assert.doesNotMatch(get('token-topic-body').innerHTML, /\d \*/, 'newly opened topics honor dismissal');
+  report.coverage.invalid = 1;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.equal(get('hero-credits').textContent, '0.25 *', 'new warnings restore relevant markers');
+});
+
+test('partial prompt lengths and unknown tool outcomes activate their own coverage notice', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, requests } = await mountPanel(report);
+  assert.equal(get('coverage').hidden, true);
+  report.efficiency.interactions = { prompts: 2, promptSamples: 1, averagePromptChars: 14, observedSessions: 1 };
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /Some prompt lengths are not recorded/);
+  assert.match(get('efficiency-habits').innerHTML, />14 \*</);
+  const before = requests.length;
+  get('coverage-dismiss').onclick();
+  assert.equal(requests.length, before);
+  assert.match(get('efficiency-habits').innerHTML, />14</);
+  assert.match(get('efficiency-habits').innerHTML, /1 messages with text lengths/);
+
+  report.efficiency.interactions.promptSamples = 2;
+  const row = { name: 'tool', server: 'server', calls: 2, successes: 1, failures: 0, unknown: 1, successRate: 100, lastUsed: null };
+  report.tools.rows = [row];
+  report.mcp.rows = [{ ...row, name: 'server' }];
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /Some tool calls have no recorded outcome/);
+  assert.doesNotMatch(get('coverage-message').textContent, /prompt lengths/);
+  for (const id of ['mcp', 'efficiency-reliability']) assert.match(get(id).innerHTML, /100% \*/);
+  get('coverage-dismiss').onclick();
+  for (const id of ['mcp', 'efficiency-reliability']) {
+    assert.match(get(id).innerHTML, /100%/);
+    assert.doesNotMatch(get(id).innerHTML, /100% \*/);
+  }
+  assert.match(get('efficiency-reliability').innerHTML, /Success rate uses only known outcomes/);
+});
+
+test('paired reasoning and whole-prompt token coverage can warn despite complete receipt totals', async () => {
+  const { get, report, records, now } = await requestPanel();
+  const history = [records[0], { ...records[1], reasoning: 30 }];
+  Object.assign(report, buildReport(history, {}, now));
+  report.promptCredits.unlinkedRequests = 0;
+  await get('refresh').onclick();
+  assert.equal(report.totals.missing.reasoning, 0);
+  assert.equal(report.efficiency.summary.reasoningRequests, 1);
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /Reasoning counts are only partly measured/);
+  jumpTokenTopic(get, 'output');
+  assert.match(get('token-topic-body').innerHTML, />5 \*</);
+  get('coverage-dismiss').onclick();
+  assert.match(get('token-topic-body').innerHTML, />5</);
+
+  Object.assign(report, buildReport(records, {}, now));
+  Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 2, unlinkedRequests: 0,
+    work: { tokenPrompts: 1, averageTokens: 120 } });
+  assert.equal(report.totals.missingTokens, 0, 'whole-prompt measurements can include calls outside the receipt date filter');
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /Some eligible prompts have incomplete token counts across their linked calls/);
+  jumpTokenTopic(get, 'prompts');
+  assert.match(get('token-topic-body').innerHTML, />120 \*</);
+  get('coverage-dismiss').onclick();
+  assert.match(get('token-topic-body').innerHTML, />120</);
+});
+
 test('Usage selections cross-filter metrics, preserve gray alternatives, and clear on repeat', async () => {
   const { records, now } = await requestPanel();
   const data = [
@@ -1078,7 +1181,7 @@ test('header credits follow filtered totals, keep fractions, and preserve unavai
   Object.assign(report.totals, { credits: 0.25, missingCredits: 1 });
   await get('refresh').onclick();
   assert.equal(get('hero-credits').textContent, '0.25 *');
-  assert.match(get('hero-credits').title, /incomplete credit coverage/);
+  assert.match(get('hero-credits').title, /Credit coverage is incomplete/);
   server.transportError = true;
   get('project').value = 'Unloaded project'; await get('project').onchange();
   assert.equal(get('hero-credits').textContent, 'Unavailable');
@@ -1164,7 +1267,7 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   Object.assign(report, buildReport(incomplete, { range: '7d' }, now));
   Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 1, credits: 0.25, averageCredits: 0.25, modelFiltered: true, excluded: { attribution: 0, accounting: 1, unfinished: 0 } });
   await get('refresh').onclick();
-  assert.match(card(2), />0\.25<\/strong>.*1 prompts · selected-model contribution/);
+  assert.match(card(2), />0\.25 \*<\/strong>.*1 prompts · selected-model contribution/);
   assert.equal(get('prompt-coverage-note').hidden, false);
   assert.match(get('prompt-coverage-note').textContent, /^\* AI credits \/ prompt: 1 of 2 prompts/);
   assert.match(get('prompt-coverage-note').textContent, /1 incomplete charges/);
@@ -1176,7 +1279,7 @@ test('credit rate cards replace streak and models, preserve coverage, and follow
   assert.match(card(2), />Unavailable<\/strong>.*<span class="sub">0 prompts<\/span>/);
   assert.match(card(3), /0 of 1 requests.*>Unavailable<\/strong>/);
   Object.assign(report, buildReport([{ ...records[0], nanoAiu: 0 }], { range: '7d' }, now));
-  Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0, averageCredits: 0 });
+  Object.assign(report.promptCredits, { prompts: 1, eligiblePrompts: 1, credits: 0, averageCredits: 0, unlinkedRequests: 0 });
   await get('refresh').onclick();
   for (const index of [2, 3]) assert.match(card(index), /data-measure="credits".*>0<\/strong>/);
   Object.assign(report, buildReport([], { range: '1d' }, now));

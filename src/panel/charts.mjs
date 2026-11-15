@@ -18,11 +18,14 @@ export function esc(value) {
 }
 
 // Keep unavailable values distinct from zero in both charts and tables.
-export function usageValue(row, key, fmt = compact) {
+export function coverageValue(value, incomplete, fmt = compact, showCoverage = true) {
+  return value == null ? 'Unavailable' : `${fmt(value)}${incomplete && showCoverage ? ' *' : ''}`;
+}
+export function usageValue(row, key, fmt = compact, showCoverage = true) {
   const missing = key === 'credits' ? row.missingCredits || row.partialCredits : key === 'total' || key === 'averageTokens' ? row.missingTokens : row.missing?.[key];
   const unavailable = row[key] === null || row.requests > 0 && (key === 'total' ? row.knownTokenRequests === 0 : row.missing?.[key] === row.requests);
   if (unavailable) return 'Unavailable';
-  return `${fmt(row[key] ?? 0)}${missing ? ' *' : ''}`;
+  return coverageValue(row[key] ?? 0, missing, fmt, showCoverage);
 }
 
 // Which day indices get an axis label: all of them when each has `minPx` of room, otherwise
@@ -57,7 +60,7 @@ function empty(w, h, label) {
 
 // Daily stacked bars. Segments stack bottom-up in `keys` order with a 2px surface gap,
 // the bar's top is rounded via a clip path, and every bar carries a tooltip payload.
-export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null, textScale = 1 } = {}) {
+export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 170, id = 'sb', colors = TOKEN_COLORS, labels = TOKEN_LABELS, fmt = null, selectable = false, selectedDay = null, textScale = 1, showCoverage = true } = {}) {
   const label = 'Daily usage'
   if (!daily?.length) return empty(width, height, label)
   const withWeekday = daily.length <= 14
@@ -81,13 +84,14 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     const h = total > 0 ? Math.max(4, scaledH) : 0
     const minimumHeight = h > scaledH
     const corner = Math.min(radius, h / 2)
+    const drawKeys = minimumHeight ? [keys.reduce((largest, key) => (d[key] || 0) > (d[largest] || 0) ? key : largest)] : keys
     const show = (v) => (fmt ? fmt(v) : v)
-    const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show)])
+    const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show, showCoverage)])
     if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
     if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
     if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
-    if (minimumHeight) rows.push(['Display', 'Minimum height for visibility'])
-    const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined
+    if (minimumHeight) rows.push(['Display', `Minimum height for visibility; color: ${labels[drawKeys[0]] ?? drawKeys[0]}`])
+    const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show, showCoverage) : undefined
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: shownTotal }))
     const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown" aria-describedby="${id}-d${i}"` : ''
     body += `<g class="mark" data-tip="${tip}"${selection}>`
@@ -101,12 +105,12 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
       body += `<g clip-path="url(#${cid})">`
       let y = top + plotH
       let drawn = 0
-      for (const k of keys) {
-        const v = d[k] || 0
+      for (const k of drawKeys) {
+        const v = minimumHeight ? total : d[k] || 0
         if (v <= 0) continue
         const sh = (v / total) * h
         y -= sh
-        const gap = drawn++ > 0 && !minimumHeight ? Math.min(2, sh / 2) : 0 // Small markers keep their full token mix visible.
+        const gap = drawn++ > 0 ? Math.min(2, sh / 2) : 0
         body += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(0, sh - gap)}" fill="${colors[k] ?? 'var(--s1)'}"/>`
       }
       body += `</g>`
@@ -145,7 +149,7 @@ export function levels(values) {
 }
 
 // GitHub-style calendar: columns are weeks (Sun..Sat rows), oldest left.
-export function calendarHeatmap(calendar, { cell = 11, gap = 2 } = {}) {
+export function calendarHeatmap(calendar, { cell = 11, gap = 2, fmt = compact, showCoverage = true } = {}) {
   const label = 'Daily activity calendar'
   if (!calendar?.length) return empty(300, 100, label)
   const first = new Date(calendar[0].day + 'T00:00:00')
@@ -172,7 +176,7 @@ export function calendarHeatmap(calendar, { cell = 11, gap = 2 } = {}) {
         lastMonth = month
       }
     }
-    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: [['Tokens', d.total]] }))
+    const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: [['Tokens', usageValue(d, 'total', fmt, showCoverage)]] }))
     body += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2" class="mark cell q${lv[i]}" data-tip="${tip}"/>`
   })
   for (const r of [1, 3, 5]) body += `<text x="0" y="${top + r * step + cell - 2}" class="t-muted">${WEEKDAYS[r]}</text>`
@@ -244,7 +248,7 @@ export function hBars(items, { width = 360, textScale = 1, row = 24 * textScale,
     const w = max > 0 ? Math.max(it.value > 0 ? 3 : 0, (it.value / max) * barMax) : 0
     const maxChars = Math.floor(labelW / (6.6 * textScale))
     const name = it.label.length > maxChars ? it.label.slice(0, maxChars - 1) + '…' : it.label
-    const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.value], ...(it.note ? [['', it.note]] : [])] }))
+    const tip = esc(JSON.stringify({ title: it.label, rows: [['Tokens', it.note ?? it.value]] }))
     const selection = selectable ? ` data-usage-model="${esc(it.label)}" role="button" tabindex="0" aria-pressed="${it.label === selectedLabel}" aria-label="${esc(it.label)}: ${esc(it.note ?? compact(it.value))} tokens; ${it.label === selectedLabel ? 'clear model filter' : 'filter dashboard'}"` : ''
     body += `<g class="mark${selectable && selectedLabel && selectedLabel !== it.label ? ' choice-muted' : ''}" data-tip="${tip}"${selection}><rect x="0" y="${y}" width="${width}" height="${row}" class="hit"/>`
     body += `<text x="0" y="${y + row / 2 + 4 * textScale}" class="t-label">${esc(name)}</text>`
@@ -379,8 +383,8 @@ export function segmentBar(segments, { width = 360, height = 10, id = 'sbar', te
   for (const [i, s] of live.entries()) {
     const w = small.includes(s) ? minW : (s.value / bigTotal) * bigAvail
     const percent = s.value / total * 100
-    const share = percent < .1 ? '<0.1%' : percent > 99.9 && percent < 100 ? '>99.9%' : `${percent.toFixed(1).replace(/\.0$/, '')}%`
-    const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.value], ['Share of recorded tokens', share]] }))
+    const share = (percent < .1 ? '<0.1%' : percent > 99.9 && percent < 100 ? '>99.9%' : `${percent.toFixed(1).replace(/\.0$/, '')}%`) + (s.incomplete ? ' *' : '')
+    const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.note ?? s.value], ['Share of recorded tokens', share]] }))
     body += `<rect class="mark" data-tip="${tip}" x="${xpos.toFixed(1)}" y="${barY}" width="${w.toFixed(1)}" height="${height}" fill="${esc(s.color)}"/>`
     const half = (share.length * 7 + 8) * textScale / 2, center = xpos + w / 2
     callouts.push({ ...s, share, tip, half, center, start: xpos, end: xpos + w, above: i % 2 === 0, x: Math.max(half, Math.min(width - half, center)) })

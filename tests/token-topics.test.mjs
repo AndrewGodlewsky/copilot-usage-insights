@@ -54,7 +54,7 @@ test('prompt topic preserves zero credits and labels model-filtered contribution
   const html = render('prompts', { promptCredits: { prompts: 3, eligiblePrompts: 2, credits: 0, averageCredits: 0, modelFiltered: true, work: { averageRequests: 2, maxRequests: 3, tokenPrompts: 2, averageTokens: 100, requests: 4 } } });
   assert.match(html, /Selected-model contribution/);
   assert.match(html, /2 of 3/);
-  assert.match(html, />0<\/strong>/);
+  assert.match(html, />0 \*<\/strong>/);
   assert.match(html, /initial calls, agent continuations/);
   assert.doesNotMatch(html, /Unavailable/);
 });
@@ -68,7 +68,7 @@ test('growth and spend topics escape labels, bound lists, and preserve incomplet
   assert.equal((spend.match(/<tr>/g) || []).length, 6);
   assert.match(spend, /8 \*/);
   assert.match(spend, /&lt;Project&gt;/);
-  assert.match(spend, /incomplete/);
+  assert.match(spend, /incomplete/i);
   assert.doesNotMatch(spend, /<Project>|Session 7/);
 });
 
@@ -145,6 +145,25 @@ test('delegated model averages retain independent measurement coverage', () => {
   const accumulator = createEfficiencyAccumulator();
   for (let i = 0; i < 100; i++) accumulator.add({ model: 'Sparse model', initiator: 'sub-agent', inputTotal: i === 0 ? 1000 : null, output: 20 });
   const html = render('delegation', { efficiency: accumulator.finish() });
-  assert.match(html, /1000 \(1 of 100 model calls\)/);
+  assert.match(html, /1000 \* \(1 of 100 model calls\)/);
   assert.match(html, /20 \(100 of 100 model calls\)/);
+});
+
+test('Efficiency coverage markers follow the notice without losing sample counts or literal name characters', () => {
+  const accumulator = createEfficiencyAccumulator();
+  accumulator.add({ model: 'Model * name', initiator: 'sub-agent', inputTotal: 1000, output: 100, reasoning: 40, cacheRead: 300, cacheWrite: 100, toolTokenCount: 200, availableToolCount: 5, nanoAiu: 1000000000, creditStatus: 'complete' });
+  accumulator.add({ model: 'Model * name', initiator: 'sub-agent' });
+  const report = { efficiency: accumulator.finish(), totals: { missingCredits: 1 },
+    promptCredits: { prompts: 2, eligiblePrompts: 1, averageCredits: 1, work: { averageRequests: 2, averageTokens: 100, maxRequests: 2, tokenPrompts: 1 } },
+    sessions: [{ name: 'Session * name', credits: 1, missingCredits: 1 }] };
+  const before = JSON.stringify(report);
+  for (const id of ['tools', 'cache', 'prompts', 'delegation', 'output', 'drivers']) {
+    const shown = renderTokenTopic(id, report, { ...formats, showCoverage: true });
+    const hidden = renderTokenTopic(id, report, { ...formats, showCoverage: false });
+    assert.match(shown, /\d%? \*/, id);
+    assert.doesNotMatch(hidden, /\d%? \*/, id);
+    if (id !== 'prompts') assert.match(hidden, /(?:Model|Session) \* name/, 'dismissal does not strip stars from names');
+    if (!['prompts', 'drivers'].includes(id)) assert.match(hidden, /1 of 2/);
+  }
+  assert.equal(JSON.stringify(report), before);
 });

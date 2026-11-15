@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.76",
+    "summary": "Minimum-height daily bars use the color of their largest token category. Incomplete-data asterisks follow the coverage notice: closing it hides the markers while keeping recorded values and coverage details available."
+  },
+  {
     "version": "0.1.75",
     "summary": "Small amounts of daily usage remain visible and clickable beside much busier days in token and AI credit charts. Tooltips keep the recorded amounts and explain when a bar uses a minimum visible height."
   },
