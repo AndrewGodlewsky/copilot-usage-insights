@@ -21,11 +21,12 @@ $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VER
 const number = (value, options = {}) => formatNumber(value, { simplify: state.simplifyNumbers, ...options });
 const creditNumber = value => formatCredits(value, { simplify: state.simplifyNumbers });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
+const AUTO_REFRESH_MS = 15 * 60 * 1000;
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 let dismissedCoverage = '';
-let loadError = '', lastResponseAt, cachedServerDiagnostics;
+let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
 $('coverage-dismiss').onclick = () => {
   dismissedCoverage = $('coverage-message').textContent;
   $('coverage').hidden = true;
@@ -193,6 +194,7 @@ async function load(force = false, refresh = false) {
         // When this very view is already on screen, the server may answer that nothing changed.
         const known = method === 'usage.report' && state.report && !state.creditsUnavailable && filterKey === state.filterKey ? state.report.revision : undefined;
         const report = await request(method, input, rescan, undefined, known);
+        if (rescan || method === 'usage.refresh') lastSuccessfulScanAt = Date.now();
         if (version !== state.version) continue;
         loadError = '';
         if (report.unchanged) {
@@ -859,7 +861,7 @@ function renderBanner(r) {
   banner.innerHTML = pixelBanner(r, { patterns: state.buildingPatterns, h: Math.max(34, Math.ceil(120 * banner.clientHeight / Math.max(1, banner.clientWidth))) });
 }
 function renderUpdated(r) {
-  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
+  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 15 minutes while visible.`;
 }
 // The data is the same as before; only what follows the clock is redrawn.
 function renderClock(previousSky) {
@@ -1170,8 +1172,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('tip').hid
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
-document.addEventListener('visibilitychange', () => { clientDiagnostics.record('info', 'ui.visibility', connectionState()); if (!document.hidden) load(false, true); });
-setInterval(() => { if (!document.hidden && !state.pending) load(false, true); }, 60000);
+document.addEventListener('visibilitychange', () => {
+  clientDiagnostics.record('info', 'ui.visibility', connectionState());
+  if (!document.hidden && !state.pending && (lastSuccessfulScanAt === undefined || Date.now() - lastSuccessfulScanAt >= AUTO_REFRESH_MS)) load(false, true);
+});
+setInterval(() => { if (!document.hidden && !state.pending) load(false, true); }, AUTO_REFRESH_MS);
 $('start-date').value = dayKey(localDay() - 6); $('end-date').value = dayKey(localDay());
 $('end-date').max = $('start-date').max = dayKey(localDay());
-load();
+load(false, true);

@@ -45,11 +45,12 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
-  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory };
+  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now() };
   const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
   const context = createContext({
+    Date: class extends Date { static now() { return server.now; } },
     innerWidth: 1200, innerHeight: 800,
     document,
     window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
@@ -1232,14 +1233,17 @@ test('metric buttons toggle emphasis off without changing chart units or loading
   assert.deepEqual(selected(), ['true', 'false']);
 });
 
-test('filters reuse history while the 60-second timer and visibility changes request fresh data', async () => {
-  const { get, requests, intervals, listeners, document } = await requestPanel();
+test('initial load and the visible 15-minute timer scan history; fresh returns and filters reuse it', async () => {
+  const { get, requests, intervals, listeners, document, server } = await requestPanel();
   assert.equal(intervals.length, 1);
-  assert.equal(intervals[0].ms, 60000);
-  assert.match(get('updated').textContent, /60 seconds/);
+  assert.equal(intervals[0].ms, 15 * 60 * 1000);
+  assert.match(get('updated').textContent, /15 minutes/);
+  assert.equal(requests[0].method, 'usage.report');
+  assert.equal(requests[0].refresh, true, 'opening the page immediately checks for new usage');
   get('range').value = '1d'; get('range').onchange();
   await new Promise(setImmediate);
   assert.equal(requests.at(-1).refresh, undefined);
+  server.now += 15 * 60 * 1000;
   intervals[0].callback(); await new Promise(setImmediate);
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.report');
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true);
@@ -1249,10 +1253,50 @@ test('filters reuse history while the 60-second timer and visibility changes req
   await new Promise(setImmediate);
   assert.equal(requests.length, count);
   document.hidden = false;
+  server.now += 15 * 60 * 1000 - 1;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.length, count, 'returning before 15 minutes does not scan');
+  get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(requests.at(-1).refresh, undefined);
+  server.now++;
   listeners.get('visibilitychange')(); await new Promise(setImmediate);
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true);
+  const afterReturn = requests.length;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.length, afterReturn, 'a successful scan resets freshness');
+  server.now += 14 * 60 * 1000;
   await get('refresh').onclick();
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.refresh');
+  assert.equal(get('footer-refresh').onclick, get('refresh').onclick);
+  server.now += 60 * 1000;
+  const afterManual = requests.length;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.length, afterManual, 'manual refresh also resets freshness');
+});
+
+test('visibility refresh coalesces pending work, retains failure age, and accepts unchanged success', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, requests, listeners, intervals } = await mountPanel(report);
+  server.now += 15 * 60 * 1000;
+  let finish;
+  server.report = () => new Promise(resolve => { finish = resolve; });
+  listeners.get('visibilitychange')();
+  await new Promise(setImmediate);
+  const count = requests.length;
+  listeners.get('visibilitychange')(); intervals[0].callback();
+  assert.equal(requests.length, count);
+  finish({ unchanged: true, generatedAt: report.generatedAt, scannedAt: report.generatedAt });
+  await new Promise(setImmediate);
+  const after = requests.length;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.length, after, 'unchanged success is still a fresh scan');
+  server.now += 15 * 60 * 1000;
+  server.transportError = true;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.match(get('status').textContent, /last successful/);
+  const failed = requests.length;
+  listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests.length, failed + 1, 'failed refresh does not mark old data fresh');
 });
 
 test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {

@@ -14,7 +14,7 @@ The locally installed Copilot extension bootstrap watches its parent process and
 
 ## Capture after updating
 
-1. Update the plugin, start a new Copilot session, and open Usage Insights. Leave it open through an automatic refresh.
+1. Update the plugin, fully quit and restart Copilot, start a new session, and open Usage Insights. Leave it open through an automatic refresh. From v0.1.74 the interval is 15 minutes; clicking **Refresh** after a minute can check the connection sooner.
 2. If refresh fails, use **Show logs → Copy logs** before closing the dashboard. The export includes client connection stages and any cached server snapshot, explicitly dated.
 3. Close and reopen Usage Insights from Copilot, then copy logs again. This second export can include lifecycle records from the previous extension process. If the dashboard cannot reopen, the two diagnostic files in the plugin's settings directory can be inspected directly.
 

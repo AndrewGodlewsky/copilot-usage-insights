@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.74",
+    "summary": "Usage loads immediately and refreshes every 15 minutes while visible, reducing background work. Returning to the dashboard refreshes only when its last successful scan is at least 15 minutes old; the Refresh button still updates on demand."
+  },
+  {
     "version": "0.1.73",
     "summary": "If a refresh loses its connection, the dashboard keeps the last loaded data with a clear notice. Improved connection diagnostics and small local lifecycle logs help investigate failures, including after reopening the dashboard."
   },
