@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.78",
+    "summary": "Include recorded VS Code Copilot Chat usage from Windows and accessible WSL storage. The new All environments menu lets you focus the dashboard on one environment; source settings and coverage notes explain any missing history."
+  },
+  {
     "version": "0.1.77",
     "summary": "Windows now automatically includes Copilot CLI histories from running WSL distributions. Settings can disable discovery, and Local data sources explains stopped or unreadable environments so missing usage is easier to diagnose."
   },

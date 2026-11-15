@@ -2119,7 +2119,7 @@ test('settings restore saved text size and apply changes only after a successful
   await get('settings-open').onclick();
   get('text-size').value = 'medium';
   await get('settings-save').onclick();
-  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, includeVSCode: true, extraVSCodeHomes: [], extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
   assert.equal(rootStyle.get('--text-scale'), '1.15');
   assert.equal(get('settings-dialog').open, false);
   await get('settings-open').onclick();
@@ -2148,6 +2148,41 @@ test('WSL source setting defaults on and saving a change refreshes history', asy
   assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
   await get('settings-open').onclick();
   assert.equal(get('include-wsl').checked, false);
+});
+
+test('environment selector defaults to All, filters without rescanning, survives refresh and resets', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  report.options.environments = [{ id: 'windows', name: 'Windows' }, { id: 'wsl:ubuntu', name: 'WSL · Ubuntu' }];
+  const { get, requests } = await mountPanel(report);
+  assert.equal(get('environment').value, '');
+  assert.match(get('environment').innerHTML, /All environments/);
+  get('model').value = 'old'; get('project').value = 'old'; get('session').value = 'old';
+  get('environment').value = 'wsl:ubuntu';
+  await get('environment').onchange();
+  const message = requests.findLast(r => r.method === 'usage.report');
+  assert.equal(message.input.environment, 'wsl:ubuntu');
+  assert.ok(!message.refresh);
+  assert.equal(get('project').value, '');
+  await get('refresh').onclick();
+  assert.equal(requests.findLast(r => r.method === 'usage.refresh').input.environment, 'wsl:ubuntu');
+  assert.equal(get('environment').value, 'wsl:ubuntu');
+  get('clear-filters').onclick(); await new Promise(setImmediate);
+  assert.equal(get('environment').value, '');
+  assert.equal(requests.findLast(r => r.method === 'usage.report').input.environment, undefined);
+});
+
+test('VS Code source settings load defaults and trigger a refresh when custom storage changes', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, requests } = await mountPanel(report);
+  await get('settings-open').onclick();
+  assert.equal(get('include-vscode').checked, true);
+  get('include-vscode').checked = false;
+  get('extra-vscode-homes').value = '/custom/User';
+  await get('settings-save').onclick();
+  const saved = requests.findLast(r => r.method === 'settings.set').input;
+  assert.equal(saved.includeVSCode, false);
+  assert.deepEqual(saved.extraVSCodeHomes, ['/custom/User']);
+  assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
 });
 
 test('AI review requires a saved model and explicit send, keeps its snapshot and safely renders responses', async () => {

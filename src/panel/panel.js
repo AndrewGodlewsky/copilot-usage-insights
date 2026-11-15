@@ -156,6 +156,7 @@ $('logs-copy').onclick = async () => {
 };
 function query() {
   return { range: state.range, includeCache: $('cache').checked,
+    ...($('environment').value ? { environment: $('environment').value } : {}),
     ...($('model').value ? { models: [$('model').value] } : {}), project: $('project').value, session: $('session').value,
     ...(state.range === 'custom' ? { startDate: state.startDate, endDate: state.endDate } : {}) };
 }
@@ -892,6 +893,7 @@ function renderContent() {
   const scope = selected || t;
   const scopeDate = selected ? new Date(selected.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   const keys = r.query.includeCache ? [...TOKEN_KEYS, 'unclassifiedInput'] : ['input', 'output'];
+  options('environment', r.options.environments || [], 'All environments');
   options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); options('session', r.options.sessions, 'All sessions');
   renderLoadStatus();
   const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
@@ -1068,6 +1070,7 @@ $('breakdown').onclick = async event => {
 $('range').onchange = () => { $('custom').hidden = $('range').value !== 'custom'; if ($('range').value !== 'custom') { state.range = $('range').value; load(); } };
 $('apply-dates').onclick = () => { state.range = 'custom'; state.startDate = $('start-date').value; state.endDate = $('end-date').value; load(); };
 for (const id of ['model', 'project', 'session', 'cache']) $(id).onchange = () => load();
+$('environment').onchange = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; return load(); };
 for (const id of ['group', 'sort']) $(id).onchange = () => {
   if (state.projectView) state.projectView.offset = 0;
   renderBreakdown();
@@ -1100,7 +1103,7 @@ $('skills').onclick = async event => {
   catch (error) { clientDiagnostics.record('error', 'ui.skillAction', { action: copy ? 'copy' : 'open', ...diagnosticError(error) }); status.hidden = false; status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
   finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
-$('clear-filters').onclick = () => { for (const id of ['model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
+$('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 let settingsSources;
 function reviewModelOptions(models, selected) {
   $('review-model').innerHTML = '<option value="">Choose a model</option>' +
@@ -1136,8 +1139,10 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('text-size').value = config.textSize ?? 'small';
     $('simplify-numbers').checked = config.simplifyNumbers !== false;
     $('include-wsl').checked = config.includeWsl !== false;
+    $('include-vscode').checked = config.includeVSCode !== false;
+    $('extra-vscode-homes').value = (config.extraVSCodeHomes || []).join('\n');
     reviewModelOptions([], config.reviewModel);
-    settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false]);
+    settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]);
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
     $('settings-save').disabled = false;
@@ -1149,10 +1154,10 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
     applyPreferences(config); render();
     $('settings-dialog').close();
-    await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false]));
+    await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));
   } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
   finally { $('settings-save').disabled = false; }
 };

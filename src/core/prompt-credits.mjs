@@ -46,11 +46,12 @@ export function promptEvent(e, { sessionId, project, receipt, receiptKey } = {})
 export function samePromptEvent(a, b) {
   if (a === b) return true;
   for (const k in a) {
+    if (k === 'environment') continue; // Source location is not part of a replayed event's identity.
     const x = a[k], y = b[k];
     if (x === y) continue;
     if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.some((v, i) => v !== y[i])) return false;
   }
-  for (const k in b) if (!(k in a)) return false;
+  for (const k in b) if (k !== 'environment' && !(k in a)) return false;
   return true;
 }
 export function createPromptEventSet() {

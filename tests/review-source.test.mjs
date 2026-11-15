@@ -62,7 +62,7 @@ async function fixture(t, location = 'override', reviewService) {
   const data = location === 'override' ? path.join(dir, 'custom-data') : location === 'fallback'
     ? path.join(dir, '.local', 'share', 'copilot-usage-insights') : path.join(dir, 'local-data', 'copilot-usage-insights');
   const home = path.join(data, 'usage'), settings = createSettings(path.join(dir, 'settings'));
-  await settings.set({ includeWsl: false });
+  await settings.set({ includeWsl: false, includeVSCode: false });
   const defaultHome = path.join(dir, 'copilot');
   await fs.mkdir(defaultHome);
   const server = await startServer({ settings, defaultHome, html: '<title>Fixture</title>', now: () => now, reviewService });

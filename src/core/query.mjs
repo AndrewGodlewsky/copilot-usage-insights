@@ -36,11 +36,13 @@ export function parseDateDay(value) {
   if (dayKey(day) !== value) throw new RangeError('date must be a real calendar date');
   return day;
 }
-export function normalizeQuery({ range = 'mtd', startDate, endDate, models, includeCache = true } = {}, now = new Date()) {
+export function normalizeQuery({ range = 'mtd', startDate, endDate, models, environment, includeCache = true } = {}, now = new Date()) {
   if (range !== 'mtd' && range !== 'all' && range !== 'custom' && !RANGE_DAYS.has(range)) throw new RangeError(`Unknown range: ${range}`);
   if (typeof includeCache !== 'boolean') throw new TypeError('includeCache must be a boolean');
   if (models !== undefined && (!Array.isArray(models) || !models.every((m) => typeof m === 'string' && m.trim() !== ''))) throw new TypeError('models must be an array of non-empty strings');
   const out = { range, includeCache };
+  if (environment !== undefined && (typeof environment !== 'string' || environment.length > 512 || /[\x00-\x1f\x7f]/.test(environment))) throw new TypeError('Invalid environment');
+  if (environment) out.environment = environment;
   if (models !== undefined) out.models = [...new Set(models)].sort();
   if (range === 'custom') {
     const start = parseDateDay(startDate);

@@ -4,7 +4,7 @@
 
 Windows and each WSL distribution have separate Copilot homes. Previously the dashboard automatically read the Windows home and plugin-owned receipt directories; a WSL home had to be added manually. That can explain missing sessions, tokens, and credits, but it does not prove that every difference from an account-wide total comes from WSL.
 
-On Windows, **Include WSL Copilot CLI usage** is enabled by default. Initial loading and refresh enumerate registered/running distributions with `wsl.exe --list --quiet` and `--list --running --quiet`. For running distributions, discovery checks `.copilot` under `/home/*` and `/root`, then feeds readable homes into the existing scanner. No package is installed in Linux, no account credentials are read, and nothing is uploaded. Docker Desktop's internal distributions are skipped.
+On Windows, **Include WSL usage sources (Windows)** is enabled by default. Initial loading and refresh enumerate registered/running distributions with `wsl.exe --list --quiet` and `--list --running --quiet`. For running distributions, discovery checks `.copilot`, `.vscode-server/data/User` and `.vscode-server-insiders/data/User` under `/home/*` and `/root`, then feeds readable homes into the existing scanner. VS Code storage can be discovered without a CLI home. No package is installed in Linux, no account credentials are read, and nothing is uploaded. Docker Desktop's internal distributions are skipped.
 
 The scanner continues to read `session-state/<session-id>/events.jsonl` and its existing database fallback. Recorded Copilot provider attribution, token validation, and `totalNanoAiu / 1e9` credit accounting are unchanged. Identical receipt identities in copied journals count once. Distinct sessions remain distinct, and every existing date/project/session/model rule still applies. WSL path identity treats `wsl$` and `wsl.localhost` as aliases while preserving case below the distribution name.
 
@@ -14,25 +14,17 @@ Microsoft documents [WSL list commands](https://learn.microsoft.com/en-us/window
 
 - **Stopped distributions:** automatic discovery does not deliberately start them. Local data sources says their history is excluded. Start the distribution yourself and refresh. If it stops later, its totals are excluded on the next scan; this version does not persist a copied historical snapshot. A distribution can stop between enumeration and access; Windows controls mounting of the UNC path.
 - **Custom homes:** add a Windows UNC path such as `\\wsl.localhost\Ubuntu\home\alice\custom-copilot` to **Additional Copilot homes**. Automatic discovery does not inspect shell startup files or guess custom `COPILOT_HOME` values. Nonstandard Linux home directories need the same manual setup.
-- **Disable one home:** copy its displayed path into **Disabled Copilot homes**. A disabled explicit home is skipped before filesystem access. Disable the checkbox to stop automatic WSL discovery; explicitly configured homes are still read.
+- **Disable one home:** copy its displayed path into **Disabled source folders**. A disabled explicit home is skipped before filesystem access. Disable the checkbox to stop automatic WSL discovery; explicitly configured homes are still read.
 - **Unavailable sources:** unreadable homes or failed WSL discovery produce source warnings without discarding other readable histories. Linux `/root` is usually inaccessible to a non-root user; automatic discovery silently skips that permission denial. A root-only Copilot home can be added explicitly if appropriate and readable.
 - **Performance:** two bounded list commands run only when history is scanned. Each has a three-second timeout. Metadata discovery has a three-second budget per distribution, four distributions at a time, with limits of 16 distributions and 64 home directories per distribution. Hitting a limit is reported. Discovery runs in a temporary process that exits after returning its result and is forcibly stopped after 17 seconds if necessary; timed-out UNC metadata reads cannot occupy the dashboard's filesystem worker pool. The helper uses Copilot's existing runtime, without requiring a separate Node installation. Actual journal parsing then uses the existing incremental reader; large WSL histories and slow filesystem access can still take longer than native disk, particularly if a distribution stops during a scan. Filters and expansions reuse history. There is no additional refresh timer.
 - **Paths in skill records:** Linux skill paths are retained as recorded. Windows folder opening/version inspection does not translate those paths in this release; Linux-only installed versions can be unavailable. Request-log reads use the accessible discovered journal path.
 - **Coverage:** absent/deleted logs and sessions that saved only summary totals cannot be reconstructed. The dashboard is not an account billing export.
 
-## VS Code Chat: separate importer needed
+## VS Code Copilot Chat
 
-Native VS Code Copilot Chat is **not imported by this release**, whether it runs locally or connects to WSL. A Copilot CLI session launched from VS Code can still be included when it produces the supported CLI history. Do not point Additional Copilot homes at a VS Code debug-log folder and expect it to work.
+Version 0.1.78 also imports attributable recorded VS Code debug receipts from standard Windows and accessible WSL User storage. Ordinary saved chats do not provide complete accounting, and debug logging may need enabling. Read [VS Code setup and coverage](vscode-sources.md) for supported paths, the logging setting, duplicate precedence and unavailable metrics.
 
-The [current Microsoft logger](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/chatDebugFileLoggerService.ts) writes `debug-logs/<session>/main.jsonl` and separate child-session JSONL files under extension workspace storage, with a global-storage fallback. Its `llm_request` entries can include input/output counts, cached input, a response ID, and `copilotUsageNanoAiu`. Logging is configurable and retention is limited. Older logs need not contain all those fields.
-
-A separate importer must establish:
-
-1. Actual storage locations on the affected machine: VS Code's Windows client storage and WSL remote extension-host storage can differ. Inspect metadata and field names first, without collecting prompt text.
-2. Copilot versus BYOK/custom-provider attribution for each request. A model name alone is insufficient evidence.
-3. Identity overlap between VS Code debug spans and CLI receipts. The upstream logger also handles CLI sessions; importing both blindly risks double-counting.
-4. Per-call versus cumulative charges, child sessions, request continuation links, unknown cache splits, and partial/rotated logs. Missing charges stay unavailable; never estimate them from a model price list.
-5. Synthetic fixtures for each verified schema and overlap case before enabling automatic intake. No need to enable verbose logging or persist raw prompt-bearing logs merely to ship WSL discovery.
+The **All environments** menu beside AI credits filters historical usage by Windows or a discovered WSL distribution. Both CLI and VS Code sources in that environment are included. Current host inventory and context inspection remain separate from historical usage filtering.
 
 ## Verify on the affected PC
 

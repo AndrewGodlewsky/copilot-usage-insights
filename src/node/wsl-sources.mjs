@@ -82,9 +82,9 @@ export function createDirectWslDiscovery({ platform = process.platform, run = ru
       fields.running = installed.filter(name => running.has(name.toLowerCase())).length;
       const disabledIds = new Set(disabled.map(p => sourceIdentity(p, 'win32')));
       const inspect = async name => {
-        const root = `\\\\wsl.localhost\\${name}`, found = { homes: [], sources: [] };
+        const root = `\\\\wsl.localhost\\${name}`, found = { homes: [], sources: [], vscodeHomes: [] };
         if (!running.has(name.toLowerCase())) {
-          found.sources.push({ path: root, state: 'warning', message: 'WSL distribution is stopped; its history is not included. Start it and refresh to include its Copilot CLI usage.' });
+          found.sources.push({ path: root, state: 'warning', message: 'WSL distribution is stopped; its history is not included. Start it and refresh to include its Copilot usage.' });
           return found;
         }
         const deadline = Date.now() + timeoutMs;
@@ -103,25 +103,29 @@ export function createDirectWslDiscovery({ platform = process.platform, run = ru
         }
         if (users.length > MAX_USERS) found.sources.push({ path: root, state: 'warning', message: 'WSL home discovery reached its limit. Add any remaining Copilot homes in Settings.' });
         for (const directory of [...users.slice(0, MAX_USERS).map(user => path.win32.join(root, 'home', user)), path.win32.join(root, 'root')]) {
-          const home = path.win32.join(directory, '.copilot');
-          if (disabledIds.has(sourceIdentity(home, 'win32'))) { found.sources.push({ path: home, state: 'off', message: '' }); continue; }
-          try { if ((await read(() => io.stat(home))).isDirectory()) found.homes.push(home); }
-          catch (error) {
-            // A non-root WSL user normally cannot inspect /root; that is not an unreadable configured source.
-            if (directory === path.win32.join(root, 'root') && ['EACCES', 'EPERM'].includes(error.code)) continue;
-            if (!absent(error)) {
-              found.sources.push({ path: home, state: 'warning', message: 'Could not inspect this WSL Copilot home. Check access inside WSL or add a readable copy in Settings.', diagnostic: diagnosticError(error) });
-              if (error.code === 'ETIMEDOUT') break;
+          for (const [subdir, target] of [['.copilot', found.homes], ['.vscode-server/data/User', found.vscodeHomes], ['.vscode-server-insiders/data/User', found.vscodeHomes]]) {
+            const home = path.win32.join(directory, subdir);
+            if (disabledIds.has(sourceIdentity(home, 'win32'))) { found.sources.push({ path: home, state: 'off', message: '' }); continue; }
+            try { if ((await read(() => io.stat(home))).isDirectory()) target.push(home); }
+            catch (error) {
+              // A non-root WSL user normally cannot inspect /root; that is not an unreadable configured source.
+              if (directory === path.win32.join(root, 'root') && ['EACCES', 'EPERM'].includes(error.code)) continue;
+              if (!absent(error)) {
+                found.sources.push({ path: home, state: 'warning', message: 'Could not inspect this WSL usage folder. Check access inside WSL or add a readable copy in Settings.', diagnostic: diagnosticError(error) });
+                if (error.code === 'ETIMEDOUT') break;
+              }
             }
           }
+          if (Date.now() >= deadline) break;
         }
-        if (!found.homes.length && !found.sources.length) found.sources.push({ path: root, state: 'empty', message: 'No standard Copilot CLI home found. Add a custom home in Settings. VS Code Chat debug logs use a separate, unsupported format.' });
+        if (!found.homes.length && !found.vscodeHomes.length && !found.sources.length) found.sources.push({ path: root, state: 'empty', message: 'No standard Copilot CLI or VS Code Server storage found. Add a custom location in Settings.' });
         return found;
       };
       // Keep source order stable without probing every distribution at once.
       for (let at = 0; at < Math.min(installed.length, MAX_DISTROS); at += 4) {
         for (const found of await Promise.all(installed.slice(at, Math.min(at + 4, MAX_DISTROS)).map(inspect))) {
           result.homes.push(...found.homes); result.sources.push(...found.sources);
+          if (found.vscodeHomes.length) (result.vscodeHomes ??= []).push(...found.vscodeHomes);
         }
       }
       if (installed.length > MAX_DISTROS) result.sources.push({ path: 'WSL discovery', state: 'warning', message: 'WSL distribution discovery reached its limit. Add other Copilot homes in Settings.' });

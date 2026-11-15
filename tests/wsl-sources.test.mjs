@@ -63,6 +63,16 @@ test('WSL paths normalize aliases but preserve Linux path case and disabled sour
   assert.deepEqual(result.homes, [root('Ubuntu') + '\\home\\Alice\\.copilot']);
 });
 
+test('WSL discovers VS Code Server storage even without a CLI home', async () => {
+  const f = discoveryFixture(); f.homes.clear();
+  const user = root('Ubuntu') + '\\home\\alice\\.vscode-server\\data\\User';
+  f.homes.add(user);
+  const result = await f.discover();
+  assert.deepEqual(result.homes, []);
+  assert.deepEqual(result.vscodeHomes, [user]);
+  assert.equal((await f.discover({ disabled: [user] })).vscodeHomes, undefined);
+});
+
 test('non-Windows and missing WSL stay quiet, and errors and slow discovery are bounded and sanitized', async () => {
   let called = false;
   assert.deepEqual(await createWslDiscovery({ platform: 'linux', run: () => { called = true; } })(), { homes: [], sources: [] });
@@ -199,6 +209,7 @@ test('report filters reuse discovered history while source settings and refresh 
   assert.equal(calls[0].options.includeWsl, true);
   await request('usage.report', { range: '7d' });
   await request('usage.report', { range: 'all', models: ['model'] });
+  await request('usage.report', { range: 'all', environment: 'wsl:ubuntu' });
   assert.equal(calls.length, 1);
   await request('settings.set', { includeWsl: false });
   await request('usage.report');
@@ -208,4 +219,9 @@ test('report filters reuse discovered history while source settings and refresh 
   await request('usage.refresh');
   assert.equal(calls.length, 4);
   assert.equal(calls.at(-1).options.force, true);
+  await request('settings.set', { includeVSCode: false, extraVSCodeHomes: [path.join(tmp, 'User')] });
+  await request('usage.report');
+  assert.equal(calls.length, 5);
+  assert.equal(calls.at(-1).options.includeVSCode, false);
+  assert.deepEqual(calls.at(-1).options.extraVSCodeHomes, [path.join(tmp, 'User')]);
 });

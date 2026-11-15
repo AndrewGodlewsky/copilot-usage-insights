@@ -50,13 +50,21 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.77** automatically discovers standard Copilot CLI homes in running WSL distributions on Windows, with source diagnostics and a Settings control. Native VS Code Chat debug logs are not imported yet. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.78** adds recorded VS Code Copilot Chat usage from Windows and accessible WSL storage, plus an **All environments** filter beside AI credits. VS Code coverage depends on retained debug logs; see [setup and limitations](docs/vscode-sources.md). Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 
-**Include WSL Copilot CLI usage** is on by default in Settings. Running distributions are checked for standard `.copilot` homes and their receipts are combined with Windows usage using the existing duplicate detection. Start any stopped distributions and click **Refresh**; **Local data sources** lists discovered homes and explains skipped or unreadable sources. Filters reuse the loaded history.
+**Include WSL usage sources (Windows)** is on by default in Settings. Running distributions are checked for standard `.copilot` homes and VS Code Server User storage. Receipts are combined with Windows usage using duplicate detection. Start any stopped distributions and click **Refresh**; **Local data sources** lists discovered homes and explains skipped or unreadable sources. Filters reuse the loaded history.
 
-For custom homes, use **Additional Copilot homes**, for example `\\wsl.localhost\Ubuntu\home\alice\.copilot`. Automatic discovery skips Docker Desktop and does not deliberately start stopped distributions. History from stopped distributions is not retained after a scan; custom paths remain explicit reads even if the automatic checkbox is off. Native **VS Code Chat** uses another log format and is **not included** by this update. See [WSL source coverage and the VS Code importer plan](docs/wsl-sources.md) for limitations, diagnostics, and verification steps.
+For custom homes, use **Additional Copilot homes**, for example `\\wsl.localhost\Ubuntu\home\alice\.copilot`. Automatic discovery skips Docker Desktop and does not deliberately start stopped distributions. History from stopped distributions is not retained after a scan; custom paths remain explicit reads even if the automatic checkbox is off. See [WSL source coverage](docs/wsl-sources.md) for limitations, diagnostics, and verification steps.
+
+### VS Code and environment filtering
+
+**Include VS Code Copilot Chat** is on by default. The importer checks standard VS Code and Insiders User storage on Windows, macOS and Linux, plus accessible WSL VS Code Server storage. It includes calls with recorded Copilot charges, including zero-credit calls, and uses recorded input/output totals. Ordinary saved chats alone do not provide reliable billing history. Logging may need enabling in VS Code; older or deleted records cannot be recovered. [VS Code setup and coverage](docs/vscode-sources.md) explains the setting and custom User folders.
+
+The menu immediately after **AI credits** starts at **All environments**. Select **Windows** or a discovered **WSL · distribution** to filter historical usage throughout the dashboard, including request expansions and activity. Changing environments clears model/project/session selections; date and cache preferences remain. Refresh preserves the selected environment, and **Reset filters** returns to All. Remote workspace metadata can identify WSL even when its logs are stored on Windows. A locally copied history without environment metadata is assigned to its storage host; it is not evidence of its original computer.
+
+Source availability and skipped-record diagnostics describe all enabled sources. Installed plugins, live MCP connection status and explicit context inspection still describe the session hosting the dashboard; the environment filter does not remotely inspect another installation.
 
 ### If it does not appear
 
@@ -203,7 +211,7 @@ Simplified magnitudes use at most one decimal place, omit a trailing `.0`, and r
 
 ## Loading and refresh performance
 
-The first load scans the enabled Copilot homes and creates an in-memory history snapshot. Date, model, project, and session filters reuse that snapshot, as do model request pages and request metadata. Each request still checks the source settings; changing enabled homes immediately invalidates the snapshot. Nothing is saved to a new database or history file.
+The first load scans the enabled Copilot homes and creates an in-memory history snapshot. Environment, date, model, project, and session filters reuse that snapshot, as do model request pages and request metadata. Each request still checks the source settings; changing enabled homes immediately invalidates the snapshot. Nothing is saved to a new database or history file.
 
 Opening the dashboard immediately checks the source files and existing databases. Automatic refresh then checks every **15 minutes** while visible; hidden dashboards skip scheduled checks. Returning to the dashboard checks again only if its last successful scan was at least 15 minutes ago, or it has never loaded successfully. Automatic checks do not overlap a pending report request. Unchanged logs reuse their parsed records. The **Refresh** buttons at the top and in the footer still force a full reread on demand. A successful manual or automatic scan resets the age used when returning to the dashboard; changing filters or a failed refresh does not. The footer shows when history was last scanned. New usage and renamed sessions appear on the next refresh; recorded history remains in Copilot's logs between checks.
 

@@ -6,7 +6,8 @@ import { createPromptEventSet } from '../core/prompt-credits.mjs';
 import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
-import { sourceIdentity } from './source-paths.mjs';
+import { sourceIdentity, sourceEnvironment } from './source-paths.mjs';
+import { createVSCodeParser } from '../core/vscode.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // File system calls wait on the operating system, so several session folders are read at once.
@@ -99,7 +100,7 @@ function mergeJournals(snapshots) {
   return { recordList: records, skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
-export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl } = {}) {
+export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode } = {}) {
   // Journals and session names are reread only when their size or timestamps change.
   const files = new Map(), names = new Map();
   // Shared by every result of this scanner, so later stages can keep work between scans.
@@ -133,12 +134,17 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
   function current(entry) {
     if (!entry.parser) return entry.snapshot;
     const revision = entry.parser.revision();
-    if (entry.revision !== revision) { entry.snapshot = entry.parser.snapshot(); entry.revision = revision; }
+    if (entry.revision !== revision) {
+      entry.snapshot = entry.parser.snapshot(); entry.revision = revision;
+      for (const key of ['records', 'skills', 'interactions', 'promptEvents', 'tools']) for (const item of entry.snapshot[key]) item.environment = entry.environment;
+    }
     return entry.snapshot;
   }
 
-  async function readJournal(file, stat, real, sessionId, force) {
+  async function readJournal(file, stat, real, sessionId, force, context = {}) {
     let entry = files.get(file);
+    const contextKey = JSON.stringify(context);
+    if (entry && entry.contextKey !== contextKey) entry = undefined;
     if (!force && entry && sameFile(entry, stat)) return current(entry);
     const handle = await fs.open(file, 'r');
     const chunk = chunks.pop() || Buffer.allocUnsafe(CHUNK);
@@ -151,7 +157,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (!prefixMatches) {
         const growing = Date.now() - stat.mtimeMs < RECENT || !!entry && (!force || entry.digest !== null);
         hash = growing ? createHash('sha256') : null;
-        entry = { parser: createReceiptParser({ sessionId, source: real, logFile: file, skipUnused }), offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
+        const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused });
+        entry = { parser, contextKey, environment: context.environment || sourceEnvironment(real).environment, offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
       }
       const parser = entry.parser;
       let position = entry.offset, pending = [], pendingLength = 0, dropping = false, consumed = null;
@@ -185,7 +192,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       files.set(file, entry);
       // A journal read without a digest is never continued, only read again, so what its parser
       // remembers for recognising repeated lines can be let go.
-      if (entry.digest === null) { entry.snapshot = entry.parser.snapshot(); entry.parser = null; }
+      if (entry.digest === null) { current(entry); entry.parser = null; }
       return current(entry);
     } finally { chunks.push(chunk); await handle.close(); }
   }
@@ -204,7 +211,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     return found;
   }
 
-  async function scan(roots, { force = false, disabled = [], includeWsl = true } = {}) {
+  async function scan(roots, { force = false, disabled = [], includeWsl = true, includeVSCode = true, extraVSCodeHomes = [] } = {}) {
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
     const discovered = includeWsl && discoverWsl ? await discoverWsl({ disabled }) : { homes: [], sources: [] };
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
@@ -215,19 +222,19 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (seenRoots.has(rootIdentity)) continue;
       // Disabled UNC sources must not be contacted just to resolve their real path.
       if (disabledIds.has(rootIdentity)) {
-        seenRoots.add(rootIdentity); sources.push({ path: root, state: 'off', files: 0, records: 0, message: '' }); continue;
+        seenRoots.add(rootIdentity); sources.push({ path: root, ...sourceEnvironment(root), state: 'off', files: 0, records: 0, message: '' }); continue;
       }
       let real;
       try { real = await fs.realpath(root); }
       catch (e) {
         if (absent(e) && optionalHomes.includes(root) && !roots.includes(root)) continue;
-        sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
+        sources.push({ path: root, ...sourceEnvironment(root), state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
       }
       const identity = sourceIdentity(real);
       if (seenRoots.has(identity)) continue;
       seenRoots.add(identity);
       const off = disabledIds.has(identity);
-      const source = { path: real, state: off ? 'off' : 'ok', files: 0, records: 0, message: '' };
+      const source = { path: real, ...sourceEnvironment(real), state: off ? 'off' : 'ok', files: 0, records: 0, message: '' };
       sources.push(source);
       if (off) continue;
       const stateDir = path.join(real, 'session-state');
@@ -247,7 +254,13 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       try { await fs.access(db); databases.push({ db, source }); }
       catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
     }
-    for (const source of discovered.sources) if (!sources.some(s => sourceIdentity(s.path) === sourceIdentity(source.path))) sources.push(source);
+    for (const source of discovered.sources) if (!sources.some(s => sourceIdentity(s.path) === sourceIdentity(source.path))) sources.push({ ...source, ...(source.path.startsWith('\\\\') ? sourceEnvironment(source.path) : {}) });
+    if (discoverVSCode) {
+      const cliSessions = new Set(snapshots.flatMap(s => [...s.sessions]));
+      const vscode = await discoverVSCode({ homes: discovered.vscodeHomes || [], extraHomes: extraVSCodeHomes, include: includeVSCode, disabled, cliSessions, readJournal, force });
+      sources.push(...vscode.sources); snapshots.push(...vscode.snapshots); owners.push(...vscode.owners);
+      for (const file of vscode.files) seenFiles.add(file);
+    }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
     if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };
@@ -267,6 +280,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         // The database is read afresh every scan; rows that have not changed keep their earlier objects.
         const before = fallback.get(db), rows = new Map();
         for (let r of result.records) {
+          r.environment = sourceEnvironment(r.source).environment;
           const known = before?.get(r.key);
           if (known && sameFields(r, known)) r = known;
           rows.set(r.key, r);
@@ -281,7 +295,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
     fallback = kept;
-    for (const [home, ids] of sessionsByHome) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
+    for (const [home, ids] of sessionsByHome) if (!sources.some(s => s.path === home && s.kind === 'vscode')) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
     // A record carries its session's current name. The name is written onto the record itself
     // rather than onto a copy, so a rename is noted here to stop an earlier result being reused.

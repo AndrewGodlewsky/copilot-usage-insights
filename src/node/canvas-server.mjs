@@ -13,6 +13,7 @@ import { localDay } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
 import { createWslDiscovery } from './wsl-sources.mjs';
+import { createVSCodeSources } from './vscode-sources.mjs';
 
 const MAX_BODY = 64 * 1024, MAX_REPORTS = 12;
 // The latest time carried by anything in a scan: until then, the clock can still change a report.
@@ -25,7 +26,7 @@ function latestTime(scan) {
   return latest;
 }
 export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
-  scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }) });
+  scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources() });
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
@@ -52,11 +53,11 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     return { entry, cached };
   }
   function readHistory(config, { refresh = false, force = false } = {}) {
-    const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false]);
+    const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false, config.includeVSCode !== false, config.extraVSCodeHomes]);
     if (!history || history.key !== key || refresh || force) {
       const fields = { force };
       const entry = { key, promise: diagnostics.measure('history.scan', fields, async () => {
-        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false });
+        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [] });
         Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
           files: scan.sources?.reduce((sum, source) => sum + (source.files || 0), 0) ?? 0, ...scan.coverage });
         for (const [index, source] of (scan.sources || []).entries()) if (['error', 'warning', 'missing'].includes(source.state)) {

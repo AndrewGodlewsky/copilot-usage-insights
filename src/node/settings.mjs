@@ -23,7 +23,7 @@ function validate(input) {
       result.reviewModel = value;
       continue;
     }
-    if (key === 'simplifyNumbers' || key === 'includeWsl') {
+    if (key === 'simplifyNumbers' || key === 'includeWsl' || key === 'includeVSCode') {
       if (typeof value !== 'boolean') throw new TypeError(`${key} must be a boolean`);
       result[key] = value;
       continue;
@@ -33,7 +33,7 @@ function validate(input) {
       result.textSize = value;
       continue;
     }
-    if (!['extraHomes', 'disabledHomes'].includes(key)) throw new TypeError(`Unknown setting: ${key}`);
+    if (!['extraHomes', 'disabledHomes', 'extraVSCodeHomes'].includes(key)) throw new TypeError(`Unknown setting: ${key}`);
     if (!Array.isArray(value) || value.length > 50 || !value.every(p => typeof p === 'string' && p.length <= 4096 && !p.includes('\0'))) throw new TypeError(`${key} must be a list of at most 50 paths`);
     result[key] = [...new Set(value.map(p => {
       const expanded = p === '~' ? os.homedir() : /^~[\\/]/.test(p) ? path.join(os.homedir(), p.slice(2)) : p;
@@ -47,8 +47,8 @@ export function createSettings(dir = configDir()) {
   const file = path.join(dir, 'settings.json');
   let queue = Promise.resolve();
   async function get() {
-    try { return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
-    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    try { return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, includeVSCode: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
+    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, includeVSCode: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
   }
   return {
     get,

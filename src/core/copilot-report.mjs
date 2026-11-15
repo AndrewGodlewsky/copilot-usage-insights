@@ -2,6 +2,7 @@ import { normalizeQuery, localDay, dayOfMs, dayKey, dayNumber, parseDateDay, RAN
 import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
+import { environmentOf, environmentOptions, selectEnvironment } from './environments.mjs';
 
 const MAX = Number.MAX_SAFE_INTEGER, NONE = Symbol('none');
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0,
@@ -154,7 +155,7 @@ function usageScope(records, input, now) {
   for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
   const models = q.models, project = input.project, session = input.session, history = [];
   let first = today;
-  for (const r of records) if (r.ms <= nowMs && (!models || models.includes(r.model)) && (!project || r.project === project) && (!session || r.sessionId === session)) {
+  for (const r of records) if (r.ms <= nowMs && (!q.environment || environmentOf(r) === q.environment) && (!models || models.includes(r.model)) && (!project || r.project === project) && (!session || r.sessionId === session)) {
     history.push(r);
     first = Math.min(first, dayOfMs(r.ms));
   }
@@ -165,7 +166,7 @@ function usageScope(records, input, now) {
 }
 
 function modelRequestScope(records, input, now, extra) {
-  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session', 'model', 'offset', extra]);
+  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'environment', 'includeCache', 'project', 'session', 'model', 'offset', extra]);
   if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown request filter');
   if (typeof input.model !== 'string' || !input.model.trim()) throw new TypeError('Expected a model');
   if (input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) throw new TypeError('Invalid request offset');
@@ -231,7 +232,7 @@ export function buildModelSessionPage(records, input = {}, now = new Date(), act
 }
 
 export function buildSessionModels(records, input = {}, now = new Date()) {
-  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'includeCache', 'project', 'session']);
+  const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'environment', 'includeCache', 'project', 'session']);
   if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown session model filter');
   for (const key of ['project', 'session']) if (typeof input[key] !== 'string' || !input[key].trim()) throw new TypeError(`Expected a ${key}`);
   const { q, history, start, end } = usageScope(records, input, now), models = new Map();
@@ -246,6 +247,9 @@ export function buildSessionModels(records, input = {}, now = new Date()) {
 }
 
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
+  normalizeQuery(input, now);
+  const environments = environmentOptions(records, activity.sources);
+  ({ records, activity } = selectEnvironment(records, activity, input.environment));
   const { q, today, history, start, end } = usageScope(records, input, now);
   const includeCache = q.includeCache, nowMs = now.getTime();
   const sessionLabels = sessionNames(records, activity.cache);
@@ -321,6 +325,6 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
     efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
-    options: { models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
+    options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }
