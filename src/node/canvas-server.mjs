@@ -27,6 +27,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
+  const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() });
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
@@ -76,6 +77,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
   });
   server.requestTimeout = 120000;
   server.headersTimeout = 10000;
+  server.on('error', error => diagnostics.record('error', 'server.error', diagnosticError(error)));
+  server.on('close', () => diagnostics.record('info', 'server.closed'));
   const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(body); };
   const json = (res, status, data) => send(res, status, JSON.stringify(data));
   async function handle(req, res) {
@@ -108,7 +111,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
       let result;
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
-        result = { version, runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() };
+        result = { ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) };
       } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.cancel'].includes(message.method)) {
         if (Object.keys(input).some(key => message.method !== 'review.run' || !['prompt', 'expectedModel'].includes(key))) throw new TypeError('Unexpected review options.');
         if (message.method === 'review.cancel') { reviewRequest?.abort(new ReviewError('cancelled')); reviewService.cancel(); result = { ok: true }; }
@@ -145,6 +148,9 @@ export async function startServer({ settings = createSettings(), scanner = creat
         if (Object.keys(input).length) throw new TypeError('Inventory does not accept filters.');
         result = await diagnostics.measure('inventory.read', {}, readIntegrations);
         for (const kind of ['mcp', 'plugins']) if (!result[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...result[kind].diagnostic });
+        // Reuse an existing response, so the panel retains server evidence even if it later
+        // loses its connection. No heartbeat, extra scan, or extra request is necessary.
+        result = { ...result, diagnostics: diagnosticSnapshot() };
       } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
@@ -211,11 +217,13 @@ export async function startServer({ settings = createSettings(), scanner = creat
   }
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   origin = `http://127.0.0.1:${server.address().port}`;
+  diagnostics.record('info', 'server.listening');
   let closing;
   return {
     url: origin + prefix,
     close() {
       return closing ??= (async () => {
+        diagnostics.record('info', 'server.closing');
         const closed = new Promise((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
         reviewRequest?.abort(new ReviewError('cancelled'));
         await reviewService.close();

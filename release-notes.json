@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.73",
+    "summary": "If a refresh loses its connection, the dashboard keeps the last loaded data with a clear notice. Improved connection diagnostics and small local lifecycle logs help investigate failures, including after reopening the dashboard."
+  },
+  {
     "version": "0.1.72",
     "summary": "Rolling 30 is now the default date filter, showing usage from the first of the current month through today. Last 30 days remains available separately, and both options share the same header building and light patterns."
   },

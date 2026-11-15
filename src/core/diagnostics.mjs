@@ -2,8 +2,8 @@ const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', '
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
 for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context';
-const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
-const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
+const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
+const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible']) numericFields.add(field);
 const enumFields = {
@@ -15,8 +15,13 @@ const enumFields = {
   reason: new Set(['unsupported', 'invalid-response', 'failed']),
   phase: new Set(['started', 'finished', 'failed']),
   stage: new Set(['runtime', 'catalog', 'start', 'usage', 'session', 'access', 'workspace', 'tools', 'account', 'generate', 'cleanup']),
+  requestStage: new Set(['fetch', 'decode', 'http', 'complete']),
+  signal: new Set(['SIGINT', 'SIGTERM']),
+  platform: new Set(['win32', 'darwin', 'linux']),
+  arch: new Set(['x64', 'arm64', 'ia32', 'arm']),
+  directive: new Set(['connect-src', 'default-src']),
 };
-for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.cancel']) enumFields.method.add(method);
+for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
 
 // Error messages and arbitrary stack text can contain prompts, paths, or credentials.
 export function diagnosticError(error) {
@@ -30,7 +35,7 @@ export function diagnosticError(error) {
   return result;
 }
 
-export function createDiagnostics({ limit = 300, clock = () => new Date(), tick = () => globalThis.performance?.now() ?? Date.now() } = {}) {
+export function createDiagnostics({ limit = 300, clock = () => new Date(), tick = () => globalThis.performance?.now() ?? Date.now(), onRecord } = {}) {
   const entries = [], startedAt = clock().toISOString();
   let dropped = 0;
   function record(level, event, fields = {}) {
@@ -41,10 +46,13 @@ export function createDiagnostics({ limit = 300, clock = () => new Date(), tick 
       else if (booleanFields.has(key) && typeof value === 'boolean') entry[key] = value;
       else if (Object.hasOwn(enumFields, key) && enumFields[key].has(value)) entry[key] = value;
       else if (key === 'errorType' && errorTypes.has(value) || key === 'errorCode' && errorCodes.has(value)) entry[key] = value;
+      else if (['pluginVersion', 'nodeVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
       else if (key === 'locations' && Array.isArray(value)) entry.locations = value.filter(v => typeof v === 'string' && new RegExp(`^(?:(?:${sourceFiles})\\.mjs|panel/index\\.html):\\d+:\\d+$`).test(v)).slice(0, 5);
     }
     entries.push(entry);
     if (entries.length > limit) { entries.shift(); dropped++; }
+    // Diagnostics must never turn a successful operation into a failure.
+    try { onRecord?.({ ...entry, ...(entry.locations ? { locations: [...entry.locations] } : {}) }); } catch {}
   }
   function measure(event, fields, work) {
     const start = tick();

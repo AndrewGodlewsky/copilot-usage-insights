@@ -3,14 +3,15 @@
 const startUsageServer = async options => (await import('./canvas-server.mjs')).startServer(options);
 import { createIntegrationReader } from './integrations.mjs';
 import { createContextReader } from './context.mjs';
+import { createDiagnostics } from '../core/diagnostics.mjs';
 
-export async function registerCanvas({ createCanvas, joinSession, startServer = startUsageServer }) {
+export async function registerCanvas({ createCanvas, joinSession, startServer = startUsageServer, diagnostics = createDiagnostics() }) {
   const instances = new Map();
   let session, queue = Promise.resolve();
   const readIntegrations = createIntegrationReader(() => session);
   const readContext = createContextReader(() => session);
   const enqueue = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
-  const dispose = () => enqueue(async () => { const servers = [...instances.values()]; instances.clear(); await Promise.all(servers.map(server => server.close())); });
+  const dispose = () => enqueue(async () => { diagnostics.record('info', 'canvas.dispose', { activeCanvases: instances.size }); const servers = [...instances.values()]; instances.clear(); await Promise.all(servers.map(server => server.close())); });
   session = await joinSession({
     tools: [{
       name: 'open_usage_insights',
@@ -27,14 +28,17 @@ export async function registerCanvas({ createCanvas, joinSession, startServer = 
       open: ctx => enqueue(async () => {
         if (ctx.sessionId && ctx.sessionId !== session.sessionId) throw new Error('This canvas belongs to another session.');
         let server = instances.get(ctx.instanceId);
-        if (!server) { server = await startServer({ readIntegrations, readContext, session }); instances.set(ctx.instanceId, server); }
+        diagnostics.record('info', 'canvas.open', { reused: !!server, activeCanvases: instances.size });
+        if (!server) { server = await startServer({ readIntegrations, readContext, session, diagnostics }); instances.set(ctx.instanceId, server); }
         return { title: 'Usage Insights', status: 'GitHub Copilot', url: server.url };
       }),
       onClose: ctx => enqueue(async () => {
+        diagnostics.record('info', 'canvas.close', { activeCanvases: instances.size });
         const server = instances.get(ctx.instanceId); instances.delete(ctx.instanceId);
         await server?.close();
       }),
     })],
   });
+  diagnostics.record('info', 'extension.joined');
   return { dispose };
 }

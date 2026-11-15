@@ -12,6 +12,11 @@ const clientDiagnostics = createDiagnostics();
 clientDiagnostics.record('info', 'ui.started');
 window.addEventListener('error', event => clientDiagnostics.record('error', 'ui.error', { ...diagnosticError(event.error), line: event.lineno, column: event.colno }));
 window.addEventListener('unhandledrejection', event => clientDiagnostics.record('error', 'ui.rejection', diagnosticError(event.reason)));
+const connectionState = () => ({ online: navigator.onLine, hidden: document.hidden, secureContext: window.isSecureContext });
+for (const event of ['online', 'offline', 'pagehide', 'pageshow']) window.addEventListener(event, () => clientDiagnostics.record('info', `ui.${event}`, connectionState()));
+window.addEventListener('securitypolicyviolation', event => {
+  if (['connect-src', 'default-src'].includes(event.effectiveDirective)) clientDiagnostics.record('warn', 'ui.connectionPolicy', { directive: event.effectiveDirective, ...connectionState() });
+});
 $('feedback').href += '?body=' + encodeURIComponent(`Usage Insights v${BUILD_VERSION}\n\nWhat happened?\n\nSteps to reproduce:\n\nExpected behavior:\n\nDiagnostic logs (Show logs > Copy logs):\n\n`);
 const number = (value, options = {}) => formatNumber(value, { simplify: state.simplifyNumbers, ...options });
 const creditNumber = value => formatCredits(value, { simplify: state.simplifyNumbers });
@@ -20,6 +25,7 @@ const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '3
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 let dismissedCoverage = '';
+let loadError = '', lastResponseAt, cachedServerDiagnostics;
 $('coverage-dismiss').onclick = () => {
   dismissedCoverage = $('coverage-message').textContent;
   $('coverage').hidden = true;
@@ -40,25 +46,38 @@ function applyPreferences(config = {}) {
   if (changed && efficiencyContextSnapshot && !$('efficiency-context-read').disabled) renderEfficiencyContext();
 }
 async function request(method, input = {}, refresh = false, signal, known) {
-  const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined };
+  const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined, requestStage: 'fetch', ...connectionState() };
   const work = async () => {
-    const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }), ...(signal ? { signal } : {}) });
-    fields.httpStatus = response.status;
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
-    if (Array.isArray(result.rows)) fields.rows = result.rows.length;
-    return result;
+    try {
+      const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }), ...(signal ? { signal } : {}) });
+      lastResponseAt = Date.now();
+      fields.httpStatus = response.status;
+      fields.requestStage = 'decode';
+      const result = await response.json();
+      fields.requestStage = 'http';
+      if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+      fields.requestStage = 'complete';
+      if (method === 'usage.inventory' && result.diagnostics) cachedServerDiagnostics = result.diagnostics;
+      if (Array.isArray(result.rows)) fields.rows = result.rows.length;
+      return result;
+    } catch (error) {
+      Object.assign(fields, connectionState(), lastResponseAt === undefined ? {} : { lastResponseAgeMs: Date.now() - lastResponseAt });
+      if (error && typeof error === 'object') error.requestStage = fields.requestStage;
+      throw error;
+    }
   };
-  return method === 'diagnostics.get' ? work() : clientDiagnostics.measure('api.request', fields, work);
+  return clientDiagnostics.measure('api.request', fields, work);
 }
-function diagnosticText(server) {
+function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   const client = clientDiagnostics.snapshot();
   const lines = [`Usage Insights v${BUILD_VERSION}`, `Exported: ${new Date().toISOString()}`,
     server ? `Server: v${server.version}, Node ${server.runtime.node}, ${server.runtime.platform}/${server.runtime.arch}` : 'Server logs unavailable.',
     `Dashboard started: ${client.startedAt}; retained ${client.entries.length}/${client.limit} entries; dropped ${client.dropped}`];
   if (server) lines.push(`Server started: ${server.startedAt}; retained ${server.entries.length}/${server.limit} entries; dropped ${server.dropped}`);
+  if (server && cached) lines.push(`Cached server snapshot from ${server.capturedAt || server.startedAt}; this is not a live connection check.`);
+  if (server?.persisted) lines.push(`Recent local lifecycle logs: ${server.persisted.available ? 'available' : 'partly unavailable'}; retained ${server.persisted.entries.length} entries. These can include earlier extension processes.`);
   lines.push('Structured diagnostics only: no prompts, names, paths, raw error messages, or credentials.', 'Timings are milliseconds; UI timings measure JavaScript/DOM updates, not final browser paint.', '');
-  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' }))];
+  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...(server?.persisted?.entries || []).map(entry => ({ ...entry, source: 'lifecycle' }))];
   entries.sort((a, b) => a.at.localeCompare(b.at));
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
@@ -108,12 +127,13 @@ async function showLogs() {
   $('logs-output').value = diagnosticText();
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
   try {
-    $('logs-output').value = diagnosticText(await request('diagnostics.get', {}, false, controller.signal));
+    cachedServerDiagnostics = await request('diagnostics.get', {}, false, controller.signal);
+    $('logs-output').value = diagnosticText(cachedServerDiagnostics, false);
     $('logs-status').textContent = 'Ready to copy.';
   } catch (error) {
     clientDiagnostics.record('error', 'diagnostics.read', diagnosticError(error));
     $('logs-output').value = diagnosticText();
-    $('logs-status').textContent = 'Server logs are unavailable. Dashboard logs are still ready to copy.';
+    $('logs-status').textContent = cachedServerDiagnostics ? 'The server is unreachable. Dashboard logs and the last server snapshot are ready to copy.' : 'Server logs are unavailable. Dashboard logs are still ready to copy.';
   } finally { clearTimeout(timeout); logsLoading = false; $('logs-reload').disabled = $('logs-copy').disabled = false; }
 }
 $('logs-open').onclick = $('logs-reload').onclick = showLogs;
@@ -174,10 +194,12 @@ async function load(force = false, refresh = false) {
         const known = method === 'usage.report' && state.report && !state.creditsUnavailable && filterKey === state.filterKey ? state.report.revision : undefined;
         const report = await request(method, input, rescan, undefined, known);
         if (version !== state.version) continue;
+        loadError = '';
         if (report.unchanged) {
           const sky = skyFor(new Date(state.report.generatedAt).getHours());
           state.report.generatedAt = report.generatedAt; state.report.scannedAt = report.scannedAt;
           renderClock(sky);
+          renderLoadStatus();
           if (!inventorySnapshot || rescan) void loadInventory(rescan);
           $('live').textContent = 'Usage updated';
           continue;
@@ -195,16 +217,21 @@ async function load(force = false, refresh = false) {
         $('live').textContent = 'Usage updated';
       } catch (e) {
         if (version !== state.version) continue;
-        state.requestView = null; state.modelView = null; state.projectView = null;
-        state.creditsUnavailable = true;
+        state.creditsUnavailable = !state.report || state.filterKey !== JSON.stringify(query());
+        if (state.creditsUnavailable) { state.requestView = null; state.modelView = null; state.projectView = null; }
+        loadError = e.requestStage === 'fetch' ? 'Could not reach the local dashboard server. Try Refresh, or close and reopen Usage Insights from Copilot.' : `Could not update usage: ${e.message}`;
         renderHeaderCredits();
-        $('status').hidden = false;
-        $('status').textContent = `Could not update usage: ${e.message}`;
-        $('content').hidden = true;
-        $('status').before($('filters'));
+        renderLoadStatus();
+        if (state.creditsUnavailable) $('status').before($('filters'));
       }
     } while (version !== state.version);
   } finally { state.pending = false; $('refresh').disabled = $('footer-refresh').disabled = false; }
+}
+function renderLoadStatus() {
+  const matching = state.report && state.filterKey === JSON.stringify(query());
+  $('content').hidden = !matching;
+  $('status').hidden = !loadError && !!state.report?.totals.requests;
+  $('status').textContent = loadError ? loadError + (matching ? ' Showing the last successful data; it may be out of date.' : ' Data for these filters could not be loaded.') : 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
 }
 const builtOptions = new Map();
 function options(id, values, all) {
@@ -861,11 +888,9 @@ function renderContent() {
   const scopeDate = selected ? new Date(selected.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   const keys = r.query.includeCache ? [...TOKEN_KEYS, 'unclassifiedInput'] : ['input', 'output'];
   options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); options('session', r.options.sessions, 'All sessions');
-  $('content').hidden = false;
-  const filterPosition = state.view === 'efficiency' ? $('efficiency-tokens-panel') : $('status');
+  renderLoadStatus();
+  const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
   if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
-  $('status').hidden = !!t.requests;
-  $('status').textContent = 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
   const warnings = [];
   if (t.missingCredits) warnings.push(`${number(t.missingCredits)} requests have unavailable AI credits`);
   if (t.partialCredits) warnings.push(`${number(t.partialCredits)} requests have partial credit charges`);
@@ -1145,7 +1170,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('tip').hid
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) load(false, true); });
+document.addEventListener('visibilitychange', () => { clientDiagnostics.record('info', 'ui.visibility', connectionState()); if (!document.hidden) load(false, true); });
 setInterval(() => { if (!document.hidden && !state.pending) load(false, true); }, 60000);
 $('start-date').value = dayKey(localDay() - 6); $('end-date').value = dayKey(localDay());
 $('end-date').max = $('start-date').max = dayKey(localDay());

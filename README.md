@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.72** adds **Rolling 30** as the default date filter, showing the first of the current month through today with the same header building as Last 30 days. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.73** keeps the last loaded dashboard visible when a refresh loses its connection, and adds connection diagnostics and local lifecycle logs to help investigate failures. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -217,11 +217,15 @@ To report a problem:
 
 Logs include UTC timestamps, operation starts/completions/failures, durations in milliseconds, cache reuse, file/record/row counts, source and inventory availability, and safe error types, codes, and code locations. Timings cover scans, report calculations, installed skill-version reads, inventory reads, individual prompt lookups, API calls, and dashboard JavaScript/DOM updates. UI timings do not include the browser's final paint. The export also identifies the plugin and Node versions, operating system, and CPU architecture.
 
-The dashboard and local server each keep their latest **300 entries in memory**, with a count of discarded older entries. Diagnostic logs are not written to disk. Reloading the page resets its dashboard logs; closing a canvas stops its server and discards its logs. AI review accounting receipts are retained separately as described below. Copy logs before closing or restarting. A process crash can lose these logs, and failures before startup are not captured.
+The dashboard and local server each keep their latest **300 entries in memory**, with a count of discarded older entries. The dashboard also keeps the latest server snapshot received with the existing inventory response, without an additional request or scan. If the connection fails, **Show logs** includes that snapshot with its capture time and an explicit cached label. Reloading the page resets its dashboard logs, so copy these before closing or restarting.
+
+A separate, small lifecycle log records extension startup/exit, observed crashes/signals, canvas open/close, and server startup/shutdown/errors. On Windows it lives in **`%LOCALAPPDATA%\copilot-usage-insights\diagnostics.jsonl`**, with one rotated **`diagnostics.previous.jsonl`** file; on macOS/Linux it uses the plugin's settings directory. Each file rotates at 128 KiB. Writes are best-effort, and overlapping extension processes can lose entries during rotation. **Show logs** in a reopened dashboard includes up to 300 recent lifecycle entries, marked separately and correlated by process ID. Forced termination, power loss, and failures before the extension starts can still leave no exit record. These files contain only allowlisted diagnostics, not usage history; AI review accounting receipts remain separate.
 
 Only approved diagnostic fields are retained. Copied logs omit prompts, conversation content, skill/model/session names, session IDs, local filesystem paths, raw error messages, credentials, and the private canvas URL. Source files are identified by safe code filenames and line numbers, and data sources by an ordinal number. This limits sensitive information in an issue while preserving the operation and timing needed to investigate it.
 
-Opening or reloading logs does not rescan usage history. Dashboard logs are immediately copyable while server logs load; if that request fails or takes more than three seconds, the dialog keeps the dashboard logs available. If clipboard permission is blocked, it selects the text for manual copying. **Reload logs** updates the snapshot while the dialog stays open.
+Opening or reloading logs does not rescan usage history. Dashboard logs are immediately copyable while server logs load; if that request fails or takes more than three seconds, the dialog keeps dashboard logs and any cached server snapshot available. If clipboard permission is blocked, it selects the text for manual copying. **Reload logs** updates the snapshot while the dialog stays open.
+
+Connection diagnostics distinguish failures before an HTTP response, response decoding, and HTTP errors. They include browser online/visibility state, connection-policy violations when reported, and time since the last HTTP response. These are clues, not proof of the underlying network cause. If a refresh fails, the last report stays visible only when it matches the selected filters, with a notice that it may be out of date. Failed changes to filters hide the old report so it cannot be mistaken for the new selection. Try **Refresh**, or close and reopen Usage Insights from Copilot if the local server remains unreachable. See [refresh troubleshooting](docs/refresh-troubleshooting.md) for the investigation and what to capture.
 
 ## Efficiency
 

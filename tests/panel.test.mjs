@@ -16,7 +16,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       addEventListener(name, callback) { this[`on${name}`] = callback; },
       style: { setProperty(key, value) { this[key] = String(value); } },
-      before() {},
+      before(node) { node.nextElementSibling = this; },
       focus() { document.activeElement = this; },
       select() { this.selected = true; },
       showModal() { this.open = true; }, close() { this.open = false; },
@@ -57,7 +57,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
     fetch: async (url, options) => {
       const message = JSON.parse(options.body); requests.push(message);
-      if (server.transportError) throw new Error('PRIVATE_NETWORK_ERROR');
+      if (server.transportError) throw new TypeError('PRIVATE_NETWORK_ERROR');
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
       if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
       if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model' }], verified: true } };
@@ -94,6 +94,59 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   await new Promise(setImmediate);
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
 }
+
+test('failed automatic refresh preserves the last matching report and marks it stale', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, intervals } = await mountPanel(report);
+  const tiles = get('tiles').innerHTML;
+  server.transportError = true;
+  intervals[0].callback();
+  await new Promise(setImmediate);
+  assert.equal(get('content').hidden, false, 'a lost connection must not blank the last report');
+  assert.equal(get('tiles').innerHTML, tiles);
+  assert.match(get('status').textContent, /last successful|last loaded/i);
+  assert.match(get('status').textContent, /reopen/i);
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.match(get('status').textContent, /last successful/i, 'tab changes keep the stale notice');
+  assert.equal(get('content').hidden, false);
+  server.transportError = false;
+  await get('refresh').onclick();
+  assert.doesNotMatch(get('status').textContent, /last successful|last loaded/i);
+});
+
+test('failed filter changes do not display the previous report under a new scope', async () => {
+  const { get, server } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  server.transportError = true;
+  get('project').value = 'Unloaded project';
+  await get('project').onchange();
+  assert.equal(get('content').hidden, true);
+  assert.match(get('status').textContent, /these filters could not be loaded/i);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('content').hidden, true);
+  assert.equal(get('hero-credits').textContent, 'Unavailable');
+  assert.equal(get('filters').nextElementSibling, get('status'), 'filters stay outside the hidden report');
+});
+
+test('inventory retains server diagnostics for a later outage without an extra request', async () => {
+  const snapshot = { version: '0.1.73', runtime: { node: 'v24.0.0', platform: 'win32', arch: 'x64' }, capturedAt: '2026-11-15T12:00:00.000Z', startedAt: '2026-11-15T11:59:00.000Z', limit: 300, dropped: 0, entries: [{ at: '2026-11-15T11:59:00.000Z', level: 'info', event: 'server.listening' }] };
+  const { get, requests, server, windowListeners, viewport } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} }, undefined, undefined,
+    () => ({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] }, diagnostics: snapshot }));
+  assert.deepEqual(requests.map(r => r.method), ['usage.report', 'usage.inventory']);
+  viewport.navigator.onLine = true;
+  windowListeners.get('securitypolicyviolation')({ effectiveDirective: 'connect-src', blockedURI: 'PRIVATE_URL' });
+  server.transportError = true;
+  await get('refresh').onclick();
+  await get('logs-open').onclick();
+  const logs = get('logs-output').value;
+  assert.match(logs, /Cached server snapshot from 2026-11-15T12:00:00.000Z/);
+  assert.match(logs, /server.listening/);
+  assert.match(logs, /"requestStage":"fetch"/);
+  assert.match(logs, /"lastResponseAgeMs":\d/);
+  assert.match(logs, /"online":true/);
+  assert.match(logs, /ui.connectionPolicy/);
+  assert.doesNotMatch(logs, /PRIVATE|SECRET/);
+  assert.match(get('logs-status').textContent, /last server snapshot/);
+});
 
 test('Rolling 30 is selected by default and remains selectable alongside Last 30 days', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
@@ -356,9 +409,9 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(document.activeElement, get('logs-output'));
   server.transportError = true;
   await get('footer-refresh').onclick();
-  assert.equal(get('content').hidden, true);
+  assert.equal(get('content').hidden, false);
   await get('logs-reload').onclick();
-  assert.match(get('logs-status').textContent, /Server logs are unavailable/);
+  assert.match(get('logs-status').textContent, /last server snapshot/);
   assert.match(get('logs-output').value, /diagnostics\.read/);
   assert.doesNotMatch(get('logs-output').value, /PRIVATE|SECRET/);
   assert.equal(get('logs-copy').disabled, false);
@@ -537,6 +590,25 @@ test('both Breakdown hierarchies keep aligned columns, repeated headings, and al
   assert.match(built, /\[data-depth="1"\][^}]*background:var\(--bg\)/);
   assert.match(built, /\[data-depth="2"\][^}]*background:var\(--card\)/);
   assert.match(built, /\[data-depth="3"\][^}]*background:var\(--bg\)/);
+});
+
+test('refresh outages preserve expanded navigation and unchanged recovery clears the notice', async () => {
+  const { get, click, server, intervals, report } = await requestPanel();
+  await click({ requestModel: '<Sonnet>' });
+  await click({ requestSession: 's1' });
+  const expanded = get('breakdown').innerHTML;
+  server.transportError = true;
+  intervals[0].callback(); await new Promise(setImmediate);
+  assert.equal(get('breakdown').innerHTML, expanded);
+  await click({ requestSession: 's1' });
+  assert.doesNotMatch(get('breakdown').innerHTML, /28 model requests/, 'collapse still works locally during an outage');
+  assert.match(get('status').textContent, /last successful/i);
+  server.transportError = false;
+  server.report = () => ({ unchanged: true, generatedAt: report.generatedAt, scannedAt: report.generatedAt });
+  intervals[0].callback(); await new Promise(setImmediate);
+  assert.equal(get('status').hidden, true);
+  assert.equal(get('content').hidden, false);
+  assert.doesNotMatch(get('status').textContent, /last successful/i);
 });
 
 test('model sessions expand into matching request columns and on-demand original prompts', async () => {

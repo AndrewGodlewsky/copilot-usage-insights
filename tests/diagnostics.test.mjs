@@ -4,6 +4,17 @@ import { createDiagnostics, diagnosticError } from '../src/core/diagnostics.mjs'
 import { startServer } from '../src/node/canvas-server.mjs';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 
+test('diagnostic sinks receive only approved metadata and cannot break logging', () => {
+  const entries = [];
+  const diagnostics = createDiagnostics({ onRecord(entry) { entries.push(entry); entry.event = 'tampered'; throw new Error('disk failed'); } });
+  assert.doesNotThrow(() => diagnostics.record('info', 'server.closed', { signal: 'SIGTERM', exitCode: 0, requestStage: 'fetch', online: true, lastResponseAgeMs: 60000, raw: 'PRIVATE', pluginVersion: 'SECRET' }));
+  assert.doesNotMatch(JSON.stringify(entries), /PRIVATE|SECRET/);
+  const record = diagnostics.snapshot().entries[0];
+  assert.equal(record.event, 'server.closed');
+  assert.equal(record.requestStage, 'fetch');
+  assert.equal(record.lastResponseAgeMs, 60000);
+});
+
 test('diagnostics retain bounded structured timings and safe error locations only', async () => {
   let tick = 0;
   const logs = createDiagnostics({ limit: 3, tick: () => tick, clock: () => new Date('2026-11-14T12:00:00Z') });
