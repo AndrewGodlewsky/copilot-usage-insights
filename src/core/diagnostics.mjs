@@ -1,15 +1,16 @@
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
 for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
-const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-sources|wsl-discovery-process|source-paths';
+const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
-for (const field of ['received', 'eligible', 'distributions', 'running', 'homes']) numericFields.add(field);
+for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'fallbackRequests', 'sqliteCode']) numericFields.add(field);
 const enumFields = {
   method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
+  sourceKind: new Set(['copilot', 'vscode']),
   action: new Set(['copy', 'open']),
   kind: new Set(['mcp', 'plugins']),
   reason: new Set(['unsupported', 'invalid-response', 'failed']),
@@ -27,6 +28,7 @@ for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'revie
 export function diagnosticError(error) {
   const result = { errorType: errorTypes.has(error?.name) ? error.name : 'Error' };
   if (errorCodes.has(error?.code)) result.errorCode = error.code;
+  if (error?.code === 'ERR_SQLITE_ERROR' && Number.isInteger(error.errcode) && error.errcode >= 0 && error.errcode <= 65535) result.sqliteCode = error.errcode;
   const stack = typeof error?.stack === 'string' ? error.stack.slice(0, 16000) : '';
   const locations = [...stack.matchAll(new RegExp(`[/\\\\](${sourceFiles})\\.mjs:(\\d+):(\\d+)`, 'g'))]
     .map(([, file, line, column]) => `${file}.mjs:${line}:${column}`);

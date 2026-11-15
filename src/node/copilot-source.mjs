@@ -47,7 +47,7 @@ async function inOrder(items, task) {
 // Those few are reconciled entry by entry, the first copy winning; all others are simply joined
 // end to end. Pure: the result is kept for as long as the same snapshots are current.
 function mergeJournals(snapshots) {
-  const records = [], skills = [], interactions = [], promptEvents = [], tools = [];
+  const records = [], compactions = new Map(), skills = [], interactions = [], promptEvents = [], tools = [];
   const receiptSessions = new Set(), skillExcludedSessions = new Set(), sessionsByHome = new Map(), added = new Array(snapshots.length).fill(0);
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
   const owner = new Map(), overlapping = new Set();
@@ -65,6 +65,7 @@ function mergeJournals(snapshots) {
   };
   for (let i = 0; i < snapshots.length; i++) {
     const s = snapshots[i];
+    for (const record of s.compactions || []) if (!compactions.has(record.key)) compactions.set(record.key, { record, owner: i });
     for (const id of s.receiptSessions) receiptSessions.add(id);
     for (const id of s.skillExcludedSessions) skillExcludedSessions.add(id);
     for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools']) coverage[k] += s[k];
@@ -97,7 +98,7 @@ function mergeJournals(snapshots) {
     const outcome = outcomes.get(key), tool = tools[at];
     if (outcome && (outcome.success !== tool.success || outcome.completedMs !== tool.completedMs)) tools[at] = { ...tool, ...outcome };
   }
-  return { recordList: records, skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
+  return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
 export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode } = {}) {
@@ -136,7 +137,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const revision = entry.parser.revision();
     if (entry.revision !== revision) {
       entry.snapshot = entry.parser.snapshot(); entry.revision = revision;
-      for (const key of ['records', 'skills', 'interactions', 'promptEvents', 'tools']) for (const item of entry.snapshot[key]) item.environment = entry.environment;
+      for (const key of ['records', 'compactions', 'skills', 'interactions', 'promptEvents', 'tools']) for (const item of entry.snapshot[key] || []) item.environment = entry.environment;
     }
     return entry.snapshot;
   }
@@ -295,6 +296,15 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
     fallback = kept;
+    const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
+    for (const { record, owner } of journals.compactions) {
+      // Whole-session DB fallback already includes compactions; never guess a cross-format row match.
+      if (databaseSessions.has(record.sessionId)) continue;
+      compactions.push(record); owners[owner].records++;
+      if (sessionsByHome === journals.sessionsByHome) sessionsByHome = new Map([...sessionsByHome].map(([home, ids]) => [home, new Set(ids)]));
+      if (!sessionsByHome.has(record.source)) sessionsByHome.set(record.source, new Set());
+      sessionsByHome.get(record.source).add(record.sessionId);
+    }
     for (const [home, ids] of sessionsByHome) if (!sources.some(s => s.path === home && s.kind === 'vscode')) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
     // A record carries its session's current name. The name is written onto the record itself
@@ -306,10 +316,11 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (r.sessionName !== sessionName) { r.sessionName = sessionName; renamed = true; }
       return r;
     };
-    const records = new Array(journals.recordList.length + extra.size);
+    const records = new Array(journals.recordList.length + extra.size + compactions.length);
     let n = 0;
     for (const r of journals.recordList) records[n++] = named(r);
     for (const r of extra.values()) records[n++] = named(r);
+    for (const r of compactions) records[n++] = named(r);
     const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage };
     // Nothing changed: hand back the very same result, so everything derived from it stays valid.
     if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools

@@ -38,7 +38,7 @@ export function createWslDiscovery(options = {}) {
         });
         const { result, counts } = JSON.parse(stdout);
         if (!Array.isArray(result?.homes) || !Array.isArray(result?.sources)) throw new Error('Invalid discovery response');
-        for (const key of ['distributions', 'running', 'homes', 'unavailable']) if (Number.isFinite(counts?.[key])) fields[key] = counts[key];
+        for (const key of ['distributions', 'running', 'homes', 'vscodeHomes', 'unavailable']) if (Number.isFinite(counts?.[key])) fields[key] = counts[key];
         return result;
       } catch (error) {
         fields.unavailable = 1;
@@ -130,6 +130,7 @@ export function createDirectWslDiscovery({ platform = process.platform, run = ru
       }
       if (installed.length > MAX_DISTROS) result.sources.push({ path: 'WSL discovery', state: 'warning', message: 'WSL distribution discovery reached its limit. Add other Copilot homes in Settings.' });
       fields.homes = result.homes.length;
+      fields.vscodeHomes = result.vscodeHomes?.length || 0;
       fields.unavailable = result.sources.filter(s => s.state === 'warning').length;
       return result;
     }

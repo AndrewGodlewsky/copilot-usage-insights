@@ -37,7 +37,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
 }
 
 // Every event type this parser reads. Lines of any other type hold nothing the dashboard uses.
-const usedTypes = new Set(['session.start', 'session.context_changed', 'session.error', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
+const usedTypes = new Set(['session.start', 'session.context_changed', 'session.error', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
 const checkpointTypes = new Set(['session.usage_checkpoint', 'session.shutdown']);
 // Copilot writes each line as {"type":"<name>",...}. Returns the name, or '' for any other shape.
 function leadingType(line) {
@@ -52,7 +52,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   // `rejected` remembers receipts that produced no record, so a replayed line is still counted once.
-  const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), rejected = new Set();
+  const records = new Map(), compactions = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), rejected = new Set();
   // Every session ID this journal files anything under. Two journals can repeat each other's
   // entries only if these overlap, which is how a copied or moved session is recognised.
   const sessions = new Set([initialSession]);
@@ -137,6 +137,20 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
             trigger: ['user-invoked', 'agent-invoked', 'context-load'].includes(e.data?.trigger) ? e.data.trigger : 'unknown',
           });
         }
+      } else if (e?.type === 'session.compaction_complete') {
+        if (e.ephemeral) return;
+        const u = e.data?.compactionTokensUsed;
+        if (!u || typeof u !== 'object') return;
+        const id = linkId(e.data?.compactionAttemptId) || linkId(e.id);
+        const key = id ? JSON.stringify(['compaction', sessionId, id]) : '';
+        if (compactions.has(key)) return;
+        const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId, cwd, project: label, source });
+        // Separate these from ordinary receipts so older sessions still use database fallback.
+        compactions.set(key, result.record ? { ...result.record, logFile, origin: 'compaction' } : null);
+        revision++;
+        if (result.reason === 'excluded') excluded++;
+        else if (result.reason === 'unclassified') unclassified++;
+        else if (result.reason === 'invalid') invalid++;
       } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { if (!hasCheckpoint) { hasCheckpoint = true; revision++; } }
       else if (e?.type === 'session.usage_record') {
         note(receiptSessions, sessionId);
@@ -162,7 +176,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
     },
     // Changes only when something a snapshot reports has changed, so a caller can keep an earlier snapshot.
     revision: () => revision,
-    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: promptEvents.events.slice(),
+    snapshot: () => ({ records: [...records.values()], compactions: [...compactions.values()].filter(Boolean), skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: promptEvents.events.slice(),
       tools: [...tools.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };

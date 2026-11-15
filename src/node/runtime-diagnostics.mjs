@@ -5,15 +5,17 @@ import { createDiagnostics } from '../core/diagnostics.mjs';
 
 const MAX_BYTES = 128 * 1024;
 const durableEvents = new Set(['extension.started', 'extension.joined', 'extension.signal', 'extension.exit', 'extension.crash',
-  'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response']);
+  'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response',
+  'wsl.discovery', 'history.scan', 'history.source']);
 
-// Keep just lifecycle evidence, not usage records. Synchronous, small writes also work during
+// Keep lifecycle and source-health summaries, not usage records. Small writes also work during
 // process exit. The two bounded files are best-effort if several extension processes rotate them.
 export function createRuntimeDiagnostics({ directory = configDir(), processId = process.pid } = {}) {
   const file = path.join(directory, 'diagnostics.jsonl'), previous = path.join(directory, 'diagnostics.previous.jsonl');
   let writable = true;
   const diagnostics = createDiagnostics({ onRecord(entry) {
     if (!durableEvents.has(entry.event)) return;
+    if (entry.event === 'history.scan' && !['finished', 'failed'].includes(entry.phase)) return;
     try {
       fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
       let size = 0;

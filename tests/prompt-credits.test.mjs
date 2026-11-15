@@ -36,6 +36,17 @@ function snapshot(events) {
 const report = (events, query = {}) => { const s = snapshot(events); return buildReport(s.records, { range: 'all', ...query }, now, s); };
 const metrics = (events, query) => report(events, query).promptCredits;
 
+test('unlinked compaction accounting does not invalidate otherwise complete prompt costs', () => {
+  const f = fixture(); f.user('a'); f.call('a', 'call', 1e9);
+  const s = snapshot(f.events), ordinary = s.records[0];
+  s.records.push({ ...ordinary, key: 'compaction-charge', origin: 'compaction', apiCallId: '', nanoAiu: 2e9 });
+  const r = buildReport(s.records, { range: 'all' }, now, s);
+  assert.equal(r.totals.credits, 3);
+  assert.equal(r.promptCredits.eligiblePrompts, 1);
+  assert.equal(r.promptCredits.averageCredits, 1, 'unattributed compaction is not guessed onto a prompt');
+  assert.equal(r.promptCredits.unlinkedRequests, 1, 'coverage still discloses the unlinked charge');
+});
+
 test('prompt work counts linked calls once and only averages fully measured prompt tokens', () => {
   const f = fixture(); f.user('a'); f.call('a', 'initial', 0, { terminal: false });
   f.call('a', 'followup', 0, { turn: '1', initiator: 'agent', model: 'Model B' });

@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.79",
+    "summary": "Restores VS Code calls that share a response ID and includes recorded conversation-compaction charges, correcting understated historical totals. Source-discovery diagnostics now survive reopening to help investigate missing WSL history."
+  },
+  {
     "version": "0.1.78",
     "summary": "Include recorded VS Code Copilot Chat usage from Windows and accessible WSL storage. The new All environments menu lets you focus the dashboard on one environment; source settings and coverage notes explain any missing history."
   },

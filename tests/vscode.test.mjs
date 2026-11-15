@@ -31,9 +31,13 @@ test('VS Code attribution requires recorded Copilot charges and excludes explici
   assert.equal(s.excluded, 1);
 });
 
-test('VS Code replays and repeated response IDs count once, conflicting receipts are omitted', () => {
-  const a = event('a'), b = event('b', { responseId: 'response' }), c = event('c', { responseId: 'response' });
-  assert.equal(parse([a, a, b, c]).records.length, 2);
+test('VS Code distinct spans sharing a response ID are separate calls; replayed spans count once', () => {
+  const a = event('a'), b = event('b', { responseId: 'response' }), c = event('c', { responseId: 'response', copilotUsageNanoAiu: 300000000 });
+  const shared = parse([a, a, b, c, b]);
+  assert.equal(shared.records.length, 3);
+  assert.equal(shared.invalid, 0);
+  assert.equal(shared.records.reduce((n, r) => n + r.nanoAiu, 0), 550000000);
+  assert.equal(parse([b, { ...b, spanId: 'another-span' }]).records.length, 2, 'distinct spans can also have identical amounts');
   const conflict = parse([a, event('a', { copilotUsageNanoAiu: 5 }), a]);
   assert.equal(conflict.records.length, 0);
   assert.equal(conflict.invalid, 1);

@@ -33,7 +33,7 @@ Custom User folders remain enabled when automatic VS Code discovery is off. **Di
 
 The [logger/schema](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/chatDebugFileLoggerService.ts) and [response accounting](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/prompt/node/chatMLFetcher.ts) are the format references. Logging and retention vary by extension version. Absent, rotated, truncated or older incompatible logs cannot establish complete usage, and inline-completion coverage is not claimed.
 
-Receipts use session-scoped response IDs (or span IDs when unavailable). Replays and copies count once; copies retain the first discovered source's environment. Conflicting entries within a journal are excluded. Where a CLI journal owns the same session, it takes precedence over that entire VS Code debug session directory, including child files, to avoid double-counting. This conservative rule can omit debug-only work in an overlapping session. Independent native VS Code sessions remain included.
+Receipts use session-scoped **span IDs**. A response ID can be shared by multiple billed calls in one agent turn and is not a unique call identifier. Replays and copies count once; copies retain the first discovered source's environment. Conflicting entries for the same span within a journal are excluded. Where a CLI journal owns the same session, it takes precedence over that entire VS Code debug session directory, including child files, to avoid double-counting. This conservative rule can omit debug-only work in an overlapping session. Independent native VS Code sessions remain included. See the [0.1.79 undercount investigation](credit-undercount.md).
 
 ## Performance and verification
 

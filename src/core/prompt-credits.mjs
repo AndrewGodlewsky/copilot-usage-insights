@@ -166,7 +166,7 @@ function attributeSessions(all, records, recordByKey) {
     else connect(new Set([node, ...origins]), origins.size > 1);
   }
   for (const s of spaces.values()) for (const [tool, work] of s.toolEvents) if (!s.owners.has(tool)) for (const e of work) uncertain.add(e.sessionId);
-  for (const r of records) if (!receipts.has(r.key)) uncertain.add(r.sessionId);
+  for (const r of records) if (!receipts.has(r.key) && r.origin !== 'compaction') uncertain.add(r.sessionId);
   for (const s of spaces.values()) for (const variants of s.byEvent.values()) if (Array.isArray(variants)) {
     for (const e of variants) { const node = eventNode.get(e); if (node) node.bad = true; else uncertain.add(e.sessionId); }
   }

@@ -59,9 +59,11 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       const entry = { key, promise: diagnostics.measure('history.scan', fields, async () => {
         const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [] });
         Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
+          compactions: scan.records.filter(r => r.origin === 'compaction').length,
+          environments: new Set((scan.sources || []).map(s => s.environment).filter(Boolean)).size,
           files: scan.sources?.reduce((sum, source) => sum + (source.files || 0), 0) ?? 0, ...scan.coverage });
         for (const [index, source] of (scan.sources || []).entries()) if (['error', 'warning', 'missing'].includes(source.state)) {
-          diagnostics.record('warn', 'history.source', { sourceIndex: index + 1, sourceState: source.state, ...source.diagnostic });
+          diagnostics.record('warn', 'history.source', { sourceIndex: index + 1, sourceState: source.state, sourceKind: source.kind === 'vscode' ? 'vscode' : 'copilot', ...source.diagnostic });
         }
         return { scan, scannedAt: now().toISOString() };
       }) };

@@ -14,7 +14,8 @@ export function createVSCodeParser({ source, logFile, project = 'VS Code', cwd =
       if (e?.type !== 'llm_request') return;
       const sid = identifier(e.sid), span = identifier(e.spanId), a = e.attrs;
       if (e.v !== undefined && e.v !== 1 || !sid || !span || !a || typeof a !== 'object' || !Number.isFinite(e.ts) || e.ts < Date.UTC(2020, 0, 1) || e.ts >= Date.UTC(2100, 0, 1)) { invalid++; revision++; return; }
-      const sessionId = `vscode:${sid}`, response = identifier(a.responseId), key = JSON.stringify(['vscode', sid, response || span]);
+      // A response ID can cover an agent turn with multiple separately billed spans.
+      const sessionId = `vscode:${sid}`, key = JSON.stringify(['vscode', sid, span]);
       sessions.add(sessionId);
       if (rejected.has(key)) return;
       const reason = a.isByok === true || a.providerKind && a.providerKind !== 'copilot' ? 'excluded'

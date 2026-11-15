@@ -47,6 +47,20 @@ test('unwritable lifecycle storage never breaks the application or its in-memory
   assert.equal(diagnostics.readPersisted().available, false);
 });
 
+test('source discovery outcomes survive reopening without storing names, paths or error messages', async t => {
+  const directory = await fixture(t), diagnostics = createRuntimeDiagnostics({ directory });
+  diagnostics.record('info', 'wsl.discovery', { phase: 'finished', distributions: 3, running: 2, homes: 2, vscodeHomes: 1, unavailable: 1, durationMs: 15, name: 'PRIVATE_DISTRO' });
+  diagnostics.record('info', 'history.scan', { phase: 'finished', records: 42, compactions: 3, fallbackRequests: 4, environments: 3, path: 'PRIVATE_PATH' });
+  diagnostics.record('warn', 'history.source', { sourceIndex: 2, sourceState: 'warning', sourceKind: 'copilot', errorCode: 'ERR_SQLITE_ERROR', sqliteCode: 5, message: 'PRIVATE_LOCK_ERROR' });
+  const saved = createRuntimeDiagnostics({ directory }).readPersisted();
+  assert.deepEqual(saved.entries.map(e => e.event), ['wsl.discovery', 'history.scan', 'history.source']);
+  assert.equal(saved.entries[0].vscodeHomes, 1);
+  assert.equal(saved.entries[1].compactions, 3);
+  assert.equal(saved.entries[1].fallbackRequests, 4);
+  assert.equal(saved.entries[2].sqliteCode, 5);
+  assert.doesNotMatch(JSON.stringify(saved), /PRIVATE/);
+});
+
 test('server closure produces a fetch failure and leaves lifecycle evidence for the next canvas', async t => {
   const directory = await fixture(t), diagnostics = createRuntimeDiagnostics({ directory });
   const server = await startServer({ diagnostics, html: 'test', settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) }, scanner: { scan: async () => ({ records: [], sources: [], coverage: {} }) } });
