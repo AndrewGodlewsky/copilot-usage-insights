@@ -17,7 +17,7 @@ test('settings validate paths, persist atomic changes, and never replace corrupt
   const dir = await fixture(t), settings = createSettings(dir);
   await settings.set({ extraHomes: [dir] });
   await Promise.all([settings.set({ disabledHomes: [dir] }), settings.set({ extraHomes: [] })]);
-  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true, includeWsl: true, includeVSCode: true, extraVSCodeHomes: [] });
+  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [] });
   await assert.rejects(settings.set({ extraHomes: ['relative'] }), /absolute/);
   await assert.rejects(settings.set({ unexpected: true }), /Unknown/);
   await fs.writeFile(path.join(dir, 'settings.json'), '{bad');
@@ -32,7 +32,7 @@ test('text size defaults to small and persists only supported choices without ch
   assert.equal((await settings.get()).textSize, 'small');
   for (const textSize of ['large', 'medium', 'small']) {
     await settings.set({ textSize });
-    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true, includeWsl: true, includeVSCode: true, extraVSCodeHomes: [] });
+    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [] });
   }
   for (const textSize of ['huge', '', 1, null, {}]) await assert.rejects(settings.set({ textSize }), /textSize/);
   assert.equal((await settings.get()).textSize, 'small');

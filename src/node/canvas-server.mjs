@@ -52,11 +52,11 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     return { entry, cached };
   }
   function readHistory(config, { refresh = false, force = false } = {}) {
-    const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false, config.includeVSCode !== false, config.extraVSCodeHomes]);
+    const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes]);
     if (!history || history.key !== key || refresh || force) {
       const fields = { force };
       const entry = { key, promise: diagnostics.measure('history.scan', fields, async () => {
-        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [] });
+        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, readWslDatabases: config.readWslDatabases !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [] });
         Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
           compactions: scan.records.filter(r => r.origin === 'compaction').length,
           environments: new Set((scan.sources || []).map(s => s.environment).filter(Boolean)).size,

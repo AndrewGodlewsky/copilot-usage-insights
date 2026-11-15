@@ -2181,7 +2181,7 @@ test('settings restore saved text size and apply changes only after a successful
   await get('settings-open').onclick();
   get('text-size').value = 'medium';
   await get('settings-save').onclick();
-  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, includeVSCode: true, extraVSCodeHomes: [], extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
   assert.equal(rootStyle.get('--text-scale'), '1.15');
   assert.equal(get('settings-dialog').open, false);
   await get('settings-open').onclick();
@@ -2199,17 +2199,24 @@ test('settings restore saved text size and apply changes only after a successful
   assert.equal(rootStyle.get('--text-scale'), '1');
 });
 
-test('WSL source setting defaults on and saving a change refreshes history', async () => {
+test('WSL source settings default on and saving a change refreshes history', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, requests } = await mountPanel(report);
   await get('settings-open').onclick();
   assert.equal(get('include-wsl').checked, true);
+  assert.equal(get('read-wsl-databases').checked, true);
   get('include-wsl').checked = false;
   await get('settings-save').onclick();
   assert.equal(requests.findLast(r => r.method === 'settings.set').input.includeWsl, false);
   assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
   await get('settings-open').onclick();
   assert.equal(get('include-wsl').checked, false);
+  get('read-wsl-databases').checked = false;
+  await get('settings-save').onclick();
+  assert.equal(requests.findLast(r => r.method === 'settings.set').input.readWslDatabases, false);
+  assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
+  await get('settings-open').onclick();
+  assert.equal(get('read-wsl-databases').checked, false);
 });
 
 test('environment selector defaults to All, filters without rescanning, survives refresh and resets', async () => {

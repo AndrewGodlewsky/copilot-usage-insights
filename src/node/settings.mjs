@@ -23,7 +23,7 @@ function validate(input) {
       result.reviewModel = value;
       continue;
     }
-    if (key === 'simplifyNumbers' || key === 'includeWsl' || key === 'includeVSCode') {
+    if (key === 'simplifyNumbers' || key === 'includeWsl' || key === 'readWslDatabases' || key === 'includeVSCode') {
       if (typeof value !== 'boolean') throw new TypeError(`${key} must be a boolean`);
       result[key] = value;
       continue;
@@ -47,8 +47,8 @@ export function createSettings(dir = configDir()) {
   const file = path.join(dir, 'settings.json');
   let queue = Promise.resolve();
   async function get() {
-    try { return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, includeVSCode: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
-    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, includeVSCode: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    try { return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
+    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
   }
   return {
     get,

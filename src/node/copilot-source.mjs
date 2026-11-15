@@ -3,7 +3,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
 import { createPromptEventSet } from '../core/prompt-credits.mjs';
-import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
+import { readDesktopSessionNames } from './copilot-db.mjs';
+import { createUsageDatabaseReader } from './wsl-db.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 import { sourceIdentity, sourceEnvironment } from './source-paths.mjs';
@@ -101,7 +102,7 @@ function mergeJournals(snapshots) {
   return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
-export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode } = {}) {
+export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, readDatabase = createUsageDatabaseReader() } = {}) {
   // Journals and session names are reread only when their size or timestamps change.
   const files = new Map(), names = new Map();
   // Shared by every result of this scanner, so later stages can keep work between scans.
@@ -212,7 +213,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     return found;
   }
 
-  async function scan(roots, { force = false, disabled = [], includeWsl = true, includeVSCode = true, extraVSCodeHomes = [] } = {}) {
+  async function scan(roots, { force = false, disabled = [], includeWsl = true, readWslDatabases = true, includeVSCode = true, extraVSCodeHomes = [] } = {}) {
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
     const discovered = includeWsl && discoverWsl ? await discoverWsl({ disabled }) : { homes: [], sources: [] };
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
@@ -270,7 +271,11 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
     for (const { db, source } of databases) {
       try {
-        const result = readUsageDatabase(db, journals.receiptSessions, source.path);
+        const result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases });
+        if (result.databaseRead === 'wsl') {
+          if (!source.message) source.message = 'Usage database read inside WSL; no database copy was created.';
+          coverage.wslDatabases = (coverage.wslDatabases || 0) + 1;
+        }
         if (result.warning) { source.state = 'warning'; source.message = result.warning; }
         for (const [id, name] of result.sessionNames) if (name && !nameIn(source.path, id)) setName(source.path, id, name);
         if (result.skillExcludedSessions.length) {

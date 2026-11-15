@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.82",
+    "summary": "Recovers older usage from locked WSL databases using a read-only reader inside the running distribution, with a setting to turn it off. Skill copy buttons now stay at the right edge of their column."
+  },
+  {
     "version": "0.1.81",
     "summary": "Expand a skill to see its uses, failures, and sessions by project. Project rows stay aligned beneath the skill totals, and the copy button still lets you find its folder."
   },

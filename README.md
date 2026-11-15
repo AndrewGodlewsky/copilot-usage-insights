@@ -50,11 +50,13 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.81** lets you expand a skill to see its uses, failures, and sessions by project. The copy button still copies its recorded folder path. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.82** can recover older usage from locked WSL databases through a read-only reader inside the running distribution, with an opt-out in Settings. Skill copy buttons now stay at the right edge of their column. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 
 **Include WSL usage sources (Windows)** is on by default in Settings. Running distributions are checked for standard `.copilot` homes and VS Code Server User storage. Receipts are combined with Windows usage using duplicate detection. Start any stopped distributions and click **Refresh**; **Local data sources** lists discovered homes and explains skipped or unreadable sources. Filters reuse the loaded history.
+
+**Read locked usage databases inside WSL** is also on by default. If Windows gets a SQLite lock error, the plugin checks that the distribution is running, then uses its existing `/usr/bin/python3` and `sqlite3` module to read usage and session metadata in a read-only transaction. It installs nothing and makes no database copies. Missing Python, permissions, timeouts, or unsupported schemas leave a source warning while readable journals still count. Turn this setting off to disable the native fallback. Database rows remain a fallback only for sessions without journal receipts; this does not guarantee reconciliation with account billing.
 
 For custom homes, use **Additional Copilot homes**, for example `\\wsl.localhost\Ubuntu\home\alice\.copilot`. Automatic discovery skips Docker Desktop and does not deliberately start stopped distributions. History from stopped distributions is not retained after a scan; custom paths remain explicit reads even if the automatic checkbox is off. See [WSL source coverage](docs/wsl-sources.md) for limitations, diagnostics, and verification steps.
 

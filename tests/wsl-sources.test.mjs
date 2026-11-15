@@ -207,6 +207,7 @@ test('report filters reuse discovered history while source settings and refresh 
   };
   await request('usage.report', { range: '1d' });
   assert.equal(calls[0].options.includeWsl, true);
+  assert.equal(calls[0].options.readWslDatabases, true);
   await request('usage.report', { range: '7d' });
   await request('usage.report', { range: 'all', models: ['model'] });
   await request('usage.report', { range: 'all', environment: 'wsl:ubuntu' });
@@ -224,4 +225,10 @@ test('report filters reuse discovered history while source settings and refresh 
   assert.equal(calls.length, 5);
   assert.equal(calls.at(-1).options.includeVSCode, false);
   assert.deepEqual(calls.at(-1).options.extraVSCodeHomes, [path.join(tmp, 'User')]);
+  await request('settings.set', { readWslDatabases: false });
+  await request('usage.report');
+  assert.equal(calls.length, 6);
+  assert.equal(calls.at(-1).options.readWslDatabases, false);
+  assert.equal((await createSettings(tmp).get()).readWslDatabases, false, 'opt-out persists');
+  await assert.rejects(settings.set({ readWslDatabases: 'false' }), /boolean/);
 });
