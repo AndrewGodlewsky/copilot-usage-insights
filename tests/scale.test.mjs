@@ -90,9 +90,9 @@ test('a history built up from appends equals one read afresh, and matches the kn
   assert.deepEqual(view(scan), view(fresh));
   for (const filter of filters(scan)) assert.deepEqual(buildReport(scan.records, filter, now, scan), buildReport(fresh.records, filter, now, fresh), JSON.stringify(filter));
   const model = scan.records[0].model, project = scan.records[0].project, session = scan.records[0].sessionId;
-  assert.deepEqual(buildModelSessionPage(scan.records, { range: 'all', model }, now, scan), buildModelSessionPage(fresh.records, { range: 'all', model }, now));
+  assert.deepEqual(buildModelSessionPage(scan.records, { range: 'all', model }, now, scan), buildModelSessionPage(fresh.records, { range: 'all', model }, now, fresh));
   assert.deepEqual(buildRequestPage(scan.records, { range: 'all', model, session }, now), buildRequestPage(fresh.records, { range: 'all', model, session }, now));
-  assert.deepEqual(buildSessionModels(scan.records, { range: 'all', project, session }, now), buildSessionModels(fresh.records, { range: 'all', project, session }, now));
+  assert.deepEqual(buildSessionModels(scan.records, { range: 'all', project, session }, now, scan), buildSessionModels(fresh.records, { range: 'all', project, session }, now, fresh));
 
   const report = buildReport(scan.records, { range: 'all' }, now, scan);
   const credits = nano => Number(nano) / 1e9, near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));

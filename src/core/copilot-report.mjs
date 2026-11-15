@@ -184,7 +184,7 @@ function modelRequestScope(records, input, now, extra) {
     const day = dayOfMs(r.ms);
     return day >= start && day <= end;
   });
-  return { q, matching };
+  return { q, matching, start, end };
 }
 
 export function buildRequestPage(records, input = {}, now = new Date()) {
@@ -223,25 +223,46 @@ function sessionNames(records, cache) {
   return names;
 }
 
-export function buildModelSessionPage(records, input = {}, now = new Date(), activity = {}) {
-  const { q, matching } = modelRequestScope(records, input, now, 'sort');
+const promptCountFields = p => ({ userPrompts: p && (p.count || !p.uncertain) ? p.count : null, uncertainPrompts: p?.uncertain || 0 });
+function promptCountsFor(records, activity, input, start, end, now) {
+  return summarizePromptCredits(activity.promptEvents, records, input, input.range === 'all' ? -Infinity : start, end, now,
+    activity.cache ? { memo: activity.cache, unique: activity.cache.uniquePromptEvents === true } : undefined);
+}
+
+function buildModelGroups(records, input, now, activity, projects) {
+  ({ records, activity } = selectEnvironment(records, activity, input.environment));
+  const { q, matching, start, end } = modelRequestScope(records, input, now, 'sort');
   const sort = input.sort ?? 'total';
-  if (!['total', 'credits', 'requests'].includes(sort)) throw new TypeError('Invalid session sort');
+  if (!['total', 'credits', 'requests', 'userPrompts'].includes(sort)) throw new TypeError('Invalid session sort');
   const names = sessionNames(records, activity.cache), sessions = new Map();
   for (const r of matching) {
-    if (!sessions.has(r.sessionId)) sessions.set(r.sessionId, bucket());
-    add(sessions.get(r.sessionId), r, q.includeCache);
+    const key = projects ? r.project : r.sessionId;
+    if (!sessions.has(key)) sessions.set(key, bucket());
+    add(sessions.get(key), r, q.includeCache);
   }
-  const rows = [...sessions].map(([id, b]) => ({ id, name: names.get(id), ...finish(b) }))
+  const counts = promptCountsFor(records, activity, { ...input, models: [input.model] }, start, end, now);
+  const prompts = new Map();
+  for (const p of projects ? counts.projectPrompts : counts.sessionPrompts.filter(p => !input.project || p.project === input.project)) {
+    const key = projects ? p.name : p.id, previous = prompts.get(key);
+    prompts.set(key, { count: p.count + (previous?.count || 0), uncertain: p.uncertain + (previous?.uncertain || 0) });
+  }
+  const rows = [...sessions].map(([id, b]) => ({ id, name: projects ? id : names.get(id), ...finish(b), ...promptCountFields(prompts.get(id)) }))
     .sort((a, b) => (b[sort] ?? -1) - (a[sort] ?? -1) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   const limit = 25, offset = Math.min(input.offset || 0, Math.max(0, Math.ceil(rows.length / limit) - 1) * limit);
   return { total: rows.length, offset, limit, rows: rows.slice(offset, offset + limit) };
 }
+export function buildModelSessionPage(records, input = {}, now = new Date(), activity = {}) {
+  return buildModelGroups(records, input, now, activity, false);
+}
+export function buildModelProjectPage(records, input = {}, now = new Date(), activity = {}) {
+  return buildModelGroups(records, input, now, activity, true);
+}
 
-export function buildSessionModels(records, input = {}, now = new Date()) {
+export function buildSessionModels(records, input = {}, now = new Date(), activity = {}) {
   const allowed = new Set(['range', 'startDate', 'endDate', 'models', 'environment', 'includeCache', 'project', 'session']);
   if (Object.keys(input).some(key => !allowed.has(key))) throw new TypeError('Unknown session model filter');
   for (const key of ['project', 'session']) if (typeof input[key] !== 'string' || !input[key].trim()) throw new TypeError(`Expected a ${key}`);
+  ({ records, activity } = selectEnvironment(records, activity, input.environment));
   const { q, history, start, end } = usageScope(records, input, now), models = new Map();
   for (const r of history) {
     const day = dayOfMs(r.ms);
@@ -249,7 +270,9 @@ export function buildSessionModels(records, input = {}, now = new Date()) {
     if (!models.has(r.model)) models.set(r.model, bucket());
     add(models.get(r.model), r, q.includeCache);
   }
-  return { rows: [...models].map(([name, b]) => ({ name, ...finish(b) }))
+  const counts = promptCountsFor(records, activity, { ...input, models: q.models }, start, end, now);
+  const prompts = new Map(counts.modelPrompts.map(p => [p.name, p]));
+  return { rows: [...models].map(([name, b]) => ({ name, ...finish(b), ...promptCountFields(prompts.get(name)) }))
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)) };
 }
 
@@ -293,11 +316,13 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   const activityStart = q.range === 'all' ? -Infinity : start;
   const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now,
     activity.cache ? { memo: activity.cache, unique: activity.cache.uniquePromptEvents === true } : undefined);
-  const { projectPrompts, ...promptSummary } = promptCredits;
+  const { projectPrompts, modelPrompts, sessionPrompts, ...promptSummary } = promptCredits;
   const promptCounts = new Map(projectPrompts.map(p => [p.name, p]));
+  const modelCounts = new Map(modelPrompts.map(p => [p.name, p]));
+  const sessionCounts = new Map(sessionPrompts.map(p => [JSON.stringify([p.project, p.id]), p]));
   const withPrompts = rows => rows.map(row => {
     const p = promptCounts.get(row.name);
-    return { ...row, userPrompts: p && (p.count || !p.uncertain) ? p.count : null, uncertainPrompts: p?.uncertain || 0 };
+    return { ...row, ...promptCountFields(p) };
   });
   // Choice lists ignore their own filter, so other choices remain available after selection.
   const modelChoices = new Map(), projectChoices = new Map(), modelOptions = new Set(), projectOptionSet = new Set(), copilotSessions = new Set();
@@ -327,9 +352,9 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(calendarStart + i), ...finish(calendar.get(calendarStart + i) ?? bucket()) })),
-    rhythm, models: ranked(models), projects: withPrompts(ranked(projects)), usageChoices: { models: ranked(modelChoices), projects: withPrompts(ranked(projectChoices)) }, sessions: ranked(sessions).map(s => {
+    rhythm, models: ranked(models).map(row => ({ ...row, ...promptCountFields(modelCounts.get(row.name)) })), projects: withPrompts(ranked(projects)), usageChoices: { models: ranked(modelChoices), projects: withPrompts(ranked(projectChoices)) }, sessions: ranked(sessions).map(s => {
       const [project, id] = JSON.parse(s.name);
-      return { ...s, project, id, name: sessionLabels.get(id) };
+      return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
     efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },

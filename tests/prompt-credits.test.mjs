@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
-import { buildReport } from '../src/core/copilot-report.mjs';
+import { buildReport, buildModelProjectPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 
 const now = new Date(2026, 10, 14, 12);
 function fixture(session = 's1', project = 'Project A') {
@@ -92,6 +92,45 @@ test('Usage projects count human submissions independently of model turns and co
   assert.equal(report(unknown.events).projects[0].uncertainPrompts, 1);
   const legacy = fixture(); legacy.call('a', 'a', 1);
   assert.equal(report(legacy.events).projects[0].userPrompts, null, 'missing prompt metadata is not a zero count');
+});
+
+test('Breakdown counts distinct human prompts through models, projects and sessions', () => {
+  const a = fixture('a', 'A'); a.user('one'); a.call('one', 'a-first', 1, { terminal: false });
+  a.call('one', 'a-again', 2, { turn: '1', initiator: 'agent', terminal: false });
+  a.call('one', 'b-model', 3, { turn: '2', initiator: 'agent', model: 'Model B' });
+  a.user('two'); a.call('two', 'missing-bill', null, { complete: false });
+  a.user('auto', { isAutopilotContinuation: true }); a.call('auto', 'auto-call', 1, { initiator: 'agent', turn: 'auto' });
+  const b = fixture('b', 'B'); b.user('one'); b.call('one', 'b-first', 1);
+  const s = snapshot([...a.events, ...b.events, ...a.events]);
+  const r = buildReport(s.records, { range: 'all' }, now, s);
+  assert.equal(r.models.find(m => m.name === 'Model A').userPrompts, 3);
+  assert.equal(r.models.find(m => m.name === 'Model A').requests, 5);
+  assert.equal(r.models.find(m => m.name === 'Model B').userPrompts, 1, 'same human prompt counts once for each linked model');
+  const input = { range: 'all', model: 'Model A', sort: 'userPrompts' };
+  const projects = buildModelProjectPage(s.records, input, now, s);
+  assert.deepEqual(projects.rows.map(p => [p.name, p.userPrompts]), [['A', 2], ['B', 1]]);
+  const sessions = buildModelSessionPage(s.records, { ...input, project: 'A' }, now, s);
+  assert.deepEqual(sessions.rows.map(p => [p.id, p.userPrompts]), [['a', 2]]);
+  assert.equal(r.sessions.find(p => p.id === 'a').userPrompts, 2);
+  const models = buildSessionModels(s.records, { range: 'all', project: 'A', session: 'a' }, now, s);
+  assert.deepEqual(models.rows.map(m => [m.name, m.userPrompts]), [['Model A', 2], ['Model B', 1]]);
+  assert.equal(report(delegated().events).models[0].userPrompts, 1, 'delegated work does not add a human submission');
+});
+
+test('Breakdown prompt counts preserve date boundaries, ambiguity and missing history', () => {
+  const f = fixture(); f.time(new Date(2026, 10, 13, 23, 59)); f.user('old'); f.call('old', 'first', 1, { terminal: false });
+  f.time(new Date(2026, 10, 14, 1)); f.call('old', 'later', 1, { turn: '1', initiator: 'agent' });
+  const s = snapshot(f.events), input = { range: '1d', model: 'Model A', project: 'Project A' };
+  assert.equal(buildReport(s.records, input, now, s).models[0].userPrompts, 0);
+  assert.equal(buildModelProjectPage(s.records, input, now, s).rows[0].userPrompts, 0);
+  assert.equal(buildModelSessionPage(s.records, input, now, s).rows[0].userPrompts, 0);
+  assert.equal(buildSessionModels(s.records, { range: '1d', project: 'Project A', session: 's1' }, now, s).rows[0].userPrompts, 0);
+  const ambiguous = fixture(); ambiguous.user('a'); ambiguous.call('a', 'same', 1); ambiguous.user('b'); ambiguous.call('b', 'same', 1);
+  assert.equal(report(ambiguous.events).models[0].userPrompts, null);
+  assert.equal(report(ambiguous.events).models[0].uncertainPrompts, 2);
+  const legacy = fixture(); legacy.call('a', 'a', 1);
+  assert.equal(report(legacy.events).models[0].userPrompts, null);
+  assert.equal(report(legacy.events).sessions[0].userPrompts, null);
 });
 
 test('Usage choices retain alternatives, intersect filters, and date prompts by submission', () => {

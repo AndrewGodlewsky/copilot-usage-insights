@@ -142,3 +142,5 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 #environment{min-width:0;max-width:min(28ch,100%);text-overflow:ellipsis}
 
 #coverage-dialog{width:min(850px,calc(100% - 32px))}#coverage-dialog h3{margin:16px 0 8px}#coverage-dialog th:first-child,#coverage-dialog td:first-child{max-width:none;width:60%;white-space:normal;overflow-wrap:anywhere}#coverage-dialog td:last-child{white-space:normal}#coverage-dialog td code{margin:5px 0 0;color:var(--muted-fg);user-select:all}#coverage-dialog .controls{justify-content:flex-end;margin-top:12px}
+
+#breakdown .usage-row[data-depth="3"] td:first-child,#breakdown .usage-header[data-depth="3"] th:first-child{padding-inline-start:calc(7px + 48px * var(--text-scale))}#breakdown .usage-context[data-depth="3"] .request-list{padding-inline-start:calc(7px + 48px * var(--text-scale))}#breakdown [data-depth="4"]{background:var(--card)}

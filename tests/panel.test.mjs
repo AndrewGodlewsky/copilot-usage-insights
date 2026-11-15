@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../src/core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
@@ -80,6 +80,10 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (message.method === 'usage.sessionModels') {
         if (server.sessionModelsError) return { ok: false, json: async () => ({ error: server.sessionModelsError }) };
         return { ok: true, json: async () => server.sessionModels(message.input) };
+      }
+      if (message.method === 'usage.modelProjects') {
+        if (server.modelProjectsError) return { ok: false, json: async () => ({ error: server.modelProjectsError }) };
+        return { ok: true, json: async () => server.modelProjects(message.input) };
       }
       if (message.method === 'usage.sessions') {
         if (server.sessionError) return { ok: false, json: async () => ({ error: server.sessionError }) };
@@ -290,6 +294,7 @@ test('coverage dismissal hides only relevant markers across cards, charts, and e
   assert.match(get('prompt-coverage-note').textContent, /^\*/);
   for (const id of markedSurfaces) assert.match(get(id).innerHTML, /\d(?:[KM]|%)? \*/, `${id} marks its partial measurements`);
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   await click({ requestSession: 's1' });
   assert.match(get('breakdown').innerHTML, /id="session-requests"/);
   const requestCount = requests.length;
@@ -722,6 +727,7 @@ async function requestPanel() {
   const records = parser.snapshot().records.map(r => ({ ...r, sessionName: '<Session>' }));
   const report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
   const panel = await mountPanel(report);
+  panel.server.modelProjects = input => buildModelProjectPage(records, input, now);
   panel.server.sessionPage = input => buildModelSessionPage(records, input, now);
   panel.server.sessionModels = input => buildSessionModels(records, input, now);
   panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
@@ -740,13 +746,13 @@ test('both Breakdown hierarchies keep aligned columns, repeated headings, and al
     assert.equal((html().match(/<table\b/g) || []).length, 1, 'expanded metrics share the original table');
     assert.equal((html().match(/<thead>/g) || []).length, 1, 'one table head with section headings inside the body');
     const headers = [...html().matchAll(/<tr class="usage-header" data-depth="(\d)"[^>]*>([\s\S]*?)<\/tr>/g)];
-    assert.deepEqual(headers.map(m => m[1]), ['0', '1', '2']);
+    assert.deepEqual(headers.map(m => m[1]), headings.map((_, i) => String(i)));
     const labels = headers.map(([, , cells]) => [...cells.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(m => m[1]));
     assert.deepEqual(labels.map(row => row[0]), headings);
-    for (const row of labels) assert.deepEqual(row.slice(1), ['Requests', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / request', 'Tokens', 'AI credits']);
+    for (const row of labels) assert.deepEqual(row.slice(1), ['User prompts', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / turn', 'Tokens', 'AI credits']);
     assert.equal(layout(), initialLayout, 'expansion does not recalculate column widths');
     const rows = [...html().matchAll(/<tr class="usage-row" data-depth="(\d)"[^>]*>([\s\S]*?)<\/tr>/g)];
-    assert.deepEqual([...new Set(rows.map(m => m[1]))].sort(), ['0', '1', '2']);
+    assert.deepEqual([...new Set(rows.map(m => m[1]))].sort(), headings.map((_, i) => String(i)));
     for (const [, , cells] of rows) assert.equal((cells.match(/<td\b/g) || []).length, 10);
     const ids = [...html().matchAll(/\sid="([^"]+)"/g)].map(m => m[1]);
     assert.equal(new Set(ids).size, ids.length, 'row IDs remain unique across hierarchy levels');
@@ -755,11 +761,12 @@ test('both Breakdown hierarchies keep aligned columns, repeated headings, and al
     }
   };
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   await click({ requestSession: 's1' });
-  check(['Model', 'Session', 'Time']);
+  check(['Model', 'Project', 'Session', 'Time']);
   await click({ requestId: records[0].key });
-  check(['Model', 'Session', 'Time']);
-  assert.match(html(), /<tr class="usage-context" data-depth="3"[^>]*><td colspan="10"><div id="request-detail" class="request-detail"/);
+  check(['Model', 'Project', 'Session', 'Time']);
+  assert.match(html(), /<tr class="usage-context" data-depth="4"[^>]*><td colspan="10"><div id="request-detail" class="request-detail"/);
   assert.match(html(), /Full original prompt/);
   get('group').value = 'projects'; get('group').onchange();
   await click({ projectName: records[0].project });
@@ -780,13 +787,14 @@ test('both Breakdown hierarchies keep aligned columns, repeated headings, and al
 test('refresh outages preserve expanded navigation and unchanged recovery clears the notice', async () => {
   const { get, click, server, intervals, report } = await requestPanel();
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   await click({ requestSession: 's1' });
   const expanded = get('breakdown').innerHTML;
   server.transportError = true;
   intervals[0].callback(); await new Promise(setImmediate);
   assert.equal(get('breakdown').innerHTML, expanded);
   await click({ requestSession: 's1' });
-  assert.doesNotMatch(get('breakdown').innerHTML, /28 model requests/, 'collapse still works locally during an outage');
+  assert.doesNotMatch(get('breakdown').innerHTML, /id="session-requests"/, 'collapse still works locally during an outage');
   assert.match(get('status').textContent, /last successful/i);
   server.transportError = false;
   server.report = () => ({ unchanged: true, generatedAt: report.generatedAt, scannedAt: report.generatedAt });
@@ -801,16 +809,19 @@ test('model sessions expand into matching request columns and on-demand original
   const html = () => get('breakdown').innerHTML;
   assert.equal(requests.filter(r => r.method === 'usage.requests' || r.method === 'usage.sessions').length, 0);
   await click({ requestModel: '<Sonnet>' });
+  assert.match(html(), /data-model-project="Unknown project"/);
+  assert.equal(requests.at(-1).method, 'usage.modelProjects');
+  await click({ modelProject: 'Unknown project' });
   assert.match(html(), /data-request-session="s1" aria-expanded="false"/);
   assert.match(html(), /&lt;Session&gt;/);
   assert.equal(requests.at(-1).method, 'usage.sessions');
   assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0);
   await click({ requestSession: 's1' });
-  assert.match(html(), /28 model requests/);
+  assert.match(html(), /28 model turns/);
   assert.match(html(), /1–25/);
   const headers = [...html().matchAll(/<thead>(.*?)<\/thead>/g)].map(([, h]) => [...h.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map(([, text]) => text));
   assert.deepEqual(headers.map(h => h[0]), ['Model']);
-  for (const h of headers) assert.deepEqual(h.slice(1), ['Requests', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / request', 'Tokens', 'AI credits']);
+  for (const h of headers) assert.deepEqual(h.slice(1), ['User prompts', 'Input', 'Output', 'Reasoning', 'Cache read', 'Cache write', 'Avg. tokens / turn', 'Tokens', 'AI credits']);
   assert.doesNotMatch(html(), /<th>Started by<\/th>|Full original prompt|<script/);
   assert.equal(requests.at(-1).input.session, 's1');
   await click({ requestPage: '25' });
@@ -838,6 +849,7 @@ test('nested expansion retries failures and ignores late prompt and session resp
   const { get, server, click } = await requestPanel();
   server.sessionError = '<Session failed>';
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   assert.match(get('breakdown').innerHTML, /Could not load sessions: &lt;Session failed&gt;/);
   server.sessionError = '';
   await click({ modelSessionPage: '0' });
@@ -858,7 +870,8 @@ test('nested expansion retries failures and ignores late prompt and session resp
   await click({ requestModel: '<Sonnet>' });
   const sessions = server.sessionPage;
   server.sessionPage = input => new Promise(done => { resolve = () => done(sessions(input)); });
-  const reopening = click({ requestModel: '<Sonnet>' });
+  await click({ requestModel: '<Sonnet>' });
+  const reopening = click({ modelProject: 'Unknown project' });
   await new Promise(setImmediate);
   get('project').value = 'different-project'; await get('project').onchange();
   resolve(); await reopening;
@@ -880,6 +893,7 @@ test('request paging keeps keyboard focus during loading and moves to an enabled
   } });
   node.querySelectorAll = selector => selector === 'button' ? buttons : [];
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   await click({ requestSession: 's1' });
   const original = server.requestPage;
   let resolve;
@@ -905,11 +919,12 @@ test('model sessions page independently, sort before paging, and discard removed
   server.requestPage = input => buildRequestPage(history, input, now);
   await get('refresh').onclick();
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   const html = () => get('breakdown').innerHTML;
   const ids = () => [...html().matchAll(/data-request-session="([^"]+)"/g)].map(([, id]) => id);
   assert.equal(ids().length, 25); assert.equal(ids()[0], 's51');
   await click({ requestSession: 's51' });
-  assert.match(html(), /1 model request/);
+  assert.match(html(), /1 model turn/);
   assert.equal(requests.at(-1).input.session, 's51');
   await click({ modelSessionPage: '25' });
   assert.equal(ids()[0], 's26');
@@ -928,6 +943,63 @@ test('model sessions page independently, sort before paging, and discard removed
   assert.deepEqual(ids(), ['s0']);
   assert.match(html(), /&lt;Renamed session&gt;/);
   assert.doesNotMatch(html(), /id="session-requests"|<Renamed session>/);
+});
+
+test('model projects page independently and scope same-ID sessions, calls, and prompt details to the selected project', async () => {
+  const { get, records, report, now, server, requests, click } = await requestPanel();
+  let history = Array.from({ length: 28 }, (_, i) => ({ ...records[0], key: `project-call-${i}`, project: `Project ${String(i).padStart(2, '0')}`,
+    sessionId: 'shared-session', sessionName: 'Same session', output: i, nanoAiu: (28 - i) * 1e9 }));
+  Object.assign(report, buildReport(history, {}, now));
+  report.models[0].userPrompts = 2;
+  server.modelProjects = input => buildModelProjectPage(history, input, now);
+  server.sessionPage = input => buildModelSessionPage(history, input, now);
+  server.requestPage = input => buildRequestPage(history, input, now);
+  await get('refresh').onclick();
+  const html = () => get('breakdown').innerHTML;
+  assert.match(html(), /28 model turns[^>]*>2<\/td>/, 'shows the human count, with model turns kept only in the tooltip');
+  assert.doesNotMatch(html(), /<th[^>]*>Requests<\/th>/);
+  await click({ requestModel: '<Sonnet>' });
+  const projects = () => [...html().matchAll(/data-model-project="([^"]+)"/g)].map(m => m[1]);
+  assert.equal(projects().length, 25); assert.equal(projects()[0], 'Project 27');
+  await click({ modelProject: 'Project 27' });
+  assert.equal(requests.at(-1).input.project, 'Project 27');
+  await click({ requestSession: 'shared-session' });
+  assert.equal(requests.at(-1).input.project, 'Project 27');
+  assert.match(html(), /1 model turn</);
+  await click({ requestId: 'project-call-27' });
+  assert.equal(requests.at(-1).input.project, 'Project 27');
+  await click({ modelProjectPage: '25' });
+  assert.deepEqual(projects(), ['Project 02', 'Project 01', 'Project 00']);
+  assert.doesNotMatch(html(), /id="model-sessions"|id="session-requests"|id="request-detail"/);
+  await click({ modelProject: 'Project 01' });
+  await click({ requestSession: 'shared-session' });
+  assert.equal(requests.at(-1).input.project, 'Project 01');
+  history = [history[0]];
+  Object.assign(report, buildReport(history, {}, now));
+  await get('refresh').onclick(); await new Promise(setImmediate);
+  assert.deepEqual(projects(), ['Project 00']);
+  assert.doesNotMatch(html(), /id="model-sessions"|id="session-requests"/);
+  get('model').value = 'another'; await get('model').onchange();
+  assert.doesNotMatch(html(), /data-model-project=/, 'filter changes reset the hierarchy');
+});
+
+test('model project loading can retry and late responses cannot reopen a collapsed model', async () => {
+  const { get, server, click } = await requestPanel();
+  server.modelProjectsError = '<Projects failed>';
+  await click({ requestModel: '<Sonnet>' });
+  assert.match(get('breakdown').innerHTML, /Could not load projects: &lt;Projects failed&gt;/);
+  server.modelProjectsError = '';
+  await click({ modelProjectPage: '0' });
+  assert.match(get('breakdown').innerHTML, /data-model-project=/);
+  await click({ requestModel: '<Sonnet>' });
+  let resolve;
+  const original = server.modelProjects;
+  server.modelProjects = input => new Promise(done => { resolve = () => done(original(input)); });
+  const loading = click({ requestModel: '<Sonnet>' });
+  await new Promise(setImmediate);
+  await click({ requestModel: '<Sonnet>' });
+  resolve(); await loading;
+  assert.doesNotMatch(get('breakdown').innerHTML, /id="model-projects"/);
 });
 
 test('project sessions expand and page locally, sort the full set, and reset or clamp pages as needed', async () => {
@@ -1574,7 +1646,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   await get('refresh').onclick();
   assert.match(get('skills').innerHTML, /Source plugin/);
   assert.match(get('breakdown').innerHTML, /Reasoning/);
-  assert.match(get('breakdown').innerHTML, /Avg\. tokens \/ request/);
+  assert.match(get('breakdown').innerHTML, /Avg\. tokens \/ turn/);
   assert.ok(!nodes.has('tools'));
   assert.doesNotMatch(get('mcp').innerHTML, /&lt;view&gt;/);
   assert.match(get('session').innerHTML, /value="s1"[^>]*>&lt;Planning &quot;work&quot;&gt;<\/option>/);
@@ -1807,9 +1879,10 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.match(get('tip').innerHTML, /42\.2M/);
   assert.doesNotMatch(get('tip').innerHTML, /Unavailable/);
   await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
   await click({ requestSession: 's1' });
   await click({ requestId: large[0].key });
-  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="2"')[1], /<td data-measure="tokens">2\.1K<\/td>/);
+  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="3"')[1], /<td data-measure="tokens">2\.1K<\/td>/);
   await get('settings-open').onclick();
   assert.equal(get('simplify-numbers').checked, true);
   get('simplify-numbers').checked = false;
@@ -1856,7 +1929,7 @@ test('simplified numbers apply across views and context, persist, and only chang
     assert.match(get(id).innerHTML, /12\.3/, id);
     assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
   }
-  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="2"')[1], /<td data-measure="credits">12\.3<\/td>/);
+  assert.match(get('breakdown').innerHTML.split('<tr class="usage-row" data-depth="3"')[1], /<td data-measure="credits">12\.3<\/td>/);
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();

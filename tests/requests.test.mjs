@@ -102,6 +102,29 @@ test('model session pages sort the complete set, clamp offsets, and validate opt
   }
 });
 
+test('model projects page independently and their session totals reconcile under all filters', () => {
+  const base = parse([receipt('base')])[0];
+  const records = Array.from({ length: 52 }, (_, i) => ({ ...base, key: `r${i}`, project: `Project ${String(i).padStart(2, '0')}`,
+    sessionId: `s${i % 2}`, output: i, nanoAiu: (52 - i) * 1e9 }));
+  records.push({ ...base, key: 'other-model', project: 'Excluded', model: 'Other' });
+  for (const filter of [{ range: 'all' }, { range: '1d', includeCache: false, session: 's1' }, { range: 'mtd', project: 'Project 01' }, { models: ['Other'] }]) {
+    const input = { ...filter, model: 'Sonnet' };
+    const first = reportApi.buildModelProjectPage(records, input, now);
+    const rows = [...first.rows];
+    for (let offset = first.limit; offset < first.total; offset += first.limit) rows.push(...reportApi.buildModelProjectPage(records, { ...input, offset }, now).rows);
+    const parent = buildReport(records, { ...filter, models: filter.models || ['Sonnet'] }, now).models.find(r => r.name === 'Sonnet');
+    assert.equal(rows.reduce((n, row) => n + row.total, 0), parent?.total || 0);
+    for (const p of rows) {
+      const sessions = reportApi.buildModelSessionPage(records, { ...input, project: p.name }, now).rows;
+      for (const field of ['requests', 'input', 'output', 'cacheRead', 'cacheWrite', 'total', 'credits']) assert.equal(sessions.reduce((n, r) => n + (r[field] || 0), 0), p[field]);
+    }
+  }
+  const page = reportApi.buildModelProjectPage(records, { model: 'Sonnet', sort: 'credits', offset: 999 }, now);
+  assert.equal(page.offset, 50); assert.equal(page.rows.length, 2);
+  assert.equal(reportApi.buildModelProjectPage(records, { model: 'Sonnet', sort: 'userPrompts' }, now).rows[0].userPrompts, null);
+  for (const input of [{}, { model: 'Sonnet', offset: -1 }, { model: 'Sonnet', sort: 'invalid' }]) assert.throws(() => reportApi.buildModelProjectPage(records, input, now), TypeError);
+});
+
 test('project session models reconcile with filtered session totals and isolate both identifiers', () => {
   assert.equal(typeof reportApi.buildSessionModels, 'function');
   const records = parse([receipt('a'), receipt('b', { model: 'Other' }), receipt('c', { model: 'Other' }),
@@ -178,6 +201,12 @@ test('request API reuses history, reads prompts only for details, and rechecks e
   const report = await (await call({ method: 'usage.report' })).json();
   assert.doesNotMatch(JSON.stringify(report), /Selected prompt|Unselected secret/);
   await fs.rename(file, file + '.moved');
+  const projectResponse = await call({ method: 'usage.modelProjects', input: { model: 'Sonnet' } });
+  assert.equal(projectResponse.status, 200);
+  const projects = await projectResponse.json();
+  assert.equal(projects.total, 1);
+  assert.equal(projects.rows[0].requests, 1);
+  assert.doesNotMatch(JSON.stringify(projects), /Selected prompt|Unselected secret|logFile|apiCallId/);
   const modelInput = { project: report.sessions[0].project, session: 's1' };
   const modelResponse = await call({ method: 'usage.sessionModels', input: modelInput });
   assert.equal(modelResponse.status, 200);

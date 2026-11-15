@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.85",
+    "summary": "Model breakdowns now expand into projects, then sessions, while keeping columns aligned. User prompts replaces the model-call count, so you can see your own submissions separately from the agent's follow-up work."
+  },
+  {
     "version": "0.1.84",
     "summary": "Coverage warnings now follow the current filters. Review coverage shows older and undated issues with file locations, and sessions recovered from the usage database no longer appear as summary-only exclusions."
   },

@@ -408,18 +408,33 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     excluded: { attribution: 0, accounting: 0, unfinished: 0 }, unlinkedRequests: 0,
     work: { requests: 0, averageRequests: null, maxRequests: null, tokenPrompts: 0, tokens: null, averageTokens: null } };
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
-  const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map();
+  const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const projectCount = name => projectPrompts.get(name) || projectPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
+  const sessionCount = (project, id) => {
+    const key = JSON.stringify([project, id]);
+    return sessionPrompts.get(key) || sessionPrompts.set(key, { project, id, count: 0, uncertain: 0 }).get(key);
+  };
+  const modelCount = name => modelPrompts.get(name) || modelPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
   // Count submissions separately from cost eligibility; missing charges do not erase a known user action.
   for (const outcome of outcomes) {
-    if (!models) for (const seed of outcome.seeds) if (!query.session || query.session === seed.sessionId) projectCount(seed.project);
+    if (!models) for (const seed of outcome.seeds) if (!query.session || query.session === seed.sessionId) {
+      projectCount(seed.project); sessionCount(seed.project, seed.sessionId);
+    }
     for (const prompt of outcome.prompts) {
       if (query.session && query.session !== prompt.sessionId) continue;
       const charges = prompt.charges, selected = models ? charges.filter(r => models.includes(r.model)) : charges;
       const dated = prompt.day >= start && prompt.day <= end;
       if (prompt.provider && (!models || selected.length || !charges.length)) {
         const count = projectCount(prompt.project);
-        if (dated) count[prompt.identity && (!models || prompt.linksKnown && selected.length) ? 'count' : 'uncertain']++;
+        const session = sessionCount(prompt.project, prompt.sessionId);
+        if (dated) {
+          const key = prompt.identity && (!models || prompt.linksKnown && selected.length) ? 'count' : 'uncertain';
+          count[key]++; session[key]++;
+        }
+        if (!query.project || query.project === prompt.project) for (const name of new Set(selected.map(r => r.model).filter(Boolean))) {
+          const model = modelCount(name);
+          if (dated) model[prompt.identity && prompt.linksKnown ? 'count' : 'uncertain']++;
+        }
       }
       if (!dated || query.project && query.project !== prompt.project || models && !selected.length) continue;
       result.prompts++;
@@ -442,6 +457,8 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     }
   }
   result.projectPrompts = [...projectPrompts.values()];
+  result.modelPrompts = [...modelPrompts.values()];
+  result.sessionPrompts = [...sessionPrompts.values()];
   if (result.eligiblePrompts) { result.credits = nano.number() / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }
   work.averageRequests = result.eligiblePrompts ? work.requests / result.eligiblePrompts : null;
   work.averageTokens = work.tokenPrompts ? work.tokens / work.tokenPrompts : null;

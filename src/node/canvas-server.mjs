@@ -3,7 +3,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
@@ -191,8 +191,8 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         }
         diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
         return;
-      } else if (['usage.requests', 'usage.sessions', 'usage.sessionModels'].includes(message.method)) {
-        const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
+      } else if (['usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels'].includes(message.method)) {
+        const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.modelProjects' ? buildModelProjectPage : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
         buildPage([], input, now());
         const config = await settings.get();
         const { scan } = await readHistory(config);

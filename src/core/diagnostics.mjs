@@ -10,7 +10,7 @@ const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAva
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode']) numericFields.add(field);
 const enumFields = {
-  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'efficiency.context']),
+  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels', 'efficiency.context']),
   range: new Set(['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   sourceKind: new Set(['copilot', 'vscode']),
