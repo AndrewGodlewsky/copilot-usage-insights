@@ -214,7 +214,7 @@ test('Rolling 30 is selected by default and remains selectable alongside Last 30
 });
 
 test('coverage notice can be dismissed across renders and refreshes without suppressing changed warnings', async () => {
-  const report = { ...buildReport([], {}), sources: [], coverage: { aggregateOnly: 2 } };
+  const report = { ...buildReport([], {}), sources: [], coverage: { aggregateOnly: 2 }, coverageDetails: { counts: { aggregateOnly: 2 }, rows: [], unreadable: [] } };
   const { get, document } = await mountPanel(report);
   assert.equal(get('coverage').hidden, false);
   assert.match(get('coverage-message').textContent, /2 sessions have summary totals only and are not counted/);
@@ -227,17 +227,51 @@ test('coverage notice can be dismissed across renders and refreshes without supp
   assert.equal(get('coverage').hidden, true);
   await get('refresh').onclick();
   assert.equal(get('coverage').hidden, true, 'the same notice stays dismissed after a refresh');
-  report.coverage.invalid = 1;
+  report.coverageDetails.counts.invalid = 1;
   await get('refresh').onclick();
   assert.equal(get('coverage').hidden, false, 'changed warnings remain visible');
   assert.match(get('coverage-message').textContent, /1 malformed records were skipped/);
-  delete report.coverage.invalid;
-  delete report.coverage.aggregateOnly;
+  delete report.coverageDetails.counts.invalid;
+  delete report.coverageDetails.counts.aggregateOnly;
   await get('refresh').onclick();
   assert.equal(get('coverage').hidden, true, 'no notice is displayed without warnings');
-  report.coverage.aggregateOnly = 2;
+  report.coverageDetails.counts.aggregateOnly = 2;
   const reopened = await mountPanel(report);
   assert.equal(reopened.get('coverage').hidden, false, 'dismissal lasts only for this dashboard instance');
+});
+
+test('coverage review keeps outside and undated issues out of the banner, pages locally, and survives refresh', async () => {
+  const details = { counts: {}, unreadable: [{ file: '<unreadable>' }], rows: [
+    { scope: 'unknown', kind: 'invalid', count: 6, file: '<private-file>', from: '', to: '' },
+    ...Array.from({ length: 26 }, (_, i) => ({ scope: 'outside', kind: 'aggregateOnly', count: 1, file: `/old/${i}`, from: '2024-01-01', to: '2024-01-02' })),
+  ] };
+  const report = { ...buildReport([], {}), sources: [], coverage: { invalid: 6, aggregateOnly: 26 }, coverageDetails: details };
+  const { get, requests } = await mountPanel(report);
+  assert.equal(get('coverage').hidden, true, 'all-history counts do not trigger the filtered banner');
+  const before = requests.length;
+  get('coverage-open').onclick();
+  assert.equal(get('coverage-dialog').open, true);
+  assert.equal(get('coverage-scope').value, 'unknown');
+  assert.match(get('coverage-rows').innerHTML, /&lt;private-file&gt;/);
+  assert.match(get('coverage-rows').innerHTML, /Date unknown/);
+  assert.match(get('coverage-unreadable').innerHTML, /&lt;unreadable&gt;/);
+  assert.match(get('coverage-counts').textContent, /Outside selected dates: 26/);
+  get('coverage-scope').value = 'outside'; get('coverage-scope').onchange();
+  assert.equal(get('coverage-prev').disabled, true);
+  assert.equal(get('coverage-next').disabled, false);
+  get('coverage-next').onclick();
+  assert.match(get('coverage-rows').innerHTML, /\/old\/25/);
+  assert.equal(get('coverage-next').disabled, true);
+  assert.equal(requests.length, before, 'reviewing issues never requests or scans data');
+  await get('refresh').onclick();
+  assert.equal(get('coverage-scope').value, 'outside');
+  assert.equal(get('coverage-page').textContent, '2 / 2');
+  details.counts.unclassified = 1;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-current').textContent, /1 records lack Copilot attribution/);
+  get('coverage-close').onclick();
+  assert.equal(get('coverage-dialog').open, false);
 });
 
 test('coverage dismissal hides only relevant markers across cards, charts, and expanded tables without fetching', async () => {
@@ -277,7 +311,7 @@ test('coverage dismissal hides only relevant markers across cards, charts, and e
   assert.equal(get('hero-credits').textContent, '0.25');
   get('efficiency-topic').value = '9'; get('efficiency-topic').oninput();
   assert.doesNotMatch(get('token-topic-body').innerHTML, /\d \*/, 'newly opened topics honor dismissal');
-  report.coverage.invalid = 1;
+  report.coverageDetails.counts.invalid = 1;
   await get('refresh').onclick();
   assert.equal(get('coverage').hidden, false);
   assert.equal(get('hero-credits').textContent, '0.25 *', 'new warnings restore relevant markers');

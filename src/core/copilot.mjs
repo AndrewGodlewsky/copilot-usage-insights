@@ -1,5 +1,6 @@
 // Only accounting and activity metadata leaves this parser; payload text is discarded.
 import { linkId, intern, promptEvent, promptEventTypes, createPromptEventSet } from './prompt-credits.mjs';
+import { createCoverageCollector, coverageTime } from './coverage.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -51,6 +52,16 @@ function leadingType(line) {
 export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false }) {
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
+  const coverage = createCoverageCollector(source, logFile);
+  let sessionStart = null, summaryEnd = null;
+  const checkpoint = timestamp => {
+    const ms = coverageTime(timestamp);
+    if (!hasCheckpoint || ms !== null && (summaryEnd === null || ms > summaryEnd)) {
+      hasCheckpoint = true; summaryEnd = ms; revision++;
+    }
+  };
+  const rejectedEvent = (kind, e, key = '', usage = {}, owner = sessionId) => coverage.add(kind, { key, timestamp: e?.timestamp,
+    sessionId: owner, project: label === 'Unknown project' ? '' : label, model: textValue(usage?.modelDisplayName) || textValue(usage?.model) });
   // `rejected` remembers receipts that produced no record, so a replayed line is still counted once.
   const records = new Map(), compactions = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), rejected = new Set();
   // Every session ID this journal files anything under. Two journals can repeat each other's
@@ -70,14 +81,24 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       if (!line.trim()) return;
       if (skipUnused) {
         const type = leadingType(line);
-        if (checkpointTypes.has(type)) { if (!hasCheckpoint) { hasCheckpoint = true; revision++; } return; }
-        if (type && !usedTypes.has(type)) return;
+        if (checkpointTypes.has(type)) {
+          // Read only the envelope, avoiding potentially large summary payloads on the fast path.
+          const at = line.indexOf(',"data":');
+          if (at > 0 && at < 1024) {
+            try {
+              const envelope = JSON.parse(line.slice(0, at) + '}');
+              if (Object.hasOwn(envelope, 'timestamp')) { checkpoint(envelope.timestamp); return; }
+            } catch { /* Use the normal parser for unusual envelopes. */ }
+          }
+        }
+        if (type && !usedTypes.has(type) && !checkpointTypes.has(type)) return;
       }
       let e;
-      try { e = JSON.parse(line); } catch { invalid++; revision++; return; }
+      try { e = JSON.parse(line); } catch { invalid++; coverage.add('invalid'); revision++; return; }
       if (e?.type !== 'session.usage_record') collectPrompt(e);
       if (e?.type === 'session.start') {
         sessionId = textValue(e.data?.sessionId) || sessionId;
+        sessionStart = coverageTime(e.timestamp);
         note(sessions, sessionId);
         cwd = textValue(e.data?.context?.cwd);
         project = textValue(e.data?.context?.repository);
@@ -104,7 +125,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (e.ephemeral) return;
         const id = textValue(e.id), callId = textValue(e.data?.toolCallId), ms = Date.parse(e.timestamp);
         const starting = e.type === 'tool.execution_start', name = textValue(e.data?.toolName).trim();
-        if (!id || !callId || starting && !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidTools++; revision++; return; }
+        if (!id || !callId || starting && !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidTools++; rejectedEvent('invalidTools', e, id ? JSON.stringify([sessionId, id]) : ''); revision++; return; }
         const key = JSON.stringify(['tool', sessionId, callId]);
         if (starting) {
           if (!tools.has(key)) {
@@ -128,7 +149,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       } else if (e?.type === 'skill.invoked' || e?.type === 'skill.invoked_ref') {
         if (e.ephemeral) return;
         const id = textValue(e.id), name = textValue(e.data?.name).trim(), ms = Date.parse(e.timestamp);
-        if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; revision++; return; }
+        if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; rejectedEvent('invalidSkills', e, id ? JSON.stringify([sessionId, id]) : ''); revision++; return; }
         const key = JSON.stringify(['skill', sessionId, id]);
         if (!skills.has(key)) {
           revision++;
@@ -148,10 +169,11 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         // Separate these from ordinary receipts so older sessions still use database fallback.
         compactions.set(key, result.record ? { ...result.record, logFile, origin: 'compaction' } : null);
         revision++;
+        if (result.reason) rejectedEvent(result.reason, e, key, u);
         if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else if (result.reason === 'invalid') invalid++;
-      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { if (!hasCheckpoint) { hasCheckpoint = true; revision++; } }
+      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { checkpoint(e.timestamp); }
       else if (e?.type === 'session.usage_record') {
         note(receiptSessions, sessionId);
         note(receiptSessions, initialSession);
@@ -169,6 +191,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (result.record) { result.record.logFile = logFile; records.set(key, result.record); }
         else if (key) rejected.add(key);
         if (result.record) return;
+        rejectedEvent(result.reason || 'invalid', e, key, u, sourceSession);
         if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else invalid++;
@@ -177,6 +200,9 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
     // Changes only when something a snapshot reports has changed, so a caller can keep an earlier snapshot.
     revision: () => revision,
     snapshot: () => ({ records: [...records.values()], compactions: [...compactions.values()].filter(Boolean), skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: promptEvents.events.slice(),
+      coverageEntries: [...coverage.snapshot(), ...(hasCheckpoint && !receiptSessions.size ? [{ kind: 'aggregateOnly', key: JSON.stringify(['summary', sessionId]), sessionId,
+        ms: sessionStart, endMs: summaryEnd !== null && sessionStart !== null && summaryEnd >= sessionStart ? summaryEnd : null,
+        source, file: logFile, project: '', model: '', count: 1 }] : [])],
       tools: [...tools.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };

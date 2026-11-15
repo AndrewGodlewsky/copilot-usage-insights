@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.83** keeps saved server diagnostics available in Show logs even if the first usage load loses its connection. Load saved logs lets you include newer runtime files and copy everything without using a terminal. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.84** makes coverage warnings follow the current filters. Use **Review coverage** to inspect older or undated exclusions and their file locations without deleting history. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 
@@ -139,7 +139,10 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 
 **Rolling 30** is the default date filter. It means the first day of the current calendar month through today, inclusive, in your local time zone. It resets on the first of each month and can contain 1–31 days; **Last 30 days** remains a separate trailing-day option. The selected range applies throughout Usage, Breakdown, and Efficiency using the existing metric-specific filtering rules. If the dashboard stays open into a new month, the next refresh uses the new month.
 
-The orange data coverage notice can be closed with its X button. While visible, asterisks identify known partial counts and measurements in cards, charts, tables, prompt averages, and Efficiency views. Closing it removes those markers throughout the dashboard without fetching data or changing counts, open breakdowns, or selections. Unavailable values, coverage tooltips, and explanatory notes remain. The same message stays dismissed through tab changes and refreshes in that dashboard; changed warnings and newly opened dashboards restore the notice and relevant markers. Source-level omissions remain explained in the notice when the logs cannot identify which individual measurements they affect.
+The orange data coverage notice can be closed with its X button. While visible, asterisks identify known partial counts and measurements in cards, charts, tables, prompt averages, and Efficiency views. Closing it removes those markers throughout the dashboard without fetching data or changing counts, open breakdowns, or selections. Unavailable values, coverage tooltips, and explanatory notes remain. The same message stays dismissed through tab changes and refreshes in that dashboard; changed warnings and newly opened dashboards restore the notice and relevant markers. The banner includes source exclusions only when their recorded dates and filter metadata place them in the current view. Older issues, unknown dates or filter metadata, and unreadable sources do not activate it.
+
+**Review coverage**, in the banner and the footer, separates source exclusions into **In selected dates**, **Outside selected dates**, and **Cannot place in current view**. The read-only list shows the issue, count, recorded date span, and selectable file location, with 25 rows per page. Known environment/model/project/session mismatches are omitted; missing metadata stays in the unknown category. Malformed JSON is undated: file modification times are never used as usage dates. Summary-only sessions use observed session-start and latest summary dates, not dates of itemized charges; missing endpoints remain unknown. Sessions with receipt or database accounting are not labelled summary-only. Current prompt/measurement warnings retain their existing filtered accounting rules. All details reuse the current in-memory scan; opening or paging the review does not fetch, rescan, upload, or delete anything. Deleting a flagged file could also destroy valid usage, so cleanup is deliberately read-only.
+
 
 The decorative header has four buildings with fixed sizes and positions for the date-range presets:
 

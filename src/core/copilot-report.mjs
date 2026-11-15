@@ -3,6 +3,7 @@ import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
 import { environmentOf, environmentOptions, selectEnvironment } from './environments.mjs';
+import { summarizeCoverage } from './coverage.mjs';
 
 const MAX = Number.MAX_SAFE_INTEGER, NONE = Symbol('none');
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0,
@@ -322,6 +323,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   for (const name of toolProjects) projectOptionSet.add(name);
   for (const name of projectChoices.keys()) projectOptionSet.add(name);
   return {
+    coverageDetails: summarizeCoverage(activity.coverageEntries, activity.sources, { ...input, models: q.models }, activityStart, end, now),
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
     calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(calendarStart + i), ...finish(calendar.get(calendarStart + i) ?? bucket()) })),

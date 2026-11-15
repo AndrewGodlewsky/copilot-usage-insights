@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.84",
+    "summary": "Coverage warnings now follow the current filters. Review coverage shows older and undated issues with file locations, and sessions recovered from the usage database no longer appear as summary-only exclusions."
+  },
+  {
     "version": "0.1.83",
     "summary": "Show logs now retains saved server diagnostics even if the first usage load loses its connection. You can also load saved runtime logs directly in the panel and copy everything without using a terminal."
   },

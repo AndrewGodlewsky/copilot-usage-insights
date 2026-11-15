@@ -1,5 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeUsage, normalizeSessionName } from '../core/copilot.mjs';
+import { createCoverageCollector } from '../core/coverage.mjs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 export function readDesktopSessionNames(file, sessionIds) {
   let db;
@@ -54,20 +57,28 @@ export function readUsageDatabase(file, receiptSessions, source) {
 
 export function normalizeDatabaseRows(rows, projects, receiptSessions, source, supported) {
   const records = [], occurrences = new Map(), skillExcludedSessions = new Set();
+  const coverage = createCoverageCollector(source, path.join(source, 'session-store.db'));
   let unclassified = 0, invalid = 0;
   for (const row of rows) {
     if (receiptSessions.has(row.session_id)) continue;
     const fingerprint = JSON.stringify(['sqlite', row.session_id, row.created_at, row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_write_tokens, row.total_nano_aiu]);
     const n = occurrences.get(fingerprint) ?? 0; occurrences.set(fingerprint, n + 1);
     const context = projects.get(row.session_id);
+    const timestamp = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(row.created_at) ? row.created_at.replace(' ', 'T') + 'Z' : row.created_at;
     const result = normalizeUsage({ model: row.model, inputTokens: row.input_tokens, outputTokens: row.output_tokens, cacheReadTokens: row.cache_read_tokens, cacheWriteTokens: row.cache_write_tokens, reasoningTokens: row.reasoning_tokens, copilotUsage: row.total_nano_aiu === null ? undefined : { totalNanoAiu: row.total_nano_aiu } }, {
-      key: `${fingerprint}:${n}`, timestamp: /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(row.created_at) ? row.created_at.replace(' ', 'T') + 'Z' : row.created_at,
+      key: `${fingerprint}:${n}`, timestamp,
       sessionId: row.session_id, project: context?.repository ?? '', cwd: context?.cwd ?? '', source,
     });
     if (result.record) records.push(result.record);
     else if (result.reason === 'unclassified') unclassified++;
     else invalid++;
-    if (!result.record) skillExcludedSessions.add(row.session_id);
+    if (!result.record) {
+      skillExcludedSessions.add(row.session_id);
+      // Match usage deduplication without retaining its token-field fingerprint in coverage metadata.
+      const key = createHash('sha256').update(`${fingerprint}:${n}`).digest('hex');
+      coverage.add(result.reason || 'invalid', { key: `db:${key}`, timestamp,
+        sessionId: row.session_id, project: context?.repository || context?.cwd?.split(/[\\/]/).filter(Boolean).at(-1) || '', model: row.model || '' });
+    }
   }
-  return { records, unclassified, invalid, skillExcludedSessions: [...skillExcludedSessions], sessionNames: [...projects].map(([id, s]) => [id, normalizeSessionName(s.summary)]), warning: supported ? '' : 'Unsupported Copilot usage database schema' };
+  return { records, unclassified, invalid, coverageEntries: coverage.snapshot(), skillExcludedSessions: [...skillExcludedSessions], sessionNames: [...projects].map(([id, s]) => [id, normalizeSessionName(s.summary)]), warning: supported ? '' : 'Unsupported Copilot usage database schema' };
 }

@@ -9,6 +9,7 @@ import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 import { sourceIdentity, sourceEnvironment } from './source-paths.mjs';
 import { createVSCodeParser } from '../core/vscode.mjs';
+import { mergeCoverage } from '../core/coverage.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // File system calls wait on the operating system, so several session folders are read at once.
@@ -267,6 +268,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
     if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };
     const journals = merge.journals, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
+    const coverageEntries = snapshots.flatMap(s => s.coverageEntries || []);
     for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
     for (const { db, source } of databases) {
@@ -283,6 +285,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           for (const session of result.skillExcludedSessions) skillExcluded.add(session);
         }
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
+        for (const issue of result.coverageEntries || []) coverageEntries.push(issue);
         // The database is read afresh every scan; rows that have not changed keep their earlier objects.
         const before = fallback.get(db), rows = new Map();
         for (let r of result.records) {
@@ -302,6 +305,10 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     }
     fallback = kept;
     const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
+    const issues = mergeCoverage(coverageEntries, new Set([...journals.receiptSessions, ...databaseSessions]));
+    for (const kind of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools', 'aggregateOnly']) {
+      coverage[kind] = issues.reduce((total, issue) => total + (issue.kind === kind ? issue.count : 0), 0);
+    }
     for (const { record, owner } of journals.compactions) {
       // Whole-session DB fallback already includes compactions; never guess a cross-format row match.
       if (databaseSessions.has(record.sessionId)) continue;
@@ -326,11 +333,11 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     for (const r of journals.recordList) records[n++] = named(r);
     for (const r of extra.values()) records[n++] = named(r);
     for (const r of compactions) records[n++] = named(r);
-    const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage };
+    const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
     // Nothing changed: hand back the very same result, so everything derived from it stays valid.
     if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools
       && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)
-      && sameFields(previous.coverage, coverage) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
+      && sameFields(previous.coverage, coverage) && JSON.stringify(previous.coverageEntries) === JSON.stringify(issues) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
     if (previous && !renamed && sameList(previous.records, records)) result.records = previous.records;
     Object.defineProperty(result, 'cache', { value: cache });
     return previous = result;

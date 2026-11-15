@@ -28,6 +28,32 @@ const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'us
 const recordedValue = (row, key, format = number) => usageValue(row, key, format, !$('coverage').hidden);
 const markedValue = (value, incomplete, format = number) => coverageValue(value, incomplete, format, !$('coverage').hidden);
 let dismissedCoverage = '';
+let coveragePage = 0;
+const coverageKinds = { unclassified: 'No Copilot attribution', excluded: 'Custom provider / BYOK', invalid: 'Malformed usage record',
+  invalidSkills: 'Malformed skill event', invalidTools: 'Malformed tool event', aggregateOnly: 'Summary-only session' };
+function renderCoverageReview() {
+  const details = state.report?.coverageDetails || { counts: {}, rows: [], unreadable: [] };
+  $('coverage-current').textContent = $('coverage-message').textContent || 'No known coverage issues match the current view. This does not guarantee that all usage was recorded.';
+  const scope = $('coverage-scope').value, rows = details.rows.filter(row => row.scope === scope);
+  coveragePage = Math.min(coveragePage, Math.max(0, Math.ceil(rows.length / 25) - 1));
+  $('coverage-counts').textContent = ['current', 'outside', 'unknown'].map((key, i) => `${['In selected dates', 'Outside selected dates', 'Cannot place'][i]}: ${number(details.rows.filter(row => row.scope === key).reduce((n, row) => n + row.count, 0))}`).join(' · ');
+  $('coverage-rows').innerHTML = rows.length ? `<table><thead><tr><th>Issue / file</th><th>Count</th><th>Recorded dates</th></tr></thead><tbody>${rows.slice(coveragePage * 25, coveragePage * 25 + 25).map(row => `<tr><td>${esc(coverageKinds[row.kind] || row.kind)}<code>${esc(row.file || 'File unavailable')}</code></td><td>${number(row.count)}</td><td>${esc(row.from && row.to ? row.from === row.to ? row.from : `${row.from} – ${row.to}` : 'Date unknown')}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded issues in this category.</p>';
+  $('coverage-page').textContent = rows.length ? `${number(coveragePage + 1)} / ${number(Math.ceil(rows.length / 25))}` : '';
+  $('coverage-prev').disabled = !coveragePage;
+  $('coverage-next').disabled = (coveragePage + 1) * 25 >= rows.length;
+  $('coverage-unreadable').innerHTML = details.unreadable.length ? `<h3>Source availability</h3><p class="footnote">Source-wide warnings cannot always be assigned dates. See Local data sources for read errors and other limitations.</p>${details.unreadable.map(s => `<code>${esc(s.file)}</code>`).join('')}` : '';
+}
+function openCoverageReview() {
+  coveragePage = 0;
+  const rows = state.report?.coverageDetails?.rows || [];
+  $('coverage-scope').value = rows.some(row => row.scope === 'current') ? 'current' : rows.some(row => row.scope === 'unknown') ? 'unknown' : 'outside';
+  renderCoverageReview(); $('coverage-dialog').showModal();
+}
+$('coverage-review').onclick = $('coverage-open').onclick = openCoverageReview;
+$('coverage-close').onclick = () => $('coverage-dialog').close();
+$('coverage-scope').onchange = () => { coveragePage = 0; renderCoverageReview(); };
+$('coverage-prev').onclick = () => { coveragePage--; renderCoverageReview(); };
+$('coverage-next').onclick = () => { coveragePage++; renderCoverageReview(); };
 let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
 try { cachedServerDiagnostics = JSON.parse($('initial-diagnostics').textContent || 'null') || undefined; }
 catch { clientDiagnostics.record('warn', 'diagnostics.initial'); }
@@ -953,14 +979,17 @@ function renderContent() {
   if (interactions?.promptSamples > 0 && interactions.promptSamples < interactions.prompts) warnings.push('Some prompt lengths are not recorded');
   if (r.tools?.rows.some(row => row.unknown > 0)) warnings.push('Some tool calls have no recorded outcome');
   if (t.missingCache) warnings.push(`${number(t.missingCache)} requests have an unknown cache split`);
-  if (r.coverage.unclassified) warnings.push(`${number(r.coverage.unclassified)} records lack Copilot attribution and were excluded`);
-  if (r.coverage.excluded) warnings.push(`${number(r.coverage.excluded)} custom-provider or BYOK records were excluded`);
-  if (r.coverage.invalid) warnings.push(`${number(r.coverage.invalid)} malformed records were skipped`);
-  if (r.coverage.aggregateOnly) warnings.push(`${number(r.coverage.aggregateOnly)} sessions have summary totals only and are not counted`);
-  if (r.sources.some(s => ['error', 'warning', 'missing'].includes(s.state))) warnings.push('Some sources could not be fully read; see Local data sources');
+  const relevantCoverage = r.coverageDetails?.counts || {};
+  if (relevantCoverage.unclassified) warnings.push(`${number(relevantCoverage.unclassified)} records lack Copilot attribution and were excluded`);
+  if (relevantCoverage.excluded) warnings.push(`${number(relevantCoverage.excluded)} custom-provider or BYOK records were excluded`);
+  if (relevantCoverage.invalid) warnings.push(`${number(relevantCoverage.invalid)} malformed records were skipped`);
+  if (relevantCoverage.invalidSkills) warnings.push(`${number(relevantCoverage.invalidSkills)} malformed skill events were skipped`);
+  if (relevantCoverage.invalidTools) warnings.push(`${number(relevantCoverage.invalidTools)} malformed tool events were skipped`);
+  if (relevantCoverage.aggregateOnly) warnings.push(`${number(relevantCoverage.aggregateOnly)} sessions have summary totals only and are not counted`);
   const coverageMessage = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   $('coverage-message').textContent = coverageMessage;
   $('coverage').hidden = !warnings.length || coverageMessage === dismissedCoverage;
+  if ($('coverage-dialog').open) renderCoverageReview();
   renderHeaderCredits();
   const rateValue = (value, samples, total = t.requests) => markedValue(value, samples < total, creditNumber);
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
