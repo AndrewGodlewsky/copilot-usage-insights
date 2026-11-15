@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.81",
+    "summary": "Expand a skill to see its uses, failures, and sessions by project. Project rows stay aligned beneath the skill totals, and the copy button still lets you find its folder."
+  },
+  {
     "version": "0.1.80",
     "summary": "Skill-folder links respond faster when you open a recorded skill location. New folder-opening timings help diagnose any remaining delays."
   },

@@ -3,9 +3,8 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels, recordedSkillPath } from '../core/copilot-report.mjs';
+import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
-import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
@@ -25,7 +24,7 @@ function latestTime(scan) {
   }
   return latest;
 }
-export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
+export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
   scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources() });
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -203,14 +202,6 @@ export async function startServer({ settings = createSettings(), scanner, defaul
           });
           result.rows = result.rows.map(row => ({ ...row, prompt: prompts.get(row.id) }));
         }
-      } else if (message.method === 'skills.openFolder') {
-        if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
-        const config = await settings.get();
-        const { scan } = await readHistory(config);
-        const file = recordedSkillPath(scan.records, scan, input.id, now());
-        if (!file) throw new TypeError('This skill location is not available in the current sources. Refresh the dashboard and try again.');
-        await diagnostics.measure('skills.openFolder', {}, () => openFolder(file));
-        result = { ok: true };
       } else throw new TypeError('Unknown dashboard method');
       json(res, 200, result);
       if (message.method !== 'diagnostics.get') diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });

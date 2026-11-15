@@ -24,7 +24,7 @@ const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const AUTO_REFRESH_MS = 15 * 60 * 1000;
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
-const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, skillView: null, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const recordedValue = (row, key, format = number) => usageValue(row, key, format, !$('coverage').hidden);
 const markedValue = (value, incomplete, format = number) => coverageValue(value, incomplete, format, !$('coverage').hidden);
 let dismissedCoverage = '';
@@ -211,7 +211,7 @@ async function load(force = false, refresh = false) {
           $('live').textContent = 'Usage updated';
           continue;
         }
-        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.filterKey = filterKey; }
+        if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.skillView = null; state.filterKey = filterKey; }
         applyPreferences(report.preferences);
         state.creditsUnavailable = false;
         state.report = { ...report };
@@ -441,10 +441,24 @@ function skillFolder(file) {
   const root = end === 0 || (end === 2 && file[1] === ':');
   return file.slice(0, end + (root ? 1 : 0));
 }
-function skillName(skill) {
-  if (skill.unresolved) return `<span title="Failed loads recorded by name; no unique skill location, plugin, and version was identified in this session and project.">${esc(skill.name)} <span class="muted">(unresolved)</span></span>`;
-  if (!skill.path) return `<span title="Location not recorded">${esc(skill.name)}</span>`;
-  return `<span class="skill-actions"><button class="skill-link" data-skill-id="${esc(skill.id)}" data-skill-action="open" aria-label="Open folder for ${esc(skill.name)}" title="Open folder containing ${esc(skill.path)}">${esc(skill.name)}</button>${skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
+function skillName(skill, open) {
+  const hint = skill.unresolved ? 'Failed loads recorded by name; no unique skill location, plugin, and version was identified. Show statistics by project.' : 'Show statistics by project';
+  return `<span class="skill-actions"><button class="model-toggle skill-toggle" data-skill-id="${esc(skill.id)}" data-skill-action="toggle" aria-expanded="${open}"${open ? ' aria-controls="skill-project-rows"' : ''} aria-label="Projects for ${esc(skill.name)}" title="${hint}"><span aria-hidden="true">${open ? '\u25be' : '\u25b8'}</span> ${esc(skill.name)}${skill.unresolved ? ' <span class="muted">(unresolved)</span>' : ''}</button>${skill.path && !skill.unresolved && skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
+}
+function skillHeader(label) {
+  return `<tr><th scope="col">${label}</th><th scope="col" title="Recorded successful skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th scope="col" title="Uses explicitly requested by the user.">By user</th><th scope="col" title="Uses requested by the agent.">By agent</th><th scope="col">Sessions</th><th scope="col" title="Recorded failed attempts to load this skill.">Failures</th><th scope="col">Source plugin</th><th scope="col">Plugin version</th><th scope="col" title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th scope="col" title="Most recent recorded use or failed load.">Last used</th></tr>`;
+}
+function skillStats(row, skill = row) {
+  return `<td title="${esc(skillTriggerSummary(row))}">${number(row.invocations)}</td><td>${number(row.triggers?.manual ?? 0)}</td><td>${number(row.triggers?.agent ?? 0)}</td><td>${number(row.sessions)}</td><td>${number(row.failures ?? 0)}</td>${textCell(skill.plugin || '\u2014')}${textCell(skill.version || '\u2014')}${textCell(skill.installedVersion?.value ?? (skill.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(row.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(row.lastUsed)))}</td>`;
+}
+function skillTable(skills) {
+  return `<table><thead>${skillHeader('Skill')}</thead>${sortActivity(skills, $('skills-sort').value).map(skill => {
+    const open = state.skillView === skill.id;
+    const parent = `<tbody><tr><td class="text-cell" title="${esc(skill.name)}">${skillName(skill, open)}</td>${skillStats(skill)}</tr></tbody>`;
+    if (!open) return parent;
+    const projects = sortActivity(skill.projectRows || [], $('skills-sort').value);
+    return parent + `<tbody id="skill-project-rows" class="skill-projects" aria-label="Projects for ${esc(skill.name)}">${skillHeader('Project')}${projects.length ? projects.map(project => `<tr>${textCell(project.name)}${skillStats(project, skill)}</tr>`).join('') : '<tr><td colspan="10">No project statistics available. Refresh to update this skill.</td></tr>'}</tbody>`;
+  }).join('')}</table>`;
 }
 function skillTriggerSummary(skill) {
   const triggers = skill.triggers || { manual: 0, agent: 0, preloaded: 0, unknown: skill.invocations };
@@ -516,8 +530,9 @@ function renderBreakdownContent() {
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
   $('skills-summary').textContent = `${number(skills.invocations)} use${skills.invocations === 1 ? '' : 's'} · ${number(skills.failures ?? 0)} failure${skills.failures === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
-  $('skills').innerHTML = skills.rows.length ? `<table><thead><tr><th>Skill</th><th title="Recorded successful skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th title="Uses explicitly requested by the user.">By user</th><th title="Uses requested by the agent.">By agent</th><th>Sessions</th><th title="Recorded failed attempts to load this skill.">Failures</th><th>Source plugin</th><th>Plugin version</th><th title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th title="Most recent recorded use or failed load.">Last used</th></tr></thead><tbody>${sortActivity(skills.rows, $('skills-sort').value).map(s => `<tr><td class="text-cell" title="${esc(s.name)}"><span class="cell-text">${skillName(s)}</span></td><td title="${esc(skillTriggerSummary(s))}">${number(s.invocations)}</td><td>${number(s.triggers?.manual ?? 0)}</td><td>${number(s.triggers?.agent ?? 0)}</td><td>${number(s.sessions)}</td><td>${number(s.failures ?? 0)}</td>${textCell(s.plugin || '\u2014')}${textCell(s.version || '\u2014')}${textCell(s.installedVersion?.value ?? (s.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(s.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(s.lastUsed)))}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No recorded skill uses or failed loads match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
-  if (focusedSkill) [...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction)?.focus({ preventScroll: true });
+  if (state.skillView && !skills.rows.some(skill => skill.id === state.skillView)) state.skillView = null;
+  $('skills').innerHTML = skills.rows.length ? skillTable(skills.rows) : '<p class="muted">No recorded skill uses or failed loads match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  if (focusedSkill) ([...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction) || $('skills-sort')).focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} skill uses omitted because their sessions have missing or mixed provider attribution.`);
   if (skills.omittedFailures) coverage.push(`${number(skills.omittedFailures)} failed skill loads omitted because their sessions have missing or mixed provider attribution.`);
@@ -1080,27 +1095,27 @@ for (const id of ['skills-sort', 'plugins-sort', 'mcp-sort']) $(id).onchange = r
 for (const id of ['models-sort', 'projects-sort']) $(id).onchange = render;
 $('skills').onclick = async event => {
   const button = event.target.closest('[data-skill-id]');
-  if (!button || state.skillActionPending) return;
+  if (!button) return;
   const skill = state.report.skills.rows.find(s => s.id === button.dataset.skillId);
-  if (!skill?.path) return;
-  const copy = button.dataset.skillAction === 'copy';
+  if (!skill) return;
+  if (button.dataset.skillAction === 'toggle') {
+    state.skillView = state.skillView === skill.id ? null : skill.id;
+    renderBreakdown();
+    return;
+  }
+  if (button.dataset.skillAction !== 'copy' || !skill.path || skill.unresolved || state.skillActionPending) return;
   state.skillActionPending = true;
   button.setAttribute('aria-busy', 'true');
   const status = $('skill-folder-status');
   status.hidden = true;
   status.textContent = '';
-  $('live').textContent = `${copy ? 'Copying folder path' : 'Opening folder'} for ${skill.name}…`;
+  $('live').textContent = `Copying folder path for ${skill.name}…`;
   try {
-    if (copy) {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this window.');
-      await navigator.clipboard.writeText(skillFolder(skill.path));
-      $('live').textContent = `Folder path copied for ${skill.name}.`;
-    } else {
-      await request('skills.openFolder', { id: button.dataset.skillId });
-      $('live').textContent = 'Folder request sent to your file manager.';
-    }
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this window.');
+    await navigator.clipboard.writeText(skillFolder(skill.path));
+    $('live').textContent = `Folder path copied for ${skill.name}.`;
   }
-  catch (error) { clientDiagnostics.record('error', 'ui.skillAction', { action: copy ? 'copy' : 'open', ...diagnosticError(error) }); status.hidden = false; status.textContent = `Could not ${copy ? 'copy folder path' : 'open skill folder'}: ${error.message}`; }
+  catch (error) { clientDiagnostics.record('error', 'ui.skillAction', { action: 'copy', ...diagnosticError(error) }); status.hidden = false; status.textContent = `Could not copy folder path: ${error.message}`; }
   finally { state.skillActionPending = false; button.removeAttribute('aria-busy'); }
 };
 $('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };

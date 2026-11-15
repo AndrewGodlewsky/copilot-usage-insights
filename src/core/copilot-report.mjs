@@ -55,14 +55,6 @@ function copilotSessionsAt(records, nowMs) {
 }
 const skillIdentity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
 
-// Folder actions need only recorded identity/provider evidence, not a full usage report.
-export function recordedSkillPath(records, activity, id, now = new Date()) {
-  const nowMs = now.getTime(), sessions = copilotSessionsAt(records, nowMs);
-  const excluded = new Set(activity.skillExcludedSessions || []);
-  return (activity.skills || []).find(skill => skill.ms <= nowMs && sessions.has(skill.sessionId) &&
-    !excluded.has(skill.sessionId) && skillIdentity(skill) === id)?.path || '';
-}
-
 function skillReport(copilotSessions, activity, input, start, end, now) {
   const nowMs = now.getTime();
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
@@ -73,14 +65,21 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     const day = dayOfMs(event.ms);
     return day >= start && day <= end && (!input.project || input.project === event.project) && (!input.session || input.session === event.sessionId);
   };
-  function rowFor(skill, event) {
+  const counts = event => ({ invocations: 0, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), lastUsed: event.ts });
+  function recordSkill(skill, event, failed = false) {
     const key = skill.unresolved ? JSON.stringify(['skill-load-failure', skill.name]) : skillIdentity(skill);
     if (!groups.has(key)) groups.set(key, { id: key, name: skill.name, plugin: skill.plugin || '', version: skill.version || '', path: skill.path || '', unresolved: !!skill.unresolved,
-      invocations: 0, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 0, unknown: 0 }, sessions: new Set(), projects: new Set(), lastUsed: event.ts });
+      ...counts(event), projects: new Map() });
     const row = groups.get(key);
-    row.sessions.add(event.sessionId); row.projects.add(event.project); sessions.add(event.sessionId);
-    if (event.ts > row.lastUsed) row.lastUsed = event.ts;
-    return row;
+    if (!row.projects.has(event.project)) row.projects.set(event.project, { name: event.project, ...counts(event) });
+    const trigger = event.trigger === 'user-invoked' ? 'manual' : event.trigger === 'agent-invoked' ? 'agent' : event.trigger === 'context-load' ? 'preloaded' : 'unknown';
+    for (const target of [row, row.projects.get(event.project)]) {
+      target.sessions.add(event.sessionId);
+      if (event.ts > target.lastUsed) target.lastUsed = event.ts;
+      if (failed) target.failures++;
+      else { target.invocations++; target.triggers[trigger]++; }
+    }
+    sessions.add(event.sessionId);
   }
   let invocations = 0, failures = 0, omitted = 0, omittedFailures = 0;
   for (const skill of activity.skills || []) {
@@ -96,10 +95,7 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     if (!matching(skill)) continue;
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
     if (!known) { omitted++; continue; }
-    const row = rowFor(skill, skill);
-    row.invocations++;
-    const trigger = skill.trigger === 'user-invoked' ? 'manual' : skill.trigger === 'agent-invoked' ? 'agent' : skill.trigger === 'context-load' ? 'preloaded' : 'unknown';
-    row.triggers[trigger]++;
+    recordSkill(skill, skill);
     invocations++;
   }
   for (const tool of activity.tools || []) {
@@ -111,11 +107,12 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     if (!attributed(tool)) { omittedFailures++; continue; }
     const identities = candidates.get(scope(tool, tool.skillName));
     const skill = identities?.size === 1 ? identities.values().next().value : { name: tool.skillName || 'Unknown skill', unresolved: true };
-    rowFor(skill, tool).failures++;
+    recordSkill(skill, tool, true);
     failures++;
   }
-  const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size }))
-    .sort((a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name));
+  const ranked = (a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name);
+  const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size,
+    projectRows: [...row.projects.values()].map(project => ({ ...project, sessions: project.sessions.size })).sort(ranked) })).sort(ranked);
   return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, projectOptions: [...projectOptions] };
 }
 

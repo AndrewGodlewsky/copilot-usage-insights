@@ -1488,7 +1488,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   assert.equal(get('skills-summary').textContent, '5 uses · 0 failures · 1 session');
   assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
   assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 1; Unknown: 1"/);
-  assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|Projects|<hello-test>/);
+  assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|<th[^>]*>Projects<|<hello-test>/);
   assert.ok(!nodes.has('skill-details'));
   await get('refresh').onclick();
   assert.match(get('skills').innerHTML, /Source plugin/);
@@ -1525,13 +1525,14 @@ test('skills table keeps ten aligned columns and makes unresolved failures reada
   await get('refresh').onclick();
   const html = get('skills').innerHTML;
   assert.ok(html.includes('title="Recorded failed attempts to load this skill.">Failures</th>'));
-  const rows = html.split('<tbody>')[1].split('</tbody>')[0].split('<tr>').slice(1);
+  const rows = [...html.matchAll(/<tbody><tr>(.*?)<\/tr><\/tbody>/g)].map(([, row]) => row);
   assert.equal(rows.length, 2);
   for (const row of rows) assert.equal(row.split('<td').length - 1, 10, 'every row keeps a cell beneath each header');
-  assert.ok(rows[0].includes('data-skill-action="open"'));
+  assert.ok(rows[0].includes('data-skill-action="toggle"'));
   assert.ok(rows[1].includes('&lt;missing-skill-with-a-long-requested-name&gt;'));
   assert.ok(rows[1].includes('(unresolved)'));
-  assert.ok(!rows[1].includes('data-skill-action='), 'missing locations have no open or copy actions');
+  assert.ok(rows[1].includes('data-skill-action="toggle"'), 'missing locations can still expand project statistics');
+  assert.ok(!rows[1].includes('data-skill-action="copy"'), 'missing locations have no copy action');
   assert.ok(rows[1].includes('<td>0</td><td>0</td><td>1</td><td>1</td>'), 'failure-only row shows zero trigger counts, one session, and one failure');
   assert.ok(get('skills-summary').textContent.includes('2 failures'));
   assert.ok(!html.includes('<th>Projects</th>'));
@@ -1572,6 +1573,67 @@ test('MCP and plugin tables distinguish live inventory from filtered usage and e
   assert.match(get('plugins').innerHTML, /unavailable/i);
 });
 
+test('skills expand aligned project statistics locally, preserve focus and refresh, and keep copying separate', async () => {
+  const timestamp = new Date().toISOString();
+  const counts = { invocations: 3, failures: 1, triggers: { manual: 2, agent: 1, preloaded: 0, unknown: 0 }, sessions: 2, lastUsed: timestamp };
+  const longProject = '<project & ' + 'long-'.repeat(30) + '>';
+  const known = { id: 'known', name: 'Known <skill>', path: 'C:\\skills\\known\\SKILL.md', plugin: 'team-tools', version: '2.0',
+    installedVersion: { value: '1.0', status: 'available' }, ...counts, projectRows: [{ name: longProject, ...counts }] };
+  const unknown = { id: 'unknown', name: 'Missing skill', unresolved: true, ...counts, invocations: 0,
+    projectRows: [{ name: 'Failure project', ...counts, invocations: 0 }] };
+  const report = { ...buildReport([], {}), sources: [], coverage: {}, skills: { invocations: 3, failures: 2, sessions: 2, rows: [known, unknown] } };
+  const { get, requests, server, document } = await mountPanel(report);
+  const requestsBefore = requests.length;
+  let focusCount = 0;
+  const button = (skillId, skillAction = 'toggle') => ({ dataset: { skillId, skillAction }, setAttribute() {}, removeAttribute() {},
+    focus() { focusCount++; document.activeElement = this; } });
+  const toggle = button('known'), copy = button('known', 'copy'), unresolved = button('unknown');
+  get('skills').querySelectorAll = () => [toggle, copy, unresolved].filter(control => report.skills.rows.some(skill => skill.id === control.dataset.skillId));
+  const click = async control => { document.activeElement = control; await get('skills').onclick({ target: { closest: () => control } }); };
+  assert.doesNotMatch(get('skills').innerHTML, /skill-project-rows|data-skill-action="open"/);
+  await click(toggle);
+  let html = get('skills').innerHTML;
+  assert.match(html, /aria-expanded="true" aria-controls="skill-project-rows"/);
+  assert.match(html, /id="skill-project-rows" class="skill-projects"/);
+  assert.match(html, /aria-label="Projects for Known &lt;skill&gt;"/);
+  assert.match(html, /<th scope="col">Project<\/th>/);
+  assert.ok(html.includes('&lt;project &amp; '));
+  assert.doesNotMatch(html, /<project|<skill>/);
+  assert.equal((html.match(/<table>/g) || []).length, 1, 'expanded rows share the original table columns');
+  const body = html.split('class="skill-projects"')[1].split('</tbody>')[0];
+  assert.equal((body.match(/<th /g) || []).length, 10);
+  assert.equal((body.match(/<td(?:\s|>)/g) || []).length, 10);
+  assert.ok(focusCount > 0);
+  assert.equal(document.activeElement, toggle);
+  await click(copy);
+  assert.deepEqual(server.copied, ['C:\\skills\\known']);
+  assert.match(get('skills').innerHTML, /skill-project-rows/, 'copying does not collapse the skill');
+  server.clipboardError = true;
+  await click(copy);
+  assert.match(get('skill-folder-status').textContent, /Could not copy folder path/);
+  get('skills-sort').value = 'failures'; get('skills-sort').onchange();
+  assert.match(get('skills').innerHTML, /skill-project-rows/, 'sort keeps the expanded skill');
+  await click(toggle);
+  assert.doesNotMatch(get('skills').innerHTML, /skill-project-rows/);
+  await click(unresolved);
+  assert.match(get('skills').innerHTML, /Failure project/);
+  assert.doesNotMatch(get('skills').innerHTML, /aria-label="Copy folder path for Missing skill"/);
+  assert.equal(requests.length, requestsBefore, 'expanding, sorting and copying issue no API calls');
+  await click(toggle);
+  known.projectRows[0].invocations = 4;
+  await get('refresh').onclick();
+  assert.match(get('skills').innerHTML, /skill-project-rows/);
+  assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 0; Unknown: 0">4<\/td>/);
+  get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.doesNotMatch(get('skills').innerHTML, /skill-project-rows/, 'changing filters closes the old breakdown');
+  await click(toggle);
+  report.skills.rows = [unknown];
+  await get('refresh').onclick();
+  assert.doesNotMatch(get('skills').innerHTML, /skill-project-rows/);
+  assert.equal(document.activeElement, get('skills-sort'), 'removed skills leave focus on the sort control');
+  assert.ok(!requests.some(r => r.method === 'skills.openFolder'));
+});
+
 test('detail panels sort independently and preserve choices and report data across refreshes', async () => {
   const older = '2026-11-13T10:00:00Z', newer = '2026-11-14T10:00:00Z';
   const report = { ...buildReport([], { range: '1d' }), sources: [], coverage: {} };
@@ -1592,7 +1654,7 @@ test('detail panels sort independently and preserve choices and report data acro
   ] };
   const original = structuredClone(report);
   const { get, requests } = await mountPanel(report);
-  const names = id => [...get(id).innerHTML.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) => id === 'mcp' ? cell.match(/<summary[^>]*>(.*?)<\/summary>/)[1] : cell.replace(/<[^>]*>/g, ''));
+  const names = id => [...get(id).innerHTML.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) => id === 'mcp' ? cell.match(/<summary[^>]*>(.*?)<\/summary>/)[1] : cell.replace(/<span aria-hidden="true">.*?<\/span> /g, '').replace(/<[^>]*>/g, ''));
   const sort = (id, key) => { get(`${id}-sort`).value = key; get(`${id}-sort`).onchange(); };
   assert.deepEqual(names('skills'), ['Zulu skill', 'Alpha skill', 'Beta skill']);
   assert.deepEqual(names('plugins'), ['Alpha plugin', 'Beta plugin', 'Zulu plugin']);

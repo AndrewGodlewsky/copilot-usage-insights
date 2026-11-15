@@ -6,9 +6,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
-import { buildReport, recordedSkillPath } from '../src/core/copilot-report.mjs';
+import { buildReport } from '../src/core/copilot-report.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
-import { createDiagnostics } from '../src/core/diagnostics.mjs';
 
 const now = new Date(2026, 10, 13, 12);
 const timestamp = new Date(2026, 10, 13, 10).toISOString();
@@ -221,105 +220,6 @@ test('skill triggers count manual, agent, preloaded, and unknown activations wit
   assert.equal(report(snapshot, { models: ['another-model'] }).skills.rows[0].triggers.manual, 2);
 });
 
-test('folder API opens only an attributed recorded row from enabled sources', async t => {
-  let snapshot = parse([usage(), skill()]);
-  const opened = [];
-  const server = await startServer({ html: '', now: () => now, defaultHome: 'fixture',
-    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
-    scanner: { scan: async () => ({ ...snapshot, sources: [], coverage: {} }) },
-    openFolder: async file => opened.push(file),
-  });
-  t.after(() => server.close());
-  const request = (input, origin) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify({ method: 'skills.openFolder', input }) });
-  const refresh = () => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.refresh', input: { range: 'all' } }) });
-  const id = report(snapshot).skills.rows[0].id;
-  assert.equal((await request({ id })).status, 200);
-  assert.deepEqual(opened, [skill().data.path]);
-  assert.equal((await request({ id: 'invented' })).status, 400);
-  assert.equal((await request({ id, path: '/arbitrary/path' })).status, 400);
-  assert.equal((await request({ id }, 'https://example.com')).status, 403);
-  snapshot = parse([usage({ isByok: true }), skill()]);
-  await refresh();
-  assert.equal((await request({ id })).status, 400);
-  snapshot = parse([]);
-  await refresh();
-  assert.equal((await request({ id })).status, 400);
-  snapshot = parse([usage(), loadStart('missing', 'missing-skill'), loadEnd('missing')]);
-  await refresh();
-  const failureId = report(snapshot).skills.rows[0].id;
-  assert.equal((await request({ id: failureId })).status, 400, 'failure-only rows without paths cannot launch a folder');
-  assert.equal(opened.length, 1);
-});
-
-test('opening a displayed skill reuses history without scanning or building another full report', async t => {
-  const snapshot = parse([usage(), skill()]);
-  const diagnostics = createDiagnostics();
-  let scans = 0, opened = 0, checkLookups = false;
-  // Efficiency/report-only activity must not be revisited just to open a folder.
-  const scan = { ...snapshot, sources: [], coverage: {}, get interactions() {
-    assert.equal(checkLookups, false, 'folder clicks must not rebuild the dashboard report');
-    return [];
-  } };
-  const server = await startServer({ html: '', now: () => now, defaultHome: 'fixture', diagnostics,
-    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
-    scanner: { scan: async () => { scans++; return scan; } },
-    openFolder: async () => { opened++; },
-  });
-  t.after(() => server.close());
-  const request = (method, input) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
-  const response = await request('usage.report', { range: '1d' });
-  const id = (await response.json()).skills.rows[0].id;
-  checkLookups = true;
-  for (let i = 0; i < 3; i++) {
-    assert.equal((await request('skills.openFolder', { id })).status, 200);
-    assert.equal(scans, 1, 'folder clicks must not rescan usage history');
-  }
-  assert.equal(opened, 3);
-  const entries = diagnostics.snapshot().entries;
-  assert.equal(entries.filter(e => e.event === 'skills.openFolder' && e.phase === 'finished').length, 3);
-  assert.ok(!JSON.stringify(entries).includes('skill-fixture'), 'folder timings must not record paths');
-});
-
-test('folder lookup keeps skill identity and provider rules without calculating usage', () => {
-  const other = path.join(os.tmpdir(), 'other-skill', 'SKILL.md');
-  const snapshot = parse([usage(), skill(), skill('other', { path: other }),
-    skill('version', { pluginVersion: '2.0' }), skill('no-path', { path: undefined }),
-    { ...skill('future', { path: path.join(os.tmpdir(), 'future-skill', 'SKILL.md') }), timestamp: new Date(now.getTime() + 1000).toISOString() },
-    loadStart('unresolved', 'not-recorded'), loadEnd('unresolved')]);
-  for (const row of report(snapshot).skills.rows) {
-    assert.equal(recordedSkillPath(snapshot.records, snapshot, row.id, now), row.path);
-  }
-  const id = report(parse([usage(), skill()])).skills.rows[0].id;
-  assert.equal(recordedSkillPath([], snapshot, id, now), '');
-  assert.equal(recordedSkillPath(snapshot.records.map(r => ({ ...r, ms: now.getTime() + 1 })), snapshot, id, now), '');
-  assert.equal(recordedSkillPath(snapshot.records, { ...snapshot, skillExcludedSessions: ['s1'] }, id, now), '');
-  const future = snapshot.skills.find(s => s.ms > now.getTime());
-  const futureId = JSON.stringify([future.name, future.plugin, future.version, future.path]);
-  assert.equal(recordedSkillPath(snapshot.records, snapshot, futureId, now), '');
-});
-
-test('changing source settings revalidates folder actions and rejects disabled sources', async t => {
-  const snapshot = parse([usage(), skill()]);
-  let config = { extraHomes: [], disabledHomes: [] }, scans = 0, opened = 0;
-  const server = await startServer({ html: '', now: () => now, defaultHome: 'fixture',
-    settings: { get: async () => config },
-    scanner: { scan: async (roots, options) => {
-      scans++;
-      return { ...(options.disabled.includes('fixture') ? parse([]) : snapshot), sources: [], coverage: {} };
-    } },
-    openFolder: async () => { opened++; },
-  });
-  t.after(() => server.close());
-  const id = report(snapshot).skills.rows[0].id;
-  const open = () => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'skills.openFolder', input: { id } }) });
-  assert.equal((await open()).status, 200);
-  config = { ...config, disabledHomes: ['fixture'] };
-  assert.equal((await open()).status, 400);
-  assert.equal((await open()).status, 400);
-  assert.equal(scans, 2);
-  assert.equal(opened, 1);
-});
-
 test('skill reports group by name/plugin/version and respect event dates, project and session', () => {
   const snapshot = parse([usage(), skill(), skill('k2'), skill('k3', { pluginName: 'other-tools' }),
     { ...skill('yesterday'), timestamp: new Date(2026, 10, 12, 10).toISOString() },
@@ -335,6 +235,45 @@ test('skill reports group by name/plugin/version and respect event dates, projec
   assert.equal(report(snapshot, { session: 'different' }).skills.invocations, 0);
   assert.equal(report(snapshot, { range: 'all' }).skills.invocations, 5);
   assert.equal(report(snapshot, { models: ['another-model'] }).skills.invocations, 4, 'model filtering does not infer skill attribution');
+});
+
+test('skill project rows reconcile uses, triggers and failures with distinct sessions and active filters', () => {
+  const otherPath = path.join(os.tmpdir(), 'separate-skill', 'SKILL.md');
+  const snapshot = parse([usage(), skill('manual', { trigger: 'user-invoked' }), skill('manual', { trigger: 'user-invoked' }),
+    skill('agent', { trigger: 'agent-invoked' }), loadStart('failed'), loadEnd('failed'), loadEnd('failed'),
+    { type: 'session.context_changed', data: { repository: 'project-two' } },
+    skill('preloaded', { trigger: 'context-load' }), skill('unknown'), loadStart('missing', 'missing'), loadEnd('missing'),
+    { ...skill('yesterday'), timestamp: new Date(2026, 10, 12, 10).toISOString() },
+    { ...skill('future'), timestamp: new Date(2026, 10, 13, 13).toISOString() },
+    skill('other-path', { path: otherPath }), skill('other-plugin', { pluginName: 'other-plugin' }), skill('other-version', { pluginVersion: '2.0' })]);
+  const second = createReceiptParser({ sessionId: 's2', source: 'fixture' });
+  [{ ...start, data: { ...start.data, sessionId: 's2' } }, usage(), skill('manual', { trigger: 'user-invoked' })].forEach(e => second.push(JSON.stringify(e)));
+  const extra = second.snapshot();
+  for (const key of ['records', 'skills', 'tools']) snapshot[key] = [
+    ...snapshot[key].map(e => ({ ...e, environment: 'windows' })), ...extra[key].map(e => ({ ...e, environment: 'wsl:test' }))];
+  const result = report(snapshot), row = result.skills.rows.find(s => s.path === skill().data.path && s.plugin === 'team-tools' && s.version === '1.2.3');
+  assert.equal(row.invocations, 5);
+  assert.equal(row.failures, 1);
+  assert.equal(row.sessions, 2, 'one session visiting two projects still counts once in the parent');
+  assert.equal(row.projects, 2);
+  assert.deepEqual(row.projectRows, [
+    { name: 'project-one', invocations: 3, failures: 1, triggers: { manual: 2, agent: 1, preloaded: 0, unknown: 0 }, sessions: 2, lastUsed: timestamp },
+    { name: 'project-two', invocations: 2, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 1, unknown: 1 }, sessions: 1, lastUsed: timestamp },
+  ]);
+  for (const parent of result.skills.rows) {
+    for (const key of ['invocations', 'failures']) assert.equal(parent.projectRows.reduce((n, p) => n + p[key], 0), parent[key]);
+    for (const key of ['manual', 'agent', 'preloaded', 'unknown']) assert.equal(parent.projectRows.reduce((n, p) => n + p.triggers[key], 0), parent.triggers[key]);
+  }
+  const missing = result.skills.rows.find(s => s.name === 'missing');
+  assert.equal(missing.unresolved, true);
+  assert.deepEqual(missing.projectRows.map(p => [p.name, p.invocations, p.failures]), [['project-two', 0, 1]]);
+  const find = input => report(snapshot, input).skills.rows.find(s => s.id === row.id);
+  assert.deepEqual(find({ project: 'project-two' }).projectRows, [row.projectRows[1]]);
+  assert.equal(find({ session: 's2' }).projectRows[0].invocations, 1);
+  assert.deepEqual(find({ models: ['not-used'] }).projectRows, row.projectRows, 'existing skills model-filter behavior is unchanged');
+  assert.equal(find({ environment: 'wsl:test' }).projectRows[0].invocations, 1);
+  assert.equal(find({ range: 'all' }).projectRows.find(p => p.name === 'project-two').invocations, 3);
+  assert.equal(report({ ...snapshot, skillExcludedSessions: ['s1', 's2'] }).skills.rows.length, 0);
 });
 
 test('unattributed and mixed-provider skill sessions are omitted with coverage counts', () => {
