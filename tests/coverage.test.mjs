@@ -65,6 +65,132 @@ test('summary sessions use observed start and summary dates, preserve fast parsi
   assert.equal(report({ coverageEntries: copies }).counts.aggregateOnly, 1, 'a later summary in a copy extends the observed span');
 });
 
+test('empty zero-credit checkpoints do not imply missing usage, while uncertain or active summaries still do', () => {
+  const empty = { totalNanoAiu: 0, totalPremiumRequests: 0, totalApiDurationMs: 0, conversationTokens: 0, modelMetrics: {} };
+  const cases = [
+    ['empty', empty, false], ['minimal empty', { totalNanoAiu: 0 }, false],
+    ['charged', { ...empty, totalNanoAiu: 1 }, true], ['unknown', {}, true],
+    ...[null, false, '', '0', -1].map(value => ['invalid credit total', { ...empty, totalNanoAiu: value }, true]),
+    ['premium request', { ...empty, totalPremiumRequests: 1 }, true],
+    ['unknown premium requests', { ...empty, totalPremiumRequests: null }, true],
+    ['free tokens', { ...empty, conversationTokens: 300 }, true],
+    ['model call duration', { ...empty, totalApiDurationMs: 12 }, true],
+    ['model metrics', { ...empty, modelMetrics: { Model: { inputTokens: 300 } } }, true],
+    ['unknown model metrics', { ...empty, modelMetrics: null }, true],
+    ['empty provider metrics', { ...empty, providerModelMetrics: [] }, false],
+    ['provider usage', { ...empty, providerModelMetrics: [{ modelId: 'free-model', metrics: { requests: { count: 1 } } }] }, true],
+    ['unknown provider metrics', { ...empty, providerModelMetrics: null }, true],
+    ['malformed provider metrics', { ...empty, providerModelMetrics: {} }, true],
+    ...['agentMetrics', 'tokenDetails', 'usageAccountingWatermarks'].flatMap(key => [
+      ['empty ' + key, { ...empty, [key]: {} }, false],
+      ['recorded ' + key, { ...empty, [key]: { main: 1 } }, true],
+      ['unknown ' + key, { ...empty, [key]: null }, true],
+    ]),
+    ['nested zero is not a total', { payload: empty }, true],
+  ];
+  for (const [name, data, expected] of cases) for (const type of ['session.shutdown', 'session.usage_checkpoint']) {
+    const events = [start, { type: 'permission.requested', data: { kind: 'extension-permission-access' } }, { type, timestamp: at(15), data }];
+    const full = parse(events), fast = parse(events, true);
+    assert.deepEqual(fast.coverageEntries, full.coverageEntries, name);
+    for (const snapshot of [full, fast]) {
+      assert.equal(snapshot.aggregateOnly, expected, name);
+      assert.equal(snapshot.coverageEntries.filter(e => e.kind === 'aggregateOnly').length, Number(expected), name);
+      assert.equal(snapshot.records.length, 0, 'summaries never become receipts');
+    }
+  }
+  const zero = { type: 'session.shutdown', timestamp: at(15), data: empty };
+  for (const skipUnused of [false, true]) {
+    for (const type of ['user.message', 'assistant.message', 'assistant.turn_start', 'tool.execution_start', 'session.compaction_start', 'session.compaction_complete']) {
+      for (const events of [[start, { type, timestamp: at(15), data: {} }, zero], [start, zero, { type, timestamp: at(15), data: {} }]]) {
+        assert.equal(parse(events, skipUnused).aggregateOnly, true, type + ' is not an empty session');
+      }
+    }
+    for (const data of [{ totalNanoAiu: 7 }, {}]) {
+      const warning = { ...zero, data };
+      assert.equal(parse([start, zero, warning, zero], skipUnused).aggregateOnly, true, 'later zeros do not erase earlier usage or uncertainty');
+    }
+    const padded = { ...zero, data: { padding: 'PRIVATE'.repeat(10000), ...empty } };
+    assert.equal(parse([start, padded], skipUnused).aggregateOnly, false, 'compact summaries inspect fields beyond a fixed prefix');
+    assert.equal(parse([start, JSON.stringify(padded, null, 1)], skipUnused).aggregateOnly, false, 'field order, payload length and whitespace do not change the classification');
+    const receipt = { type: 'session.usage_record', id: 'r', timestamp: at(15), data: { usage: {
+      model: 'Model', provider: { kind: 'copilot' }, inputTokens: 3, outputTokens: 2, copilotUsage: { totalNanoAiu: 0 },
+    } } };
+    const snapshot = parse([start, zero, receipt, summary(at(15))], skipUnused);
+    assert.equal(snapshot.aggregateOnly, false);
+    assert.equal(snapshot.records.length, 1);
+    assert.equal(snapshot.records[0].nanoAiu, 0, 'free itemized usage is retained');
+  }
+});
+
+test('zero-summary classification updates incrementally even when the checkpoint timestamp stays the same', () => {
+  for (const skipUnused of [false, true]) {
+    const parser = createReceiptParser({ sessionId: 's', source: '/home', skipUnused });
+    parser.push(JSON.stringify(start));
+    const zero = { type: 'session.shutdown', timestamp: at(15), data: { totalNanoAiu: 0 } };
+    parser.push(JSON.stringify(zero));
+    assert.equal(parser.snapshot().aggregateOnly, false);
+    const before = parser.revision();
+    parser.push(JSON.stringify({ ...zero, data: { totalNanoAiu: 1 } }));
+    assert.ok(parser.revision() > before, 'coverage-only changes invalidate the scanner snapshot');
+    assert.equal(parser.snapshot().aggregateOnly, true);
+    const after = parser.revision();
+    parser.push(JSON.stringify(zero));
+    assert.equal(parser.revision(), after, 'replays do not repeatedly invalidate the snapshot');
+    assert.equal(parser.snapshot().aggregateOnly, true);
+  }
+});
+
+test('scanner omits empty summaries from coverage, deduplicates real gaps and picks up resumed activity', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'empty-summary-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const zero = { type: 'session.shutdown', timestamp: at(15), data: { totalNanoAiu: 0, totalPremiumRequests: 0 } };
+  const write = async (folder, id, data) => {
+    const file = path.join(root, 'session-state', folder, 'events.jsonl');
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, [JSON.stringify({ ...start, data: { ...start.data, sessionId: id } }), JSON.stringify({ ...zero, data })].join('\n') + '\n');
+    return file;
+  };
+  const file = await write('s', 's', zero.data);
+  await write('empty-copy', 's', zero.data);
+  const scanner = createScanner({ skipUnused: true });
+  const empty = await scanner.scan([root]);
+  assert.equal(empty.coverage.aggregateOnly, 0);
+  assert.equal(report(empty).rows.length, 0, 'empty sessions are absent from the read-only coverage list');
+  assert.equal(empty.records.length, 0);
+  assert.strictEqual(await scanner.scan([root]), empty);
+  await write('charged', 'charged', { totalNanoAiu: 30 });
+  await write('charged-copy', 'charged', { totalNanoAiu: 30 });
+  await write('unknown', 'unknown', {});
+  const gaps = await scanner.scan([root]);
+  assert.equal(gaps.coverage.aggregateOnly, 2);
+  assert.equal(report(gaps).counts.aggregateOnly, 2);
+  await fs.appendFile(file, JSON.stringify({ ...zero, data: { totalNanoAiu: 50 } }) + '\n');
+  const resumed = await scanner.scan([root]);
+  assert.equal(resumed.coverage.aggregateOnly, 3, 'an unchanged zero-only copy does not hide resumed usage');
+  assert.equal(report(resumed).counts.aggregateOnly, 3);
+  assert.strictEqual(await scanner.scan([root]), resumed);
+  const partial = await write('partial-summary', 'partial', zero.data);
+  const activityFile = path.join(root, 'session-state', 'partial-activity', 'events.jsonl');
+  await fs.mkdir(path.dirname(activityFile), { recursive: true });
+  await fs.writeFile(activityFile, [
+    { ...start, data: { ...start.data, sessionId: 'partial' } },
+    { type: 'user.message', id: 'message', timestamp: at(15), data: { content: 'PRIVATE' } },
+  ].map(e => JSON.stringify(e)).join('\n') + '\n');
+  const split = await scanner.scan([root]);
+  assert.equal(split.coverage.aggregateOnly, 4, 'activity in a partial copy prevents classifying the session as empty');
+  assert.equal(report(split).rows.some(r => r.file === partial), true);
+  const receipt = { type: 'session.usage_record', id: 'r', timestamp: at(15), data: { usage: {
+    model: 'Model', provider: { kind: 'copilot' }, inputTokens: 3, outputTokens: 2, copilotUsage: { totalNanoAiu: 0 },
+  } } };
+  await fs.appendFile(activityFile, JSON.stringify(receipt) + '\n');
+  const accounted = await scanner.scan([root]);
+  assert.equal(accounted.coverage.aggregateOnly, 3, 'receipts in another copy still take precedence');
+  const fresh = await createScanner({ skipUnused: true }).scan([root]);
+  assert.deepEqual(accounted.coverage, fresh.coverage);
+  assert.deepEqual(report(accounted), report(fresh));
+  assert.equal(buildReport(resumed.records, {}, now, resumed).totals.requests, 0, 'summaries do not invent model turns or charges');
+});
+
 test('rejected receipts use their accounting session rather than their containing journal', () => {
   const event = rejected('shared');
   event.data.usage.accounting = { sourceSessionId: 'origin' };

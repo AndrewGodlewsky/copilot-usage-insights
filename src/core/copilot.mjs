@@ -38,8 +38,19 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
 }
 
 // Every event type this parser reads. Lines of any other type hold nothing the dashboard uses.
-const usedTypes = new Set(['session.start', 'session.context_changed', 'session.error', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
+const activityTypes = new Set(['session.error', 'session.compaction_start', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
+const usedTypes = new Set(['session.start', 'session.context_changed', ...activityTypes]);
 const checkpointTypes = new Set(['session.usage_checkpoint', 'session.shutdown']);
+function emptyCheckpoint(data) {
+  if (data?.totalNanoAiu !== 0) return false;
+  if (!['totalPremiumRequests', 'totalApiDurationMs', 'conversationTokens'].every(key => !Object.hasOwn(data, key) || data[key] === 0)) return false;
+  for (const key of ['modelMetrics', 'agentMetrics', 'tokenDetails', 'usageAccountingWatermarks']) {
+    if (!Object.hasOwn(data, key)) continue;
+    const value = data[key];
+    if (value === null || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length) return false;
+  }
+  return !Object.hasOwn(data, 'providerModelMetrics') || Array.isArray(data.providerModelMetrics) && data.providerModelMetrics.length === 0;
+}
 // Copilot writes each line as {"type":"<name>",...}. Returns the name, or '' for any other shape.
 function leadingType(line) {
   if (!line.startsWith('{"type":"')) return '';
@@ -52,14 +63,20 @@ function leadingType(line) {
 export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false }) {
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
+  let summaryNeedsCoverage = false;
+  const noteActivity = () => { if (!summaryNeedsCoverage) { summaryNeedsCoverage = true; revision++; } };
   const coverage = createCoverageCollector(source, logFile);
   let sessionStart = null, summaryEnd = null;
-  const checkpoint = timestamp => {
+  const checkpoint = (timestamp, data) => {
+    if (!summaryNeedsCoverage && !emptyCheckpoint(data)) noteActivity();
     const ms = coverageTime(timestamp);
     if (!hasCheckpoint || ms !== null && (summaryEnd === null || ms > summaryEnd)) {
       hasCheckpoint = true; summaryEnd = ms; revision++;
     }
   };
+  const summaryEntry = () => ({ kind: 'aggregateOnly', key: JSON.stringify(['summary', sessionId]), sessionId,
+    ms: sessionStart, endMs: summaryEnd !== null && sessionStart !== null && summaryEnd >= sessionStart ? summaryEnd : null,
+    source, file: logFile, project: '', model: '', count: 1 });
   const rejectedEvent = (kind, e, key = '', usage = {}, owner = sessionId) => coverage.add(kind, { key, timestamp: e?.timestamp,
     sessionId: owner, project: label === 'Unknown project' ? '' : label, model: textValue(usage?.modelDisplayName) || textValue(usage?.model) });
   // `rejected` remembers receipts that produced no record, so a replayed line is still counted once.
@@ -81,8 +98,9 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       if (!line.trim()) return;
       if (skipUnused) {
         const type = leadingType(line);
-        if (checkpointTypes.has(type)) {
-          // Read only the envelope, avoiding potentially large summary payloads on the fast path.
+        if (checkpointTypes.has(type) && summaryNeedsCoverage) {
+          // Once activity or an uncertain total is seen, later summaries cannot prove the session empty.
+          // Keep skipping their potentially large payloads; empty candidates need the complete data object.
           const at = line.indexOf(',"data":');
           if (at > 0 && at < 1024) {
             try {
@@ -95,6 +113,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       }
       let e;
       try { e = JSON.parse(line); } catch { invalid++; coverage.add('invalid'); revision++; return; }
+      if (activityTypes.has(e?.type)) noteActivity();
       if (e?.type !== 'session.usage_record') collectPrompt(e);
       if (e?.type === 'session.start') {
         sessionId = textValue(e.data?.sessionId) || sessionId;
@@ -173,7 +192,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else if (result.reason === 'invalid') invalid++;
-      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { checkpoint(e.timestamp); }
+      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { checkpoint(e.timestamp, e.data); }
       else if (e?.type === 'session.usage_record') {
         note(receiptSessions, sessionId);
         note(receiptSessions, initialSession);
@@ -200,10 +219,10 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
     // Changes only when something a snapshot reports has changed, so a caller can keep an earlier snapshot.
     revision: () => revision,
     snapshot: () => ({ records: [...records.values()], compactions: [...compactions.values()].filter(Boolean), skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: promptEvents.events.slice(),
-      coverageEntries: [...coverage.snapshot(), ...(hasCheckpoint && !receiptSessions.size ? [{ kind: 'aggregateOnly', key: JSON.stringify(['summary', sessionId]), sessionId,
-        ms: sessionStart, endMs: summaryEnd !== null && sessionStart !== null && summaryEnd >= sessionStart ? summaryEnd : null,
-        source, file: logFile, project: '', model: '', count: 1 }] : [])],
+      coverageEntries: [...coverage.snapshot(), ...(hasCheckpoint && summaryNeedsCoverage && !receiptSessions.size ? [summaryEntry()] : [])],
+      // Another partial copy can contain the activity missing from an otherwise empty summary.
+      emptySummary: hasCheckpoint && !summaryNeedsCoverage ? summaryEntry() : null, summaryActivitySession: summaryNeedsCoverage ? sessionId : '',
       tools: [...tools.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
-      skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
+      skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && summaryNeedsCoverage && receiptSessions.size === 0 }),
   };
 }

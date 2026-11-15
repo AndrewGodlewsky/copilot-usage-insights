@@ -268,7 +268,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
     if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };
     const journals = merge.journals, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
-    const coverageEntries = snapshots.flatMap(s => s.coverageEntries || []);
+    const summaryActivity = new Set(snapshots.map(s => s.summaryActivitySession).filter(Boolean));
+    const coverageEntries = snapshots.flatMap(s => [...(s.coverageEntries || []), ...(s.emptySummary && summaryActivity.has(s.emptySummary.sessionId) ? [s.emptySummary] : [])]);
     for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
     for (const { db, source } of databases) {
