@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createSettings } from '../src/node/settings.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { createUsageRecorder } from '../src/node/review-usage.mjs';
+import { ReviewError } from '../src/node/ai-review.mjs';
 
 const now = new Date('2026-11-14T12:00:00.000Z');
 const firstId = '11111111-1111-4111-8111-111111111111';
@@ -50,7 +51,7 @@ function env(t, key, value) {
   else process.env[key] = value;
   t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
 }
-async function fixture(t, location = 'override') {
+async function fixture(t, location = 'override', reviewService) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'enhance-source-'));
   assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -62,12 +63,12 @@ async function fixture(t, location = 'override') {
   const home = path.join(data, 'usage'), settings = createSettings(path.join(dir, 'settings'));
   const defaultHome = path.join(dir, 'copilot');
   await fs.mkdir(defaultHome);
-  const server = await startServer({ settings, defaultHome, html: '<title>Fixture</title>', now: () => now });
+  const server = await startServer({ settings, defaultHome, html: '<title>Fixture</title>', now: () => now, reviewService });
   t.after(() => server.close());
-  const request = async (method = 'usage.report', input = { range: 'all' }, refresh = false) => {
+  const request = async (method = 'usage.report', input = { range: 'all' }, refresh = false, status = 200) => {
     const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method, input, refresh }) });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, status);
     return response.json();
   };
   return { dir, home, defaultHome, settings, request };
@@ -97,6 +98,60 @@ test('automatic AI Review source groups helpers separately with exact tokens and
   const sessions = await request('usage.sessions', { range: 'all', model: 'fixture-model', project: 'Usage Insights AI Review' });
   assert.equal(sessions.total, 2);
   assert.deepEqual(sessions.rows.map(session => session.total).sort((a, b) => a - b), [120, 240]);
+});
+
+test('completed reviews invalidate a previously cached report and opaque call IDs count once', async t => {
+  let home;
+  const service = {
+    async review() {
+      const writer = await createUsageRecorder(firstId, home);
+      const usage = receipt(firstId, 'live', { accounting: { sourceSessionId: firstId,
+        usageId: Buffer.from('private opaque fixture ID '.repeat(30)).toString('base64'), sequence: 1 } });
+      writer.record({ ...usage, type: 'assistant.usage', data: usage.data.usage });
+      writer.record({ ...usage, id: 'durable' });
+      await writer.flush();
+      return { text: 'Fixture review', model: 'fixture-model' };
+    },
+    async close() {},
+  };
+  const f = await fixture(t, 'override', service); home = f.home;
+  await f.settings.set({ reviewModel: 'fixture-model' });
+  assert.equal((await f.request()).totals.requests, 0);
+  await f.request('review.run', { prompt: 'Synthetic statistics', expectedModel: 'fixture-model' });
+  for (const refresh of [false, true]) {
+    const report = await f.request('usage.report', { range: 'all' }, refresh);
+    assert.equal(report.totals.requests, 1);
+    assert.equal(report.totals.credits, 0.25);
+    assert.equal(report.projects[0].name, 'Usage Insights AI Review');
+  }
+  const copied = path.join(f.dir, 'copied-home');
+  await fs.cp(home, copied, { recursive: true });
+  await f.settings.set({ extraHomes: [copied] });
+  assert.equal((await f.request()).totals.requests, 1, 'hashed accounting remains stable across copied journals');
+});
+
+for (const outcome of ['failed', 'cancelled']) test(`${outcome} reviews expose any recorded charges on the next report`, async t => {
+  let home, ready;
+  const started = new Promise(resolve => { ready = resolve; });
+  const service = {
+    async review(input, signal) {
+      const writer = await createUsageRecorder(firstId, home);
+      writer.record(receipt(firstId, 'billed-call')); await writer.flush();
+      if (outcome === 'cancelled') await new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new ReviewError('cancelled')), { once: true });
+        ready();
+      });
+      throw new ReviewError('failed');
+    },
+    cancel() {}, async close() {},
+  };
+  const f = await fixture(t, 'override', service); home = f.home;
+  await f.settings.set({ reviewModel: 'fixture-model' });
+  assert.equal((await f.request()).totals.requests, 0);
+  const run = f.request('review.run', { prompt: 'Synthetic statistics', expectedModel: 'fixture-model' }, false, 500);
+  if (outcome === 'cancelled') { await started; await f.request('review.cancel', {}); }
+  assert.match((await run).error, outcome === 'cancelled' ? /cancelled/i : /could not complete/i);
+  assert.equal((await f.request()).totals.credits, 0.25);
 });
 
 for (const location of ['localappdata', 'fallback']) test(`automatic source discovers the ${location} data directory`, async t => {

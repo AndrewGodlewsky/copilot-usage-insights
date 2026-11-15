@@ -1755,11 +1755,15 @@ test('AI review requires a saved model and explicit send, keeps its snapshot and
   get('review-model').value = 'fixture-model';
   await get('settings-save').onclick(); assert.equal(server.config.reviewModel, 'fixture-model');
   await get('review-reconnect').onclick(); assert.match(get('review-connection-status').textContent, /Connection verified/);
+  get('project').value = 'Existing project'; await get('project').onchange();
   await get('efficiency-review-open').onclick();
   const snapshot = get('efficiency-review-output').value;
   assert.equal(get('review-send').disabled, false);
   server.review = () => ({ text: '<script>untrusted</script>\nA useful observation', model: 'fixture-model' });
+  const beforeSend = requests.length;
   await get('review-send').onclick();
+  assert.ok(requests.slice(beforeSend).some(r => r.method === 'usage.report' && r.refresh === true), 'finished reviews refresh recorded usage immediately');
+  assert.equal(requests.at(-1).input.project, 'Existing project', 'review refresh preserves the selected filters');
   assert.deepEqual(requests.find(r => r.method === 'review.run').input, { prompt: snapshot, expectedModel: 'fixture-model' });
   assert.equal(get('review-answer').textContent, '<script>untrusted</script>\nA useful observation');
   assert.equal(get('review-answer').innerHTML, '');
@@ -1786,6 +1790,8 @@ test('AI review cancellation and errors keep the response area honest and restor
   server.reviewError = 'Same-account verification failed.';
   await get('review-send').onclick();
   assert.equal(get('efficiency-review-status').textContent, server.reviewError);
+  assert.equal(requests.at(-1).method, 'usage.report');
+  assert.equal(requests.at(-1).refresh, true, 'failed reviews may still have usage to refresh');
   assert.equal(get('review-send').disabled, false);
   await get('settings-open').onclick(); await get('review-models-refresh').onclick();
   assert.equal(get('review-connection-status').textContent, server.reviewError);

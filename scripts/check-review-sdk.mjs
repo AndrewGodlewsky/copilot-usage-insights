@@ -12,6 +12,7 @@ import { createUsageRecorder } from '../src/node/review-usage.mjs'
 assert.ok(process.env.COPILOT_SDK_DIR && process.env.COPILOT_CLI_PATH, 'Set installed desktop SDK/runtime paths.')
 const sdk = await import(pathToFileURL(join(process.env.COPILOT_SDK_DIR, 'index.js')).href)
 const requests = []
+const opaqueCallId = Buffer.from('synthetic opaque provider call identity;'.repeat(17)).toString('base64')
 let heldClosed = false
 const fixture = createServer(async (request, response) => {
   let text = ''
@@ -19,7 +20,7 @@ const fixture = createServer(async (request, response) => {
   requests.push(JSON.parse(text))
   if (text.includes('CANCEL_SENTINEL')) { response.once('close', () => { heldClosed = true }); return }
   response.setHeader('content-type', 'application/json')
-  response.end(JSON.stringify({ id: 'fixture', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'Fixture rewritten request' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }))
+  response.end(JSON.stringify({ id: opaqueCallId, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'Fixture rewritten request' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }))
 })
 await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve))
 const auth = { isAuthenticated: true, login: 'fixture', host: 'https://github.com' }
@@ -65,25 +66,29 @@ try {
   assert.equal(requests[0].model, 'gpt-4.1')
   assert.equal(requests[0].tools?.length ?? 0, 0)
   assert.ok(!JSON.stringify(requests[0]).includes('PRIVATE_'))
+  await service.review({ model: 'gpt-4.1', prompt: 'Review these synthetic counts again with live usage enabled.' })
+  assert.equal(requests.length, 2)
   const pending = service.review({ model: 'gpt-4.1', prompt: 'CANCEL_SENTINEL' })
   const rejection = assert.rejects(pending)
-  for (let i = 0; i < 150 && requests.length < 2; i++) await new Promise(resolve => setTimeout(resolve, 100))
-  assert.equal(requests.length, 2)
+  for (let i = 0; i < 150 && requests.length < 3; i++) await new Promise(resolve => setTimeout(resolve, 100))
+  assert.equal(requests.length, 3)
   service.cancel()
   await rejection
   for (let i = 0; i < 30 && !heldClosed; i++) await new Promise(resolve => setTimeout(resolve, 50))
   assert.ok(heldClosed, 'cancel closes the fixture request')
   for (const directory of homes) await assert.rejects(access(directory))
   const sessions = await readdir(join(retained, 'session-state'))
-  assert.equal(sessions.length, 2)
+  assert.equal(sessions.length, 3)
   const journals = await Promise.all(sessions.map(id => readFile(join(retained, 'session-state', id, 'events.jsonl'), 'utf8')))
   const events = journals.flatMap(text => text.trim().split('\n').map(line => JSON.parse(line)))
   const receipts = events.filter(event => event.type === 'session.usage_record')
-  assert.equal(receipts.length, 1, 'real runtime accounting survives helper cleanup')
+  assert.equal(receipts.length, 2, 'live and durable deliveries count once per call and survive helper cleanup')
   assert.ok(suppressedUsage > 0, 'a missing live event is recovered from the real runtime journal')
   assert.ok(receipts.every(event => event.data.usage.inputTokens === 1 && event.data.usage.outputTokens === 1))
   assert.ok(receipts.every(event => event.data.usage.isByok === true), 'local fixture is never relabeled as Copilot usage')
   assert.ok(receipts.every(event => sessions.includes(event.data.usage.accounting.sourceSessionId)))
+  assert.ok(receipts.every(event => /^sha256:[a-f0-9]{64}$/.test(event.data.usage.accounting.usageId)))
+  assert.ok(!journals.join('\n').includes(opaqueCallId))
   assert.doesNotMatch(journals.join('\n'), /PRIVATE_|synthetic counts|100 input tokens|Fixture rewritten|CANCEL_SENTINEL|127\.0\.0\.1|apiKey|data:image/)
   console.log('Usage Insights Copilot helper: output, model selection, isolation, cancellation, retained usage and cleanup passed. No paid inference.')
 } finally {

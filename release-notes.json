@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.67",
+    "summary": "AI Review now refreshes recorded usage as soon as a run finishes, including cancelled or failed runs. New reviews also handle long Copilot call identifiers correctly so live and saved copies of the same charge count only once."
+  },
+  {
     "version": "0.1.66",
     "summary": "Ask a selected GitHub Copilot model to review your usage directly in AI Review. Choose a model and verify your connection in Settings, preview what will be sent, and cancel a review at any time. Review usage appears in its own project."
   },

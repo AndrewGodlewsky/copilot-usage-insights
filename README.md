@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.66** adds direct GitHub Copilot reviews in **Efficiency → AI review**. Open **Settings**, refresh models, choose a model, and save. Then prepare a snapshot and click **Analyze my usage**. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.67** refreshes usage immediately after an AI review and prevents duplicate accounting for long Copilot call identifiers in new reviews. Review usage appears under **Usage Insights AI Review** and follows your active filters. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -275,7 +275,9 @@ Click **Analyze my usage** to send the displayed snapshot to the saved model and
 
 Only allowlisted measurements, coverage, filter flags, and optional numeric current-context categories are sent. Model/server names are aliases. The snapshot excludes prompts, paths, session IDs/names, skill contents, raw logs, and source labels. It includes up to 20 models and 20 active MCP servers, conversation-habit measures, tool-outcome totals, and omitted counts. It cannot classify planning versus coding or prove waste. Reopen the dialog for a new snapshot. No context inspection happens automatically.
 
-Reported review tokens and credits appear under **Usage Insights AI Review**, automatically discovered from `%LOCALAPPDATA%/copilot-usage-insights/usage` (or `~/.local/share/copilot-usage-insights/usage` without `LOCALAPPDATA`). `USAGE_INSIGHTS_DATA_DIR` overrides the parent directory for these receipts. They contain no prompts or responses and have no automatic expiration. No human submissions are exported, so prompt counters show a dash. Disabling this source in Settings hides it; clearing local receipts cannot undo GitHub charges.
+Reported review tokens and credits appear under **Usage Insights AI Review**, automatically discovered from `%LOCALAPPDATA%/copilot-usage-insights/usage` (or `~/.local/share/copilot-usage-insights/usage` without `LOCALAPPDATA`). `USAGE_INSIGHTS_DATA_DIR` overrides the parent directory for these receipts. They contain no prompts or responses and have no automatic expiration. The dashboard refreshes after a review finishes, including failed or cancelled runs that may still have charges. Your date, model, project, and session filters remain applied; clear them if the review project is hidden. No human submissions are exported, so prompt counters show a dash. Disabling this source in Settings hides it; clearing local receipts cannot undo GitHub charges.
+
+Version 0.1.66 could discard long accounting identifiers and retain live and saved copies as separate charges. Version 0.1.67 preserves their identity using a hash for new reviews. Old receipts whose identifiers were discarded cannot be safely merged automatically; this update leaves those historical files unchanged.
 
 The desktop supplies the SDK/runtime; users install no extra npm package or model API key. Each review uses a fresh isolated helper with account/model checks and no tools. Cleanup stops the helper, reconciles usage, then removes its temporary transcript. Crashes or accounting/cleanup failures may leave recovery files containing the snapshot and answer. **Show logs** includes safe stage/error codes and timings. Enterprise managed-policy enforcement is not verified; both policy options remain enabled, and incompatible hosts fail without switching providers or extracting credentials. See [AI Review integration and validation](docs/ai-review.md).
 

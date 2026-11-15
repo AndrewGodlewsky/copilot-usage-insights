@@ -1,5 +1,5 @@
 // Adapted from Enhance Prompt. MIT notice: ../../licenses/enhance-prompt-LICENSE
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { reviewUsageHome } from './settings.mjs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
@@ -23,6 +23,11 @@ function object(value) {
 }
 function safeId(value, max = 256) {
     return typeof value === 'string' && value.length <= max && !value.includes('://') && identifier.test(value) ? value : undefined;
+}
+function accountingId(value) {
+    if (typeof value !== 'string' || !value.length || value.length > 8192) return;
+    // Copilot also uses long, opaque call IDs. Keep their identity without storing their contents.
+    return safeId(value) ?? `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
 function count(value) {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
@@ -74,7 +79,7 @@ function project(event, sessionId) {
     ].includes(data.aiCreditsStatus)) usage.aiCreditsStatus = data.aiCreditsStatus;
     const accounting = object(data.accounting);
     if (accounting?.sourceSessionId === sessionId) {
-        const usageId = safeId(accounting.usageId);
+        const usageId = accountingId(accounting.usageId);
         const sequence = count(accounting.sequence);
         if (usageId && sequence !== undefined) usage.accounting = {
             sourceSessionId: sessionId,

@@ -157,6 +157,29 @@ test('deduplicates accounting identity, preserves zero and status, and serialize
         assert.equal(lines[2].data.usage.byokKind, 'remote_user');
         assert.equal(lines[3].data.usage.aiCreditsStatus, 'partial');
     }));
+
+test('opaque Copilot call IDs survive projection and deduplicate live and durable receipts', async () => fixture(async root => {
+    const recorder = await createUsageRecorder(first, root);
+    // Production IDs can be long, padded opaque strings, not short identifier slugs.
+    const usageId = Buffer.from('synthetic-private-call-metadata;'.repeat(17)).toString('base64');
+    assert.ok(usageId.length > 256);
+    const live = event('live', { accounting: { sourceSessionId: first, usageId, sequence: 1 } });
+    recorder.record(live);
+    recorder.record({ ...live, id: 'durable', type: 'session.usage_record', data: { usage: live.data } });
+    const journal = join(root, 'journal.jsonl');
+    const other = event('other', { accounting: { sourceSessionId: first, usageId: usageId + '=other', sequence: 2 } });
+    await writeFile(journal, [live, other].map(e => JSON.stringify({ ...e, type: 'session.usage_record', data: { usage: e.data } })).join('\n'));
+    await reconcileUsageJournal(journal, recorder);
+    await reconcileUsageJournal(journal, recorder);
+    const { lines } = await entries(root);
+    assert.equal(lines.length, 3, 'one receipt per call, even with identical metrics and timestamps');
+    const identity = lines[1].data.usage.accounting;
+    assert.equal(identity.sourceSessionId, first);
+    assert.equal(identity.sequence, 1);
+    assert.match(identity.usageId, /^sha256:[a-f0-9]{64}$/);
+    assert.notEqual(identity.usageId, lines[2].data.usage.accounting.usageId);
+    assert.ok(!JSON.stringify(lines).includes(usageId), 'opaque provider IDs are not persisted verbatim');
+}));
 test('drops malformed metrics and unsafe identifiers without inventing values', async ()=>fixture(async (root)=>{
         const recorder = await createUsageRecorder(first, root);
         recorder.record(event('event-unsafe', {

@@ -104,6 +104,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
                 : await reviewService.review({ model: config.reviewModel, prompt: input.prompt }, controller.signal);
           } catch (error) { throw safeReviewError(error); }
           finally {
+            // Cancelled or failed reviews can also leave billed usage behind.
+            if (message.method === 'review.run') history = undefined;
             clearTimeout(timer); controller.signal.removeEventListener('abort', rejectAborted); res.removeListener('close', disconnected);
             if (reviewRequest === controller) reviewRequest = undefined;
           }
