@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.64** automatically includes retained Enhance Prompt background usage under **Enhanced Prompt**, with separate sessions for each helper and recorded token and AI-credit totals. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.65** shows a dash for unavailable user-prompt counts in the Projects table, including **Enhanced Prompt** background usage. The retained helper sessions, token totals, and recorded AI credits added in v0.1.64 remain available. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 

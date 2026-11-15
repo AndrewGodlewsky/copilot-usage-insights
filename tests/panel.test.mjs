@@ -101,7 +101,7 @@ test('Usage selections cross-filter metrics, preserve gray alternatives, and cle
   const choose = (type, value) => get(`${type}s-summary`).onclick({ target: { closest: () => ({ dataset: { [type === 'model' ? 'usageModel' : 'usageProject']: value } }) } });
   assert.match(get('projects-summary').innerHTML, />User prompts<\/th><th>Model turns<\/th>/);
   assert.doesNotMatch(get('projects-summary').innerHTML, />Requests<\/th>/);
-  assert.match(get('projects-summary').innerHTML, />Unavailable<\/td>/);
+  assert.match(get('projects-summary').innerHTML, />\u2014<\/td>/);
   const original = get('token-total').textContent;
   await choose('model', 'Alpha');
   assert.equal(get('model').value, 'Alpha');

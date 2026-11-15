@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.65",
+    "summary": "The Projects table now shows a dash when a user-prompt count is unavailable, including for Enhanced Prompt background usage. Recorded model turns, tokens, and AI credits are unchanged."
+  },
+  {
     "version": "0.1.64",
     "summary": "Automatically includes retained Enhance Prompt background usage under the Enhanced Prompt project, with separate sessions for each helper. Recorded tokens and AI credits stay available after helpers finish; prompts and responses are not retained."
   },
