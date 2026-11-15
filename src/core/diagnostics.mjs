@@ -7,7 +7,7 @@ const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAva
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible']) numericFields.add(field);
 const enumFields = {
-  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'skills.openFolder', 'efficiency.context']),
+  method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.inventory', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   action: new Set(['copy', 'open']),

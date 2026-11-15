@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.69** builds out all ten sections of **Efficiency → Where did the tokens go?**, with measured breakdowns, coverage, and practical experiments to try. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.70** shows usage without waiting for plugin/MCP inventory and reduces repeated formatting and hidden-panel work. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -195,7 +195,11 @@ The first load scans the enabled Copilot homes and creates an in-memory history 
 
 Automatic refresh checks the source files and existing databases every **60 seconds** while the dashboard is visible, and when it becomes visible again. Unchanged logs reuse their parsed records. The **Refresh** button forces a full reread. The footer shows when the history was last scanned, so changing a filter does not make old data appear freshly scanned. New usage and renamed sessions appear on the next refresh.
 
-Selecting Today or Last 7 days does not skip older files during the first scan. Session logs can span dates, file modification times are not reliable usage timestamps, and the calendar, streak, and filter choices also use history. Safely skipping those files would require an additional date index. After the initial scan, filter changes do not rescan usage files; the smaller result is computed from memory. Installed skill versions and current plugin/MCP inventory are still checked when a report is requested. Efficiency calculations share the existing filtered-record pass; input-growth analysis retains only the first and last three samples per comparison group. The additional report payload contains summaries and bounded observations, not request histories. Conversation statistics reuse numeric metadata retained by the existing incremental scanner.
+Selecting Today or Last 7 days does not skip older files during the first scan. Session logs can span dates, file modification times are not reliable usage timestamps, and the calendar and filter choices also use history. Safely skipping those files would require an additional date index. After the initial scan, filter changes do not rescan usage files; the smaller result is computed from memory. Installed skill versions are still checked when a report is requested. Efficiency calculations share the existing filtered-record pass; input-growth analysis retains only the first and last three samples per comparison group. The additional report payload contains summaries and bounded observations, not request histories. Conversation statistics reuse numeric metadata retained by the existing incremental scanner.
+
+Usage appears before the separate plugin/MCP inventory read finishes. Those sections show a loading state while the rest of the dashboard remains usable. Filters reuse the latest inventory; explicit and automatic refreshes request an update without holding up usage. A refresh arriving during an inventory read queues one follow-up read. Late inventory results merge with the current filters, and failures leave historical MCP activity visible. Number formatters are reused, and token Overview/Cache details are generated only when selected.
+
+The [performance review](docs/performance-review-2026-11-15.md) records measured results, remaining limits, and commands for the synthetic benchmark in `scripts/benchmark-performance.mjs`. It also explains which diagnostic timings to check if opening the dashboard remains slow.
 
 ## Support footer and diagnostic logs
 
@@ -365,7 +369,7 @@ Select **Breakdown → MCP** to see the **MCP Servers** table, which replaces To
 
 Date filters use each call's start time and its latest recorded outcome. Project and session filters apply; model filters require a matching recorded model. Mixed or missing provider attribution is omitted with a coverage count. Copied logs and replayed calls are deduplicated. Success rate is **successes / (successes + failures) x 100**; unknown outcomes are excluded. A dash means no known outcomes or no recorded last use. A failed tool call does not necessarily mean its server disconnected.
 
-Connection status changes are live-only events, so this release does not calculate historical uptime, disconnections, or connection success percentages. No background recorder or new database is added. The inventory APIs are experimental: older hosts, failed requests, and timeouts show **Unavailable** while recorded usage stays visible. Both live inventories refresh with the dashboard; a read waits at most three seconds and does not launch another copy of an already pending request. Browser-only previews cannot query the hosting Copilot session.
+Connection status changes are live-only events, so this release does not calculate historical uptime, disconnections, or connection success percentages. No background recorder or new database is added. The inventory APIs are experimental: older hosts, failed requests, and timeouts show **Unavailable** while recorded usage stays visible. Both live inventories load independently after usage appears and refresh with the dashboard. Each host read waits at most three seconds and shares an already pending host request; filters reuse the latest result. Browser-only previews cannot query the hosting Copilot session.
 
 ### Optional local MCP test server
 

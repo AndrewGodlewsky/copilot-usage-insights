@@ -1,7 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 import { compact, formatNumber, formatCredits } from '../src/core/format.mjs';
 import { compact as chartsCompact, usageValue, stackedBars } from '../src/panel/charts.mjs';
+
+test('repeated dashboard values reuse locale formatters without changing precision', async () => {
+  let constructed = 0;
+  const source = (await fs.readFile(new URL('../src/core/format.mjs', import.meta.url), 'utf8')).replaceAll('export ', '');
+  const format = runInNewContext(source + '\nformatNumber', { Intl: { NumberFormat: class extends Intl.NumberFormat { constructor(...args) { super(...args); constructed++; } } } });
+  for (let i = 0; i < 1000; i++) assert.equal(format(i + .25, { simplify: false }), (i + .25).toLocaleString(undefined, { maximumFractionDigits: 3 }));
+  assert.equal(constructed, 1, 'one formatter per precision instead of per displayed number');
+  assert.equal(format(.000000001), '0.000000001');
+  assert.equal(constructed, 2);
+});
 
 test('compact formats magnitudes', () => {
   assert.equal(compact(950), '950');

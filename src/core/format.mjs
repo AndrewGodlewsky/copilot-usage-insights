@@ -1,5 +1,6 @@
 // Pure number formatting shared by the dashboard and charts.
 // Compact magnitude: 2131 -> '2.1K', 999999 -> '1M', 2131000000000 -> '2.1T'.
+const numberFormats = new Map();
 export function compact(n) {
   if (!Number.isFinite(n)) return 'Unavailable';
   const v = Math.abs(n), sign = n < 0 ? '-' : '';
@@ -24,7 +25,14 @@ export function formatNumber(value, { simplify = true, ...options } = {}) {
   if (simplify && Math.abs(value) >= 1000) return compact(value);
   // Small nonzero charges must not round down to a misleading zero.
   const precision = value !== 0 && Math.abs(value) < .001 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 3 };
-  return value.toLocaleString(undefined, { ...precision, ...options });
+  const resolved = { ...precision, ...options }, key = JSON.stringify(resolved);
+  let formatter = numberFormats.get(key);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(undefined, resolved);
+    if (numberFormats.size >= 32) numberFormats.delete(numberFormats.keys().next().value);
+    numberFormats.set(key, formatter);
+  }
+  return formatter.format(value);
 }
 
 export function formatCredits(value, { simplify = true } = {}) {

@@ -7,7 +7,7 @@ import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModel
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
-async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes) {
+async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
   if (releaseNotes) html = html.replace(/const RELEASE_NOTES = .*;/, () => `const RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};`);
   const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
@@ -45,7 +45,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
-  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [] };
+  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory };
   const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
@@ -63,6 +63,11 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model' }], verified: true } };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
       if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
+      if (message.method === 'usage.inventory') {
+        if (server.inventory) return { ok: true, json: async () => server.inventory() };
+        const fields = ['name', 'displayName', 'enabled', 'status', 'source', 'plugin', 'version', 'toolsLoaded', 'error'];
+        return { ok: true, json: async () => ({ mcp: { available: report.mcp?.available === true, rows: report.mcp?.available ? report.mcp.rows.map(row => Object.fromEntries(fields.filter(k => k in row).map(k => [k, row[k]]))) : [] }, plugins: report.plugins || { available: false, rows: [] } }) };
+      }
       if (message.method === 'settings.set') {
         if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
         server.config = { ...server.config, ...message.input };
@@ -134,7 +139,8 @@ test('Usage selections cross-filter metrics, preserve gray alternatives, and cle
   assert.equal(get('token-total').textContent, original);
   assert.doesNotMatch(get('models-summary').innerHTML, /choice-muted/);
   assert.doesNotMatch(get('projects-summary').innerHTML, /choice-muted/);
-  assert.ok(requests.every(r => r.method === 'usage.report'), 'selections use the cached report without rescans or detail lookups');
+  assert.equal(requests.filter(r => r.method === 'usage.inventory').length, 1, 'filters reuse current inventory');
+  assert.ok(requests.every(r => ['usage.report', 'usage.inventory'].includes(r.method)), 'selections use the cached report without rescans or detail lookups');
   get('model').value = 'Missing <model>'; get('model').onchange(); await new Promise(setImmediate);
   assert.match(get('models-summary').innerHTML, /data-usage-model="Missing &lt;model&gt;"[^>]*aria-pressed="true"/);
   assert.match(get('token-context').textContent, /0 requests/);
@@ -279,7 +285,7 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(get('footer-refresh').onclick, get('refresh').onclick);
   assert.equal(get('footer-settings').onclick, get('settings-open').onclick);
   await get('footer-refresh').onclick();
-  assert.equal(requests.at(-1).method, 'usage.refresh');
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.refresh');
   assert.equal(get('footer-refresh').disabled, false);
   await get('footer-settings').onclick();
   assert.equal(get('settings-dialog').open, true);
@@ -717,7 +723,7 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
   report.sessions.find(s => s.id === 'b1').name = 'Renamed session';
   await get('refresh').onclick();
   assert.match(html(), /Renamed session/);
-  assert.equal(requests.length, before + 1, 'only explicit refresh fetched data');
+  assert.equal(requests.length, before + 2, 'explicit refresh loads usage and inventory independently');
   Object.assign(report, buildReport(projects.slice(0, 1), {}, now));
   await get('refresh').onclick();
   assert.doesNotMatch(html(), /id="project-sessions"/);
@@ -1119,8 +1125,8 @@ test('filters reuse history while the 60-second timer and visibility changes req
   await new Promise(setImmediate);
   assert.equal(requests.at(-1).refresh, undefined);
   intervals[0].callback(); await new Promise(setImmediate);
-  assert.equal(requests.at(-1).method, 'usage.report');
-  assert.equal(requests.at(-1).refresh, true);
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.report');
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true);
   document.hidden = true;
   const count = requests.length;
   intervals[0].callback(); listeners.get('visibilitychange')();
@@ -1128,9 +1134,9 @@ test('filters reuse history while the 60-second timer and visibility changes req
   assert.equal(requests.length, count);
   document.hidden = false;
   listeners.get('visibilitychange')(); await new Promise(setImmediate);
-  assert.equal(requests.at(-1).refresh, true);
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true);
   await get('refresh').onclick();
-  assert.equal(requests.at(-1).method, 'usage.refresh');
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.refresh');
 });
 
 test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {
@@ -1297,6 +1303,7 @@ test('MCP and plugin tables distinguish live inventory from filtered usage and e
   report.mcp = mergeMcpInventory(history, { available: false, rows: [] });
   report.plugins = { available: false, rows: [] };
   await get('refresh').onclick();
+  await new Promise(setImmediate);
   assert.match(get('mcp').innerHTML, /Unavailable/);
   assert.match(get('mcp').innerHTML, /50%/);
   assert.match(get('plugins').innerHTML, /unavailable/i);
@@ -1335,7 +1342,7 @@ test('detail panels sort independently and preserve choices and report data acro
   sort('mcp', 'name'); assert.deepEqual(names('mcp'), ['Beta server', 'Omega server', 'Zulu server']);
   sort('mcp', 'lastUsed'); assert.deepEqual(names('mcp'), ['Beta server', 'Zulu server', 'Omega server']);
   sort('mcp', 'failures'); assert.deepEqual(names('mcp'), ['Beta server', 'Omega server', 'Zulu server']);
-  assert.equal(requests.length, 1, 'sorting uses the current report without extra requests');
+  assert.equal(requests.length, 2, 'sorting uses the current report and inventory without extra requests');
   get('breakdown-sections').onclick({ target: { dataset: { section: 'plugins' } } });
   await get('refresh').onclick();
   assert.equal(get('plugins-panel').hidden, false);
@@ -1502,6 +1509,85 @@ test('token insights reuse the explicit snapshot across sections and filters wit
   shortcut.focus();
   await get('refresh').onclick();
   assert.equal(document.activeElement.dataset.tokenJump, 'output');
+});
+
+test('slow inventory does not hide usage and merges into the latest filtered history', async () => {
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, requests } = await mountPanel(report, undefined, undefined, () => pending);
+  assert.equal(get('content').hidden, false);
+  assert.equal(get('refresh').disabled, false);
+  assert.match(get('plugins').innerHTML, /Loading current plugin inventory/);
+  report.mcp = { available: false, calls: 7, omitted: 0, rows: [{ name: 'one', calls: 7, failures: 1, successes: 6, unknown: 0, successRate: 6 / 7 * 100, status: 'unavailable' }] };
+  get('model').value = 'Filtered model';
+  await get('model').onchange();
+  assert.equal(requests.filter(r => r.method === 'usage.inventory').length, 1);
+  finish({ mcp: { available: true, rows: [{ name: 'one', status: 'connected' }] }, plugins: { available: true, rows: [{ name: '<Plugin>', installed: true, enabled: true }] } });
+  await new Promise(setImmediate);
+  assert.equal(get('model').value, 'Filtered model');
+  assert.match(get('mcp-summary').textContent, /7 calls/);
+  assert.match(get('mcp').innerHTML, /Connected/);
+  assert.match(get('plugins').innerHTML, /&lt;Plugin&gt;/);
+  server.inventory = () => { throw new Error('unavailable'); };
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('content').hidden, false);
+  assert.match(get('mcp-summary').textContent, /7 calls/);
+  assert.match(get('plugins').innerHTML, /unavailable/i);
+});
+
+test('refresh during pending inventory queues one new read while filters coalesce', async () => {
+  let finish, reads = 0;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const inventory = name => ({ mcp: { available: true, rows: [] }, plugins: { available: true, rows: [{ name, installed: true, enabled: true }] } });
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get } = await mountPanel(report, undefined, undefined, () => ++reads === 1 ? pending : inventory('Fresh plugin'));
+  await get('refresh').onclick();
+  await get('refresh').onclick();
+  await get('model').onchange();
+  assert.equal(reads, 1, 'pending reads are not duplicated');
+  finish(inventory('Old plugin'));
+  await new Promise(setImmediate);
+  assert.equal(reads, 2, 'multiple refreshes queue one follow-up inventory read');
+  assert.match(get('plugins').innerHTML, /Fresh plugin/);
+  assert.doesNotMatch(get('plugins').innerHTML, /Old plugin/);
+});
+
+test('inventory updates restore server focus or fall back to the MCP sort control', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, document, server } = await mountPanel(report);
+  const summary = { focus() { document.activeElement = this; }, closest: () => ({ dataset: { server: 'fixture' } }) };
+  get('mcp').querySelectorAll = () => [{ dataset: { server: 'fixture' }, querySelector: () => summary }];
+  let finish;
+  server.inventory = () => new Promise(resolve => { finish = resolve; });
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  document.activeElement = { closest: () => ({ dataset: { server: 'fixture' } }) };
+  finish({ mcp: { available: true, rows: [{ name: 'fixture' }] }, plugins: { available: true, rows: [] } });
+  await new Promise(setImmediate);
+  assert.equal(document.activeElement, summary, 'retained server keeps focus');
+  document.activeElement = null;
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  document.activeElement = summary;
+  get('mcp').querySelectorAll = () => [];
+  finish({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } });
+  await new Promise(setImmediate);
+  assert.equal(document.activeElement, get('mcp-sort'), 'removed server has a stable focus destination');
+});
+
+test('inactive token details are not regenerated until selected', async () => {
+  const { get } = await requestPanel();
+  assert.equal(get('token-cache-detail').innerHTML, '');
+  jumpTokenTopic(get, 'cache');
+  assert.match(get('token-cache-detail').innerHTML, /Uncached input/);
+  jumpTokenTopic(get, 'tools');
+  get('token-cache-detail').innerHTML = 'retained hidden cache';
+  await get('refresh').onclick();
+  assert.equal(get('token-cache-detail').innerHTML, 'retained hidden cache');
+  jumpTokenTopic(get, 'cache');
+  assert.match(get('token-cache-detail').innerHTML, /Uncached input/);
 });
 
 test('Efficiency section pickers separate topics, switch locally, and retain independent selections', async () => {
@@ -1809,7 +1895,7 @@ test('AI review requires a saved model and explicit send, keeps its snapshot and
   const beforeSend = requests.length;
   await get('review-send').onclick();
   assert.ok(requests.slice(beforeSend).some(r => r.method === 'usage.report' && r.refresh === true), 'finished reviews refresh recorded usage immediately');
-  assert.equal(requests.at(-1).input.project, 'Existing project', 'review refresh preserves the selected filters');
+  assert.equal(requests.findLast(r => r.method === 'usage.report').input.project, 'Existing project', 'review refresh preserves the selected filters');
   assert.deepEqual(requests.find(r => r.method === 'review.run').input, { prompt: snapshot, expectedModel: 'fixture-model' });
   assert.equal(get('review-answer').textContent, '<script>untrusted</script>\nA useful observation');
   assert.equal(get('review-answer').innerHTML, '');
@@ -1836,8 +1922,8 @@ test('AI review cancellation and errors keep the response area honest and restor
   server.reviewError = 'Same-account verification failed.';
   await get('review-send').onclick();
   assert.equal(get('efficiency-review-status').textContent, server.reviewError);
-  assert.equal(requests.at(-1).method, 'usage.report');
-  assert.equal(requests.at(-1).refresh, true, 'failed reviews may still have usage to refresh');
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.report');
+  assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true, 'failed reviews may still have usage to refresh');
   assert.equal(get('review-send').disabled, false);
   await get('settings-open').onclick(); await get('review-models-refresh').onclick();
   assert.equal(get('review-connection-status').textContent, server.reviewError);

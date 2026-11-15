@@ -8,7 +8,6 @@ import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
-import { mergeMcpInventory } from '../core/integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
@@ -113,6 +112,10 @@ export async function startServer({ settings = createSettings(), scanner = creat
       } else if (message.method === 'efficiency.context') {
         if (Object.keys(input).length) throw new TypeError('Context inspection does not accept options.');
         result = await diagnostics.measure('context.read', {}, readContext);
+      } else if (message.method === 'usage.inventory') {
+        if (Object.keys(input).length) throw new TypeError('Inventory does not accept filters.');
+        result = await diagnostics.measure('inventory.read', {}, readIntegrations);
+        for (const kind of ['mcp', 'plugins']) if (!result[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...result[kind].diagnostic });
       } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
       else if (message.method === 'settings.set') result = await settings.set(input);
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
@@ -122,10 +125,6 @@ export async function startServer({ settings = createSettings(), scanner = creat
         const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
         result = { ...diagnostics.measure('report.build', { records: scan.records.length, range: input.range }, () => buildReport(scan.records, input, now(), scan)), scannedAt, sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true } };
         await diagnostics.measure('skills.versions', { rows: result.skills.rows.length }, () => addInstalledSkillVersions(result.skills.rows));
-        const inventory = await diagnostics.measure('inventory.read', {}, readIntegrations);
-        for (const kind of ['mcp', 'plugins']) if (!inventory[kind].available) diagnostics.record('warn', 'inventory.unavailable', { kind, ...inventory[kind].diagnostic });
-        result.mcp = mergeMcpInventory(result.mcp, inventory.mcp);
-        result.plugins = inventory.plugins;
       } else if (['usage.requests', 'usage.sessions', 'usage.sessionModels'].includes(message.method)) {
         const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
         buildPage([], input, now());

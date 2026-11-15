@@ -6,6 +6,29 @@ import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { createIntegrationReader } from '../src/node/integrations.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 
+test('usage becomes available while slow host inventory is still pending', async t => {
+  let finishInventory, reads = 0;
+  const blocked = new Promise(resolve => { finishInventory = resolve; });
+  const server = await startServer({ html: '', defaultHome: 'fixture', now: () => now,
+    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
+    scanner: { scan: async () => ({ ...activity(), sources: [], coverage: {} }) },
+    readIntegrations: async () => { reads++; return blocked; },
+  });
+  t.after(async () => { finishInventory({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } }); await server.close(); });
+  const call = method => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method }) });
+  let timeout;
+  const response = await Promise.race([call('usage.report'), new Promise(resolve => { timeout = setTimeout(() => resolve(null), 200); })]);
+  clearTimeout(timeout);
+  assert.ok(response, 'usage report must not wait for the host inventory');
+  assert.equal(response.status, 200);
+  assert.ok((await response.json()).totals.requests > 0);
+  assert.equal(reads, 0, 'the main report does not enumerate host plugins or MCP servers');
+  const inventory = call('usage.inventory');
+  finishInventory({ mcp: { available: true, rows: [] }, plugins: { available: true, rows: [] } });
+  assert.equal((await inventory).status, 200);
+  assert.equal(reads, 1);
+});
+
 const now = new Date(2026, 10, 14, 12);
 function activity() {
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
@@ -102,7 +125,11 @@ test('dashboard refreshes both inventories without date-filtering them or changi
   const request = async (input, method = 'usage.report') => {
     const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input }) });
     assert.equal(response.status, 200);
-    return response.json();
+    const report = await response.json();
+    const inventoryResponse = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.inventory' }) });
+    assert.equal(inventoryResponse.status, 200);
+    const inventory = await inventoryResponse.json();
+    return { ...report, mcp: mergeMcpInventory(report.mcp, inventory.mcp), plugins: inventory.plugins };
   };
   let result = await request({ range: '1d' });
   const original = buildReport(scan.records, { range: '1d' }, now, scan);

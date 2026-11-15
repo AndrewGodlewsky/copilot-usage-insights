@@ -36,6 +36,7 @@ test('diagnostics API stays available after a data failure and records scan/cach
   t.after(() => server.close());
   const call = (method, input = {}, headers = {}) => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ method, input }) });
   assert.equal((await call('usage.report', { range: '1d' })).status, 200);
+  assert.equal((await call('usage.inventory')).status, 200);
   assert.equal((await call('usage.requests', { model: 'PRIVATE_MODEL' })).status, 200);
   fail = true;
   assert.equal((await call('usage.refresh')).status, 500);

@@ -5,6 +5,7 @@ import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
+import { mergeMcpInventory } from '../core/integrations.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -127,6 +128,29 @@ function query() {
     ...($('model').value ? { models: [$('model').value] } : {}), project: $('project').value, session: $('session').value,
     ...(state.range === 'custom' ? { startDate: state.startDate, endDate: state.endDate } : {}) };
 }
+let inventorySnapshot, inventoryPending = false, inventoryQueued = false, historyMcp;
+function applyInventory() {
+  if (!state.report) return;
+  state.report.mcp = inventorySnapshot ? mergeMcpInventory(historyMcp, inventorySnapshot.mcp) : historyMcp;
+  state.report.plugins = inventorySnapshot?.plugins;
+}
+async function loadInventory(refresh = false) {
+  if (inventoryPending) { inventoryQueued ||= refresh; return; }
+  inventoryPending = true;
+  renderIntegrations(state.report);
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+  try { inventorySnapshot = await request('usage.inventory', {}, false, controller.signal); }
+  catch (error) {
+    inventorySnapshot = { mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } };
+    clientDiagnostics.record('warn', 'inventory.read', diagnosticError(error));
+  } finally {
+    clearTimeout(timer);
+    inventoryPending = false;
+    applyInventory();
+    renderIntegrations(state.report);
+    if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
+  }
+}
 async function load(force = false, refresh = false) {
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
@@ -145,8 +169,11 @@ async function load(force = false, refresh = false) {
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.filterKey = filterKey; }
         applyPreferences(report.preferences);
         state.creditsUnavailable = false;
-        state.report = report;
+        state.report = { ...report };
+        historyMcp = report.mcp;
+        applyInventory();
         render();
+        if (!inventorySnapshot || method === 'usage.refresh' || rescan) void loadInventory(method === 'usage.refresh' || rescan);
         if (state.modelView) loadModelSessionPage(state.modelView.offset);
         if (state.projectView?.models) loadSessionModels();
         $('live').textContent = 'Usage updated';
@@ -369,6 +396,7 @@ function skillTriggerSummary(skill) {
   return `By user: ${number(triggers.manual)}; By agent: ${number(triggers.agent)}; Preloaded: ${number(triggers.preloaded)}; Unknown: ${number(triggers.unknown)}`;
 }
 function renderIntegrations(report) {
+  const focusedServer = document.activeElement?.closest?.('details[data-server]')?.dataset.server;
   const mcp = report.mcp || { rows: [], calls: 0, available: false };
   const statusLabels = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
   const openDetails = new Set([...$('mcp').querySelectorAll('details[open]')].map(node => node.dataset.server));
@@ -384,7 +412,8 @@ function renderIntegrations(report) {
     const tone = row.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(row.status) ? 'attention' : 'neutral';
     return `<tr><td class="text-cell"><details class="server-details" data-server="${esc(row.name)}"${openDetails.has(row.name) ? ' open' : ''}><summary class="cell-text">${esc(row.displayName || row.name)}</summary><div class="server-info">${details.map(detail => `<p>${esc(detail)}</p>`).join('')}</div></details></td><td><span class="connection-status ${tone}">${statusLabels[row.status] || 'Unavailable'}</span></td><td>${number(row.calls)}</td><td>${number(row.failures)}</td><td>${row.successRate === null ? '—' : `${number(row.successRate, { maximumFractionDigits: 1 })}%`}</td><td>${row.lastUsed ? esc(skillDate.format(new Date(row.lastUsed))) : '—'}</td></tr>`;
   }).join('')}</tbody></table>` : `<p class="muted">${mcp.available ? 'No configured MCP servers or recorded MCP calls match this view.' : 'No recorded MCP calls match these filters. Live inventory is unavailable; open this dashboard in an updated Copilot session.'}</p>`;
-  $('mcp-note').textContent = `Status: current session${mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
+  $('mcp-note').textContent = `Status: current session${inventoryPending ? ' (refreshing)' : mcp.available ? '' : ' (unavailable)'}. Calls: selected dates and filters. Success rate excludes unknown outcomes. Expand a server for details.`;
+  if (inventoryPending && !mcp.available && !mcp.rows.length) $('mcp').innerHTML = '<p class="muted">Loading current MCP inventory. Usage data is ready.</p>';
   const coverage = [];
   if (mcp.omitted) coverage.push(`${number(mcp.omitted)} MCP calls omitted because their sessions have missing or mixed provider attribution.`);
   if (report.coverage.invalidTools) coverage.push(`${number(report.coverage.invalidTools)} malformed tool events skipped across scanned sources.`);
@@ -399,6 +428,14 @@ function renderIntegrations(report) {
   });
   $('plugins-summary').textContent = plugins.available ? `${number(plugins.rows.filter(p => p.installed).length)} installed` : 'Inventory unavailable';
   $('plugins').innerHTML = !plugins.available ? '<p class="muted">Plugin inventory is unavailable. Open this dashboard in an updated Copilot session.</p>' : plugins.rows.length ? `<table><thead><tr><th>Plugin</th><th>Installed version</th><th>State</th><th>Marketplace</th><th>Management</th></tr></thead><tbody>${pluginRows.map(p => `<tr>${textCell(p.name)}${textCell(p.version || '—')}${textCell(!p.installed ? 'Not installed' : p.enabled === null ? 'Unknown' : p.enabled ? 'Enabled' : 'Disabled')}${textCell(pluginMarketplace(p))}${textCell(p.managed ? 'Managed' : '—')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No plugins reported by Copilot.</p>';
+  if (inventoryPending) {
+    $('plugins-summary').textContent = plugins.available ? `${number(plugins.rows.filter(p => p.installed).length)} installed · refreshing` : 'Loading inventory';
+    if (!plugins.available) $('plugins').innerHTML = '<p class="muted">Loading current plugin inventory. Usage data is ready.</p>';
+  }
+  if (focusedServer) {
+    const summary = [...$('mcp').querySelectorAll('details[data-server]')].find(node => node.dataset.server === focusedServer)?.querySelector('summary');
+    (summary || $('mcp-sort')).focus({ preventScroll: true });
+  }
 }
 function renderBreakdown() {
   return clientDiagnostics.measure('ui.breakdown', {}, renderBreakdownContent);
@@ -647,6 +684,8 @@ function renderSelectedTokenTopic() {
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
+    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, credits: creditNumber });
+    if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, credits: creditNumber });
     if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
     return;
   }
@@ -711,8 +750,6 @@ function renderEfficiency() {
   const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
   renderEfficiencyFlow(summary);
-  $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report, { number, credits: creditNumber });
-  $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report, { number, credits: creditNumber });
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   renderSelectedTokenTopic();
