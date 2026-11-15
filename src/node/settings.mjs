@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 export const copilotHome = () => path.resolve(process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot'));
 export const enhancePromptUsageHome = () => path.resolve(process.env.ENHANCE_PROMPT_DATA_DIR
   || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'copilot-enhance-prompt'), 'usage');
+export const reviewUsageHome = () => path.resolve(process.env.USAGE_INSIGHTS_DATA_DIR
+  || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'copilot-usage-insights'), 'usage');
 export function configDir() {
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
     : process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support')
@@ -16,6 +18,11 @@ function validate(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Settings must be an object');
   const result = {};
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'reviewModel') {
+      if (typeof value !== 'string' || value.length > 128 || value && !/^[a-z0-9][a-z0-9._:+/-]*$/i.test(value)) throw new TypeError('Choose a valid Copilot review model');
+      result.reviewModel = value;
+      continue;
+    }
     if (key === 'simplifyNumbers') {
       if (typeof value !== 'boolean') throw new TypeError('simplifyNumbers must be a boolean');
       result.simplifyNumbers = value;

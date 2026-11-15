@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
-import { createSettings, copilotHome, enhancePromptUsageHome } from './settings.mjs';
+import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
@@ -11,16 +11,17 @@ import { createIntegrationReader } from './integrations.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { createContextReader } from './context.mjs';
+import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner({ optionalHomes: [enhancePromptUsageHome()] }), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()] }), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
   const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
-  let history;
+  let history, reviewRequest;
   function readHistory(config, { refresh = false, force = false } = {}) {
     const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes]);
     if (!history || history.key !== key || refresh || force) {
@@ -80,6 +81,33 @@ export async function startServer({ settings = createSettings(), scanner = creat
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
         result = { version, runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() };
+      } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.cancel'].includes(message.method)) {
+        if (Object.keys(input).some(key => message.method !== 'review.run' || !['prompt', 'expectedModel'].includes(key))) throw new TypeError('Unexpected review options.');
+        if (message.method === 'review.cancel') { reviewRequest?.abort(new ReviewError('cancelled')); reviewService.cancel(); result = { ok: true }; }
+        else {
+          if (message.method === 'review.run' && (typeof input.prompt !== 'string' || !input.prompt.trim() || Buffer.byteLength(input.prompt) > 48 * 1024)) throw new TypeError('Review snapshot must be nonempty and no larger than 48 KiB.');
+          if (reviewRequest) throw new ReviewError('busy');
+          const controller = new AbortController();
+          reviewRequest = controller;
+          const disconnected = () => { if (!res.writableEnded) controller.abort(new ReviewError('cancelled')); };
+          res.once('close', disconnected);
+          let rejectAborted;
+          const aborted = new Promise((_, reject) => { rejectAborted = () => reject(controller.signal.reason); controller.signal.addEventListener('abort', rejectAborted, { once: true }); });
+          const timer = setTimeout(() => controller.abort(new ReviewError('timeout')), 15_000);
+          try {
+            const config = await Promise.race([settings.get(), aborted]);
+            clearTimeout(timer);
+            if (res.destroyed || controller.signal.aborted) throw new ReviewError('cancelled');
+            if (message.method === 'review.run' && (!input.expectedModel || input.expectedModel !== config.reviewModel)) throw new ReviewError('model');
+            result = message.method === 'review.catalog' ? await reviewService.catalog(controller.signal)
+              : message.method === 'review.reconnect' ? await reviewService.reconnect(config.reviewModel, controller.signal)
+                : await reviewService.review({ model: config.reviewModel, prompt: input.prompt }, controller.signal);
+          } catch (error) { throw safeReviewError(error); }
+          finally {
+            clearTimeout(timer); controller.signal.removeEventListener('abort', rejectAborted); res.removeListener('close', disconnected);
+            if (reviewRequest === controller) reviewRequest = undefined;
+          }
+        }
       } else if (message.method === 'efficiency.context') {
         if (Object.keys(input).length) throw new TypeError('Context inspection does not accept options.');
         result = await diagnostics.measure('context.read', {}, readContext);
@@ -137,6 +165,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
     close() {
       return closing ??= (async () => {
         const closed = new Promise((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
+        reviewRequest?.abort(new ReviewError('cancelled'));
+        await reviewService.close();
         server.closeIdleConnections();
         await Promise.allSettled([...pending]);
         server.closeAllConnections();

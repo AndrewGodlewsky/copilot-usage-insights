@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.66",
+    "summary": "Ask a selected GitHub Copilot model to review your usage directly in AI Review. Choose a model and verify your connection in Settings, preview what will be sent, and cancel a review at any time. Review usage appears in its own project."
+  },
+  {
     "version": "0.1.65",
     "summary": "The Projects table now shows a dash when a user-prompt count is unavailable, including for Enhanced Prompt background usage. Recorded model turns, tokens, and AI credits are unchanged."
   },

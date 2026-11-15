@@ -59,6 +59,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (server.transportError) throw new Error('PRIVATE_NETWORK_ERROR');
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
       if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
+      if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model' }], verified: true } };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
       if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
       if (message.method === 'settings.set') {
@@ -1723,7 +1724,7 @@ test('settings restore saved text size and apply changes only after a successful
   await get('settings-open').onclick();
   get('text-size').value = 'medium';
   await get('settings-save').onclick();
-  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, extraHomes: ['/backup'], disabledHomes: ['/disabled'] });
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
   assert.equal(rootStyle.get('--text-scale'), '1.15');
   assert.equal(get('settings-dialog').open, false);
   await get('settings-open').onclick();
@@ -1739,4 +1740,53 @@ test('settings restore saved text size and apply changes only after a successful
   delete report.preferences;
   await get('refresh').onclick();
   assert.equal(rootStyle.get('--text-scale'), '1');
+});
+
+test('AI review requires a saved model and explicit send, keeps its snapshot and safely renders responses', async () => {
+  const { report } = await requestPanel();
+  const { get, requests, server } = await mountPanel(report);
+  assert.ok(!requests.some(r => r.method.startsWith('review.')));
+  await get('efficiency-review-open').onclick();
+  assert.equal(get('review-send').disabled, true);
+  await get('settings-open').onclick();
+  await get('review-models-refresh').onclick();
+  assert.match(get('review-model').innerHTML, /Fixture model/);
+  assert.ok(!requests.some(r => r.method === 'review.run'));
+  get('review-model').value = 'fixture-model';
+  await get('settings-save').onclick(); assert.equal(server.config.reviewModel, 'fixture-model');
+  await get('review-reconnect').onclick(); assert.match(get('review-connection-status').textContent, /Connection verified/);
+  await get('efficiency-review-open').onclick();
+  const snapshot = get('efficiency-review-output').value;
+  assert.equal(get('review-send').disabled, false);
+  server.review = () => ({ text: '<script>untrusted</script>\nA useful observation', model: 'fixture-model' });
+  await get('review-send').onclick();
+  assert.deepEqual(requests.find(r => r.method === 'review.run').input, { prompt: snapshot, expectedModel: 'fixture-model' });
+  assert.equal(get('review-answer').textContent, '<script>untrusted</script>\nA useful observation');
+  assert.equal(get('review-answer').innerHTML, '');
+  assert.equal(get('review-result').hidden, false);
+  await get('refresh').onclick();
+  assert.equal(requests.filter(r => r.method === 'review.run').length, 1);
+  assert.match(get('review-result-context').textContent, /Later filter changes/);
+});
+
+test('AI review cancellation and errors keep the response area honest and restore controls', async () => {
+  const { report } = await requestPanel();
+  const { get, server, requests } = await mountPanel(report, { reviewModel: 'fixture-model', extraHomes: [], disabledHomes: [] });
+  await get('efficiency-review-open').onclick();
+  let release;
+  server.review = message => message.method === 'review.run' ? new Promise(resolve => { release = resolve; }) : { ok: true };
+  const pending = get('review-send').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('review-cancel').hidden, false); assert.equal(get('review-send').disabled, true);
+  await get('review-cancel').onclick();
+  assert.equal(requests.at(-1).method, 'review.cancel');
+  release({ text: 'Completed before cancellation', model: 'fixture-model' }); await pending;
+  assert.equal(get('review-cancel').hidden, true);
+  await get('efficiency-review-open').onclick();
+  server.reviewError = 'Same-account verification failed.';
+  await get('review-send').onclick();
+  assert.equal(get('efficiency-review-status').textContent, server.reviewError);
+  assert.equal(get('review-send').disabled, false);
+  await get('settings-open').onclick(); await get('review-models-refresh').onclick();
+  assert.equal(get('review-connection-status').textContent, server.reviewError);
 });

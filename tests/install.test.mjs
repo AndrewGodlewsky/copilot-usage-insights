@@ -11,7 +11,7 @@ test('local installation is portable, repeatable, and refuses unrelated extensio
   t.after(() => fs.rm(temp, { recursive: true, force: true }));
   const destination = path.join(temp, 'extensions', 'usage-insights');
   await installLocal({ destination });
-  for (const file of ['LICENSE', 'src/vendor/js-yaml/LICENSE']) {
+  for (const file of ['LICENSE', 'src/vendor/js-yaml/LICENSE', 'licenses/enhance-prompt-LICENSE']) {
     assert.equal(await fs.readFile(path.join(destination, file), 'utf8'), await fs.readFile(new URL('../' + file, import.meta.url), 'utf8'));
   }
   assert.match(await fs.readFile(path.join(destination, 'extension.mjs'), 'utf8'), /\.\/src\/extension\.mjs/);

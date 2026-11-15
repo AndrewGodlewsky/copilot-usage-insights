@@ -31,7 +31,7 @@ export async function installLocal({ destination = path.join(copilotHome(), 'ext
   let backedUp = false;
   try {
     await fs.mkdir(stage);
-    for (const file of ['src', 'panel', 'LICENSE', 'package.json']) await fs.cp(path.join(root, file), path.join(stage, file), { recursive: true });
+    for (const file of ['src', 'panel', 'licenses', 'LICENSE', 'package.json']) await fs.cp(path.join(root, file), path.join(stage, file), { recursive: true });
     await fs.writeFile(path.join(stage, 'extension.mjs'), "import './src/extension.mjs';\n");
     await fs.writeFile(path.join(stage, marker), JSON.stringify({ id: identity, version: manifest.version }, null, 2) + '\n');
     if (previous) { await fs.rename(destination, backup); backedUp = true; }

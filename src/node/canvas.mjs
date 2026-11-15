@@ -3,12 +3,12 @@ import { createIntegrationReader } from './integrations.mjs';
 import { createContextReader } from './context.mjs';
 
 export async function registerCanvas({ createCanvas, joinSession, startServer = startUsageServer }) {
-  const instances = new Set();
-  let server, session, queue = Promise.resolve();
+  const instances = new Map();
+  let session, queue = Promise.resolve();
   const readIntegrations = createIntegrationReader(() => session);
   const readContext = createContextReader(() => session);
   const enqueue = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
-  const dispose = () => enqueue(async () => { instances.clear(); const old = server; server = null; await old?.close(); });
+  const dispose = () => enqueue(async () => { const servers = [...instances.values()]; instances.clear(); await Promise.all(servers.map(server => server.close())); });
   session = await joinSession({
     tools: [{
       name: 'open_usage_insights',
@@ -23,12 +23,14 @@ export async function registerCanvas({ createCanvas, joinSession, startServer = 
       id: 'usage-insights', displayName: 'Usage Insights', description: 'Local GitHub Copilot token usage, reported AI credits, and activity.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       open: ctx => enqueue(async () => {
-        server ??= await startServer({ readIntegrations, readContext }); instances.add(ctx.instanceId);
+        if (ctx.sessionId && ctx.sessionId !== session.sessionId) throw new Error('This canvas belongs to another session.');
+        let server = instances.get(ctx.instanceId);
+        if (!server) { server = await startServer({ readIntegrations, readContext, session }); instances.set(ctx.instanceId, server); }
         return { title: 'Usage Insights', status: 'GitHub Copilot', url: server.url };
       }),
       onClose: ctx => enqueue(async () => {
-        instances.delete(ctx.instanceId);
-        if (!instances.size) { const old = server; server = null; await old?.close(); }
+        const server = instances.get(ctx.instanceId); instances.delete(ctx.instanceId);
+        await server?.close();
       }),
     })],
   });

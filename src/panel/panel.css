@@ -132,3 +132,5 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 }
 
 #projects-summary .model-toggle:hover,#projects-summary .model-toggle:focus-visible{background:transparent;text-decoration:underline;text-underline-offset:3px}
+
+#review-answer{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7;margin-top:16px;max-width:90ch}.review-settings-actions{margin-top:12px;flex-wrap:wrap}#review-connection-status,#review-send-model{overflow-wrap:anywhere}

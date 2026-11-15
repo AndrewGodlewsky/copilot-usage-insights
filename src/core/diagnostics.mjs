@@ -1,8 +1,11 @@
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
+for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable']);
+for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
+for (const field of ['received', 'eligible']) numericFields.add(field);
 const enumFields = {
   method: new Set(['settings.get', 'settings.set', 'usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.sessionModels', 'skills.openFolder', 'efficiency.context']),
   range: new Set(['1d', '7d', '30d', '90d', 'all', 'custom']),
@@ -11,7 +14,9 @@ const enumFields = {
   kind: new Set(['mcp', 'plugins']),
   reason: new Set(['unsupported', 'invalid-response', 'failed']),
   phase: new Set(['started', 'finished', 'failed']),
+  stage: new Set(['runtime', 'catalog', 'start', 'usage', 'session', 'access', 'workspace', 'tools', 'account', 'generate', 'cleanup']),
 };
+for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.cancel']) enumFields.method.add(method);
 
 // Error messages and arbitrary stack text can contain prompts, paths, or credentials.
 export function diagnosticError(error) {

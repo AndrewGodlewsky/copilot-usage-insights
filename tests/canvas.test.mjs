@@ -82,7 +82,7 @@ test('dashboard API requires the instance token and same origin, and validates r
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
   assert.match(response.headers.get('cache-control'), /no-store/);
 });
-test('concurrent canvas opens share one server; final close disposes it and reopening works', async () => {
+test('canvas instances isolate review ownership, reuse their own server, and dispose independently', async () => {
   let config, starts = 0, stops = 0, opened, serverOptions;
   const session = { sessionId: 'current-session', rpc: { canvas: { open: async input => { opened = input; } },
     mcp: { listConfigured: async () => ({ servers: [{ name: 'test', enabled: true, live: { status: 'connected' } }] }) },
@@ -96,16 +96,19 @@ test('concurrent canvas opens share one server; final close disposes it and reop
   });
   const canvas = config.canvases[0];
   await Promise.all([canvas.open({ instanceId: 'a' }), canvas.open({ instanceId: 'b' })]);
-  assert.equal(starts, 1);
+  assert.equal(starts, 2);
+  await canvas.open({ instanceId: 'a' }); assert.equal(starts, 2);
+  assert.equal(serverOptions.session, session);
+  await assert.rejects(canvas.open({ instanceId: 'other', sessionId: 'other-session' }), /another session/);
   const inventory = await serverOptions.readIntegrations();
   assert.equal(inventory.mcp.sessionId, 'current-session');
   assert.equal(inventory.mcp.rows[0].status, 'connected');
   assert.equal((await serverOptions.readContext()).totalTokens, 100);
-  await canvas.onClose({ instanceId: 'a' }); assert.equal(stops, 0);
-  await canvas.onClose({ instanceId: 'b' }); assert.equal(stops, 1);
-  await canvas.open({ instanceId: 'c' }); assert.equal(starts, 2);
+  await canvas.onClose({ instanceId: 'a' }); assert.equal(stops, 1);
+  await canvas.onClose({ instanceId: 'b' }); assert.equal(stops, 2);
+  await canvas.open({ instanceId: 'c' }); assert.equal(starts, 3);
   await config.tools[0].handler({}); assert.equal(opened.canvasId, 'usage-insights');
-  await registration.dispose(); assert.equal(stops, 2);
+  await registration.dispose(); assert.equal(stops, 3);
 });
 
 test('context endpoint is protected, rejects arbitrary options and never scans history', async t => {
