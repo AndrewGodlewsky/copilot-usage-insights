@@ -161,7 +161,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               snapshot.reasoningEffort = config.reviewReasoning || (supported.includes('medium') ? 'medium' : 'default');
               controller.signal.throwIfAborted();
               preparedReview = snapshot;
-              result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, capturedAt: snapshot.payload.capturedAt,
+              result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt,
                 model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0 };
             } else if (message.method === 'review.analyze') {
               const snapshot = preparedReview;
@@ -170,7 +170,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               if (input.expectedReasoning !== snapshot.reasoningEffort || config.reviewReasoning !== snapshot.savedReasoning) throw new ReviewError('effort');
               preparedReview = undefined;
               result = { ...await reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples: input.allowSamples }, controller.signal),
-                scope: snapshot.scope, capturedAt: snapshot.payload.capturedAt, filterKey: snapshot.filters };
+                scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt, filterKey: snapshot.filters };
             } else result = message.method === 'review.catalog' ? await reviewService.catalog(controller.signal)
               : message.method === 'review.reconnect' ? await reviewService.reconnect(config.reviewModel, controller.signal)
                 : await reviewService.review({ model: config.reviewModel, prompt: input.prompt }, controller.signal);

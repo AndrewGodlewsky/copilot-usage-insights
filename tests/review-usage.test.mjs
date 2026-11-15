@@ -8,6 +8,21 @@ const first = '12345678-1234-4234-8234-123456789abc';
 const second = '87654321-4321-4321-8321-cba987654321';
 const timestamp = '2026-11-14T12:00:00.000Z';
 
+test('analysis accounting requires receipts for every identified submitted pass', async () => fixture(async root => {
+    const recorder = await createUsageRecorder(first, root);
+    recorder.beginPass(); recorder.record(event('first', { apiCallId: 'call-1' })); recorder.endPass('call-1');
+    assert.equal(recorder.summary().creditStatus, 'complete');
+    recorder.beginPass(); recorder.endPass('call-2');
+    assert.equal(recorder.summary().credits, 0); assert.equal(recorder.summary().creditStatus, 'partial');
+    assert.equal(recorder.summary().tokenStatus, 'partial');
+    recorder.record(event('second', { apiCallId: 'call-2', accounting: { sourceSessionId: first, usageId: 'usage-2', sequence: 2 } }));
+    assert.equal(recorder.summary().creditStatus, 'complete');
+    recorder.beginPass(); recorder.endPass(undefined);
+    assert.equal(recorder.summary().creditStatus, 'partial', 'unverified pass identity must stay partial even if other receipts exist');
+    await recorder.flush();
+    assert.doesNotMatch(JSON.stringify((await entries(root)).lines), /call-1|call-2/);
+}));
+
 test('analysis usage summary preserves zero, unknown and partial accounting and deduplicates receipts', async () => fixture(async root => {
     const recorder = await createUsageRecorder(first, root);
     assert.equal(recorder.summary().creditStatus, 'unavailable');

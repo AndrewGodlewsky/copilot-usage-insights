@@ -1,6 +1,6 @@
 # AI insight cards and bounded follow-up
 
-Design prepared November 15, 2026 against v0.1.87. The interaction and budget decisions below come from the user's discussion; the implementation choices are recommendations for review. This is not a description of a shipped feature.
+Design approved November 15, 2026 against v0.1.87, implemented for v0.1.88. The interaction and budget decisions below come from the user's discussion. Execution and verification are recorded in the accompanying implementation plan.
 
 ## Intent
 

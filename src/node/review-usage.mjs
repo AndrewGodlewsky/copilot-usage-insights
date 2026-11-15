@@ -110,7 +110,7 @@ export async function reconcileUsageJournal(path, recorder) {
         } catch  {
             throw new Error('Unable to read usage accounting journal.');
         }
-        if (object(event)?.type === 'session.usage_record') recorder.record(event);
+        if (['session.usage_record', 'assistant.message'].includes(object(event)?.type)) recorder.record(event);
     };
     try {
         for await (const chunk of createReadStream(path, {
@@ -172,10 +172,16 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
     await replace(file, lines);
     const seen = new Set();
     const receipts = [];
+    const expectedCalls = new Set(), recordedCalls = new Set(), completedCalls = new Set();
+    const callKey = value => typeof value === 'string' && value.length > 0 && value.length <= 8192 ? createHash('sha256').update(value).digest('hex') : undefined;
+    let submittedPasses = 0, identifiedPasses = 0;
     let pending = Promise.resolve();
     let failure = false;
     return {
+        beginPass() { submittedPasses++; },
+        endPass(apiCallId) { const key = callKey(apiCallId); if (key && !completedCalls.has(key)) { identifiedPasses++; completedCalls.add(key); expectedCalls.add(key); } },
         summary() {
+            const covered = submittedPasses === identifiedPasses && [...expectedCalls].every(key => recordedCalls.has(key));
             let nano = 0n, creditsKnown = 0, completeCredits = 0, tokens = 0, tokensKnown = 0, completeTokens = 0;
             for (const receipt of receipts) {
                 const r = normalizeUsage(receipt.data.usage, { key: receipt.id, timestamp: receipt.timestamp, sessionId }).record;
@@ -185,11 +191,14 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
                 if (r.inputTotal !== null && r.output !== null) completeTokens++;
             }
             return { requests: receipts.length, credits: creditsKnown ? Number(nano) / 1e9 : null,
-                creditStatus: !creditsKnown ? 'unavailable' : completeCredits === receipts.length ? 'complete' : 'partial',
-                tokens: tokensKnown ? tokens : null, tokenStatus: !tokensKnown ? 'unavailable' : completeTokens === receipts.length ? 'complete' : 'partial' };
+                creditStatus: !creditsKnown ? 'unavailable' : covered && completeCredits === receipts.length ? 'complete' : 'partial',
+                tokens: tokensKnown ? tokens : null, tokenStatus: !tokensKnown ? 'unavailable' : covered && completeTokens === receipts.length ? 'complete' : 'partial' };
         },
         record (event) {
             if (failure) return;
+            if (event?.type === 'assistant.message') {
+                const key = callKey(event.data?.apiCallId); if (key) expectedCalls.add(key);
+            }
             let receipt;
             try {
                 receipt = project(event, sessionId);
@@ -198,6 +207,9 @@ export async function createUsageRecorder(sessionId, root = usageHome()) {
                 return;
             }
             if (!receipt) return;
+            // Identity is only needed in memory to detect absent receipts, never in the saved journal.
+            const call = callKey(event.type === 'session.usage_record' ? event.data?.usage?.apiCallId : event.data?.apiCallId);
+            if (call) recordedCalls.add(call);
             const usage = object(object(receipt.data)?.usage);
             const accounting = object(usage?.accounting);
             const key = accounting ? `${sessionId}:${accounting.usageId}` : `event:${receipt.id}`;

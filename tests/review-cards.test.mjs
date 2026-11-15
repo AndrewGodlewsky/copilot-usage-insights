@@ -19,4 +19,7 @@ test('result caption distinguishes zero, unknown, partial cost, enrichment and c
   const caption = reviewResultCaption(r, true);
   assert.match(caption, /0 AI credits/); assert.match(caption, /partial/i); assert.match(caption, /previous filter snapshot/i); assert.match(caption, /follow-up failed/i);
   assert.match(reviewResultCaption({ ...r, usage: { credits: null, creditStatus: 'unavailable' } }), /credits unavailable/i);
+  assert.match(reviewResultCaption({ ...r, enrichment: 'cancelled' }), /follow-up cancelled; showing initial/i);
+  assert.match(reviewResultCaption({ ...r, enrichment: 'timed-out' }), /follow-up timed out; showing initial/i);
+  assert.match(reviewResultCaption({ ...r, filterLabels: ['Project: Original project'] }, true), /Project: Original project/);
 });

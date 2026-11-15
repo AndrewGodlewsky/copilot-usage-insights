@@ -35,6 +35,7 @@ function fixture(t, overrides = {}) {
   };
   const diagnostics = createDiagnostics();
   const service = createReviewService(parent, { diagnostics, timeoutMs: state.timeoutMs, storageTimeoutMs: state.storageTimeoutMs,
+    readSamples: state.readSamples,
     runtime: async () => ({ sdk, path: '/verified/copilot' }), recorder: async () => {
       state.preparing = true;
       if (state.prepareHold) await new Promise(resolve => { state.releaseStorage = resolve; });
@@ -100,6 +101,26 @@ test('optional enrichment stays in one helper and records both structured submis
   assert.equal(f.state.prepared, 1); assert.equal(f.state.sent.length, 2); assert.equal(f.state.stopped, 1);
   assert.equal(result.usage.requests, 2); assert.ok(f.state.sent.every(p => p.responseSchema));
   assert.doesNotMatch(JSON.stringify(f.diagnostics.snapshot()), /PRIVATE|session-a/);
+});
+
+test('cancelling or timing out a stalled sample read returns baseline and cleans up the helper', async t => {
+  const { prepareInsightReview } = await import('../src/node/review-evidence.mjs');
+  const { reviewFixture, reviewNow } = await import('./fixtures/review.mjs');
+  const data = reviewFixture(); data.user('p'); data.call('p', 'a');
+  const analysis = await prepareInsightReview(data.scan(), { range: 'all' }, reviewNow);
+  const first = { cards: [], emptyReason: 'One prompt is a limited sample.', followUp: { category: 'prompts-sessions', hypothesis: 'A check may already be present.', why: 'Test the hypothesis.', candidates: ['prompt-1'] } };
+  for (const timeout of [false, true]) {
+    let reading = false;
+    const f = fixture(t, { timeoutMs: timeout ? 250 : 2000, output: JSON.stringify(first), readSamples: () => { reading = true; return new Promise(() => {}); } });
+    const work = f.service.review({ model: 'model-a', analysis, allowSamples: true });
+    await waitFor(() => reading);
+    if (!timeout) f.service.cancel();
+    const result = await work;
+    assert.equal(result.enrichment, timeout ? 'timed-out' : 'cancelled');
+    assert.equal(result.emptyReason, first.emptyReason); assert.equal(result.usage.credits, 0);
+    assert.equal(f.state.sent.length, 1); assert.equal(f.state.flushed, 1); assert.equal(f.state.stopped, 1);
+    await assert.rejects(access(f.state.options.baseDirectory));
+  }
 });
 async function waitFor(predicate) {
   for (let i = 0; i < 200 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));

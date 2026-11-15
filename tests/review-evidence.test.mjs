@@ -54,3 +54,23 @@ test('missing measurements remain absent and preparations bound large data', asy
   assert.ok(Buffer.byteLength(s.preview) < 48 * 1024);
   assert.doesNotMatch(s.preview, /PRIVATE/);
 });
+
+test('long-range trend buckets normalize unequal periods by calendar days', async () => {
+  const f = reviewFixture();
+  for (let n = 0; n < 90; n++) {
+    f.time(new Date(2026, 10, 15 - n, 10)); f.user(`p${n}`); f.call(`p${n}`, `a${n}`);
+  }
+  const s = await prepareInsightReview(f.scan(), { range: '90d' }, reviewNow);
+  const trend = s.payload.evidence.find(e => e.id === 'token-trend');
+  assert.equal(trend.unit, 'tokens/day');
+  assert.ok(trend.values.every(v => v.value === 120), 'constant daily activity must produce a flat trend');
+});
+
+test('snapshot keeps readable filter labels locally without adding them to sent evidence', async () => {
+  const f = reviewFixture(); f.user('p'); f.call('p', 'a');
+  const s = await prepareInsightReview(f.scan(), { range: 'all', project: 'PRIVATE PROJECT', models: ['PRIVATE MODEL'], session: 'session-a', environment: 'local' }, reviewNow);
+  assert.ok(s.filterLabels.includes('Project: PRIVATE PROJECT'));
+  assert.ok(s.filterLabels.includes('Models: PRIVATE MODEL'));
+  assert.ok(s.filterLabels.some(label => label.startsWith('Session: ')));
+  assert.doesNotMatch(s.preview, /PRIVATE|filterLabels/);
+});

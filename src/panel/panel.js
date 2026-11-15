@@ -685,6 +685,7 @@ $('efficiency-review-open').onclick = async () => {
     preparedReview = { ...result, filterKey: JSON.stringify(filters) };
     $('efficiency-review-output').value = result.preview;
     $('review-send-model').textContent = result.model ? `${result.model} · ${result.reasoningEffort === 'default' ? 'Model default' : result.reasoningEffort} reasoning` : 'Choose and save a Copilot model in Settings first.';
+    if (result.filterLabels?.length) $('review-send-model').textContent += ' · ' + result.filterLabels.join(' · ');
     $('efficiency-review-status').textContent = result.hasEvidence ? 'Snapshot ready. Statistics are sent only when you select Analyze.' : 'No eligible evidence in this view. Change the filters before preparing a review.';
     $('review-send').disabled = !result.model || !result.hasEvidence;
   } catch (error) { $('efficiency-review-status').textContent = error.message; $('review-send-model').textContent = ''; }
@@ -1220,7 +1221,7 @@ $('skills').onclick = async event => {
 };
 $('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 let settingsSources;
-let reviewModels = [], savedReviewReasoning;
+let reviewModels = [], savedReviewReasoning, reviewReasoningTouched = false;
 function reviewReasoningOptions(preferred = savedReviewReasoning) {
   const model = reviewModels.find(m => m.id === $('review-model').value);
   const choices = model ? ['default', ...(model.reasoningEfforts || [])] : ['default', 'medium', 'high'];
@@ -1237,7 +1238,8 @@ function reviewModelOptions(models, selected) {
   $('review-model').value = selected || '';
   reviewReasoningOptions();
 }
-$('review-model').onchange = () => reviewReasoningOptions(null);
+$('review-model').onchange = () => { reviewReasoningTouched = true; reviewReasoningOptions(null); };
+$('review-reasoning').onchange = () => { reviewReasoningTouched = true; };
 async function refreshReviewConnection(reconnect) {
   if (reviewConnectionPending || reviewRunning) return;
   reviewConnectionPending = true;
@@ -1270,6 +1272,7 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('include-vscode').checked = config.includeVSCode !== false;
     $('extra-vscode-homes').value = (config.extraVSCodeHomes || []).join('\n');
     savedReviewReasoning = config.reviewReasoning;
+    reviewReasoningTouched = false;
     reviewModelOptions([], config.reviewModel);
     settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]);
     $('default-home').textContent = config.defaultHome;
@@ -1283,7 +1286,8 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, reviewReasoning: $('review-reasoning').value });
+    const effort = savedReviewReasoning || reviewReasoningTouched || reviewModels.some(m => m.id === $('review-model').value) ? { reviewReasoning: $('review-reasoning').value } : {};
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, ...effort });
     applyPreferences(config); render();
     $('settings-dialog').close();
     await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));

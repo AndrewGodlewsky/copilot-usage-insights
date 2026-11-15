@@ -72,7 +72,7 @@ async function deadline(work, ms, signal) {
 }
 
 // The runtime/recorder seam is for fixtures only; HTTP clients cannot override either.
-export function createReviewService(parent, { runtime = desktopRuntime, recorder = createUsageRecorder, diagnostics, timeoutMs = 180_000, storageTimeoutMs = 10_000 } = {}) {
+export function createReviewService(parent, { runtime = desktopRuntime, recorder = createUsageRecorder, readSamples, diagnostics, timeoutMs = 180_000, storageTimeoutMs = 10_000 } = {}) {
   let current, closed = false;
   const record = (stage, phase, started, error, fields = {}) => diagnostics?.record(error ? 'error' : 'info', 'review.operation', {
     stage, phase, durationMs: Date.now() - started, ...(error ? { errorCode: safeReviewError(error).code } : {}), ...fields,
@@ -175,11 +175,13 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
           const [a, b] = await deadline(Promise.all([parent.rpc.gitHubAuth.getStatus(), session.rpc.gitHubAuth.getStatus()]), 10_000, signal);
           if (!sameAccount(parentAuth, a) || !sameAccount(parentAuth, b)) throw fail('account');
           record('generate', 'started', started, null, { pass, inputChars: content.length });
+          usage.beginPass?.();
           const result = await deadline(session.sendAndWait({ prompt: content, responseSchema: schema }, 180_000), 180_000, signal);
+          usage.endPass?.(result?.data?.apiCallId);
           check();
           return result?.data?.content;
         };
-        try { outcome = { ...await analyzeInsights(analysis, { send, allowSamples, signal }), model, reasoningEffort }; }
+        try { outcome = { ...await analyzeInsights(analysis, { send, allowSamples, signal, readSamples }), model, reasoningEffort }; }
         catch (error) { check(); throw error instanceof ReviewError ? error : fail('response'); }
         record('generate', 'finished', started, null, { pass: outcome.passes, cards: outcome.cards.length, samples: outcome.samples, guidanceVersion: outcome.guidanceVersion });
         return outcome;

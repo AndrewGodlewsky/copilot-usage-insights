@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { buildReport } from '../core/copilot-report.mjs';
-import { selectEnvironment } from '../core/environments.mjs';
+import { selectEnvironment, environmentName } from '../core/environments.mjs';
 import { parseDateDay } from '../core/query.mjs';
 import { reviewPromptCandidates } from '../core/prompt-credits.mjs';
 import { reviewUsageHome } from './settings.mjs';
@@ -73,9 +73,9 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
     const stride = Math.max(1, Math.ceil(report.daily.length / 12)), values = [];
     for (let at = 0; at < report.daily.length; at += stride) {
       const days = report.daily.slice(at, at + stride);
-      values.push({ label: days.length === 1 ? days[0].day : `${days[0].day} to ${days.at(-1).day}`, value: days.reduce((n, d) => n + d.inputTotal + d.output, 0) });
+      values.push({ label: days.length === 1 ? days[0].day : `${days[0].day} to ${days.at(-1).day}`, value: days.reduce((n, d) => n + d.inputTotal + d.output, 0) / days.length });
     }
-    if (values.length > 1) evidence.push({ id: 'token-trend', topic: 'model-spend', label: 'Recorded tokens over time', template: 'trend', unit: 'tokens', values, samples: s.pairedRequests, total: s.requests, limitation: 'Known input including cache plus output. Partial days/logs and workload mix can change the trend.' });
+    if (values.length > 1) evidence.push({ id: 'token-trend', topic: 'model-spend', label: 'Average daily tokens', template: 'trend', unit: 'tokens/day', values, samples: s.pairedRequests, total: s.requests, limitation: 'Known input including cache plus output, averaged per calendar day in each period. Partial days/logs and workload mix can change the trend.' });
   }
   if (context?.available) for (const key of ['systemPrompt', 'customInstructions', 'systemTools', 'mcpTools', 'messages']) {
     add(`context-${key}`, key === 'customInstructions' ? 'skills-instructions' : 'context-cache', `Current context: ${key}`, context.categories?.[key], 'tokens', 1, 1, `Separate current snapshot at ${context.checkedAt}; not historical attribution or a charge.`);
@@ -93,7 +93,11 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
     limits: scopeLimits, omitted: { models: Math.max(0, e.models.length - 6), skills: Math.max(0, report.skills.rows.length - 6), mcp: Math.max(0, report.mcp.rows.length - 6), promptCandidates: candidates.length - chosen.length } };
   const preview = JSON.stringify(payload, null, 2);
   if (Buffer.byteLength(preview) > 38 * 1024) throw new Error('Review evidence is too large. Narrow the filters.');
-  return { id: randomUUID(), payload, preview, labels, candidates: chosen, scope, filters: JSON.stringify(filters) };
+  // These readable names stay on the local dashboard; the sent scope contains only filter flags.
+  const filterLabels = [filters.models?.length && `Models: ${filters.models.join(', ')}`, filters.project && `Project: ${filters.project}`,
+    filters.session && `Session: ${report.options.sessions.find(s => s.id === filters.session)?.name || 'Selected session'}`,
+    filters.environment && `Environment: ${environmentName(filters.environment)}`].filter(Boolean);
+  return { id: randomUUID(), payload, preview, labels, filterLabels, candidates: chosen, scope, filters: JSON.stringify(filters) };
 }
 
 export async function readReviewSamples(candidates, { signal } = {}) {

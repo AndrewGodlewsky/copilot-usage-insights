@@ -69,3 +69,14 @@ test('empty findings are explicit and cancellation prevents further submissions'
   await assert.rejects(analyzeInsights(snapshot(), { signal: c.signal, allowSamples: true, send: async () => { calls++; c.abort(); return JSON.stringify(response(followUp())); } }));
   assert.equal(calls, 1);
 });
+
+test('cancelling enrichment preserves the validated baseline, including stalled sample reads', { timeout: 2000 }, async () => {
+  for (const duringRead of [true, false]) {
+    const controller = new AbortController(); let calls = 0;
+    const result = await analyzeInsights(snapshot(), { signal: controller.signal, allowSamples: true,
+      send: async () => { if (++calls === 2) { controller.abort(); throw Error('interrupted'); } return JSON.stringify(response(followUp())); },
+      readSamples: async () => { if (duringRead) { controller.abort(); return new Promise(() => {}); } return [{ id: 'prompt-1', text: 'example' }]; } });
+    assert.equal(result.enrichment, 'cancelled'); assert.equal(result.cards.length, 1);
+    assert.equal(calls, duringRead ? 1 : 2);
+  }
+});
