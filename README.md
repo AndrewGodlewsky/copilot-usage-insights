@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.70** shows usage without waiting for plugin/MCP inventory and reduces repeated formatting and hidden-panel work. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.71** adds an X button to the orange data coverage notice. Dismissal lasts while that message is unchanged in the current dashboard, including refreshes; changed warnings and newly opened dashboards show it again. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 

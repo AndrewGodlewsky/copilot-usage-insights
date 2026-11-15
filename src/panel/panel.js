@@ -19,6 +19,12 @@ const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: '7d', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
+let dismissedCoverage = '';
+$('coverage-dismiss').onclick = () => {
+  dismissedCoverage = $('coverage-message').textContent;
+  $('coverage').hidden = true;
+  if (document.activeElement === $('coverage-dismiss')) $('refresh').focus({ preventScroll: true });
+};
 const colors = { ...TOKEN_COLORS, unclassifiedInput: 'var(--muted-fg)', credits: 'var(--s1)' };
 const labels = { ...TOKEN_LABELS, input: 'Uncached input', unclassifiedInput: 'Input (cache split unknown)', credits: 'AI credits' };
 
@@ -870,8 +876,9 @@ function renderContent() {
   if (r.coverage.invalid) warnings.push(`${number(r.coverage.invalid)} malformed records were skipped`);
   if (r.coverage.aggregateOnly) warnings.push(`${number(r.coverage.aggregateOnly)} sessions have summary totals only and are not counted`);
   if (r.sources.some(s => ['error', 'warning', 'missing'].includes(s.state))) warnings.push('Some sources could not be fully read; see Local data sources');
-  $('coverage').hidden = !warnings.length;
-  $('coverage').textContent = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
+  const coverageMessage = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
+  $('coverage-message').textContent = coverageMessage;
+  $('coverage').hidden = !warnings.length || coverageMessage === dismissedCoverage;
   const rateValue = (value, samples, total = t.requests) => creditNumber(value) + (value != null && samples < total ? ' *' : '');
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';

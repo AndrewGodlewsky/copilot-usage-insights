@@ -12,7 +12,7 @@
   <div id="custom" class="controls" hidden><label>From <input type="date" id="start-date"></label><label>Through <input type="date" id="end-date"></label><button id="apply-dates">Apply dates</button><span class="muted">Inclusive, in local time</span></div>
   <details id="filters"><summary>Filter usage</summary><div class="filter-grid"><label>Model<select id="model"><option value="">All models</option></select></label><label>Project<select id="project"><option value="">All projects</option></select></label><label>Session<select id="session"><option value="">All sessions</option></select></label><label class="check"><input type="checkbox" id="cache" checked> Include cache tokens</label><button id="clear-filters">Reset filters</button></div></details>
   <p id="status" role="status" class="notice">Reading local Copilot usage…</p>
-  <p id="coverage" class="notice warning" hidden></p>
+  <div id="coverage" class="notice warning" hidden><p id="coverage-message"></p><button id="coverage-dismiss" type="button" aria-label="Dismiss data coverage notice" title="Dismiss notice">×</button></div>
   <div id="content" hidden>
     <section id="tiles" class="tiles" aria-label="Usage totals"></section>
     <section id="usage-view">

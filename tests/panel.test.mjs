@@ -95,6 +95,33 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
 }
 
+test('coverage notice can be dismissed across renders and refreshes without suppressing changed warnings', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: { aggregateOnly: 2 } };
+  const { get, document } = await mountPanel(report);
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /2 sessions have summary totals only and are not counted/);
+  assert.equal(get('coverage-dismiss').getAttribute('aria-label'), 'Dismiss data coverage notice');
+  get('coverage-dismiss').focus();
+  get('coverage-dismiss').onclick();
+  assert.equal(get('coverage').hidden, true);
+  assert.equal(document.activeElement, get('refresh'));
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.equal(get('coverage').hidden, true);
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, true, 'the same notice stays dismissed after a refresh');
+  report.coverage.invalid = 1;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false, 'changed warnings remain visible');
+  assert.match(get('coverage-message').textContent, /1 malformed records were skipped/);
+  delete report.coverage.invalid;
+  delete report.coverage.aggregateOnly;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, true, 'no notice is displayed without warnings');
+  report.coverage.aggregateOnly = 2;
+  const reopened = await mountPanel(report);
+  assert.equal(reopened.get('coverage').hidden, false, 'dismissal lasts only for this dashboard instance');
+});
+
 test('Usage selections cross-filter metrics, preserve gray alternatives, and clear on repeat', async () => {
   const { records, now } = await requestPanel();
   const data = [

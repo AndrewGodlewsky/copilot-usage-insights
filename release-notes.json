@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.71",
+    "summary": "Close the orange data coverage notice with its new X button. The same notice stays dismissed as you browse and refresh; changed warnings and newly opened dashboards still show it."
+  },
+  {
     "version": "0.1.70",
     "summary": "Usage now appears while Copilot's plugin and MCP inventories load in the background. Faster number formatting and less work in hidden token sections improve responsiveness; filters reuse the latest inventory."
   },
