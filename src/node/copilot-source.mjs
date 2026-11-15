@@ -6,6 +6,7 @@ import { createPromptEventSet } from '../core/prompt-credits.mjs';
 import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
+import { sourceIdentity } from './source-paths.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // File system calls wait on the operating system, so several session folders are read at once.
@@ -98,7 +99,7 @@ function mergeJournals(snapshots) {
   return { recordList: records, skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
-export function createScanner({ optionalHomes = [], skipUnused = false } = {}) {
+export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl } = {}) {
   // Journals and session names are reread only when their size or timestamps change.
   const files = new Map(), names = new Map();
   // Shared by every result of this scanner, so later stages can keep work between scans.
@@ -203,21 +204,29 @@ export function createScanner({ optionalHomes = [], skipUnused = false } = {}) {
     return found;
   }
 
-  async function scan(roots, { force = false, disabled = [] } = {}) {
+  async function scan(roots, { force = false, disabled = [], includeWsl = true } = {}) {
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
+    const discovered = includeWsl && discoverWsl ? await discoverWsl({ disabled }) : { homes: [], sources: [] };
+    const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
     const nameIn = (home, id) => sessionNames.get(home)?.get(id);
     const setName = (home, id, name) => { let map = sessionNames.get(home); if (!map) sessionNames.set(home, map = new Map()); map.set(id, name); };
-    for (const root of new Set([...roots, ...optionalHomes])) {
+    for (const root of new Set([...roots, ...optionalHomes, ...discovered.homes])) {
+      const rootIdentity = sourceIdentity(root);
+      if (seenRoots.has(rootIdentity)) continue;
+      // Disabled UNC sources must not be contacted just to resolve their real path.
+      if (disabledIds.has(rootIdentity)) {
+        seenRoots.add(rootIdentity); sources.push({ path: root, state: 'off', files: 0, records: 0, message: '' }); continue;
+      }
       let real;
       try { real = await fs.realpath(root); }
       catch (e) {
         if (absent(e) && optionalHomes.includes(root) && !roots.includes(root)) continue;
         sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
       }
-      const identity = process.platform === 'win32' ? real.toLowerCase() : real;
+      const identity = sourceIdentity(real);
       if (seenRoots.has(identity)) continue;
       seenRoots.add(identity);
-      const off = disabled.some(p => (process.platform === 'win32' ? p.toLowerCase() : p) === identity);
+      const off = disabledIds.has(identity);
       const source = { path: real, state: off ? 'off' : 'ok', files: 0, records: 0, message: '' };
       sources.push(source);
       if (off) continue;
@@ -238,6 +247,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false } = {}) {
       try { await fs.access(db); databases.push({ db, source }); }
       catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
     }
+    for (const source of discovered.sources) if (!sources.some(s => sourceIdentity(s.path) === sourceIdentity(source.path))) sources.push(source);
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
     if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };

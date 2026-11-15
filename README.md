@@ -50,7 +50,13 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.76** colors minimum-height daily bars by their largest token category and links incomplete-data asterisks to the dismissible coverage notice. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.77** automatically discovers standard Copilot CLI homes in running WSL distributions on Windows, with source diagnostics and a Settings control. Native VS Code Chat debug logs are not imported yet. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+
+### WSL histories on Windows
+
+**Include WSL Copilot CLI usage** is on by default in Settings. Running distributions are checked for standard `.copilot` homes and their receipts are combined with Windows usage using the existing duplicate detection. Start any stopped distributions and click **Refresh**; **Local data sources** lists discovered homes and explains skipped or unreadable sources. Filters reuse the loaded history.
+
+For custom homes, use **Additional Copilot homes**, for example `\\wsl.localhost\Ubuntu\home\alice\.copilot`. Automatic discovery skips Docker Desktop and does not deliberately start stopped distributions. History from stopped distributions is not retained after a scan; custom paths remain explicit reads even if the automatic checkbox is off. Native **VS Code Chat** uses another log format and is **not included** by this update. See [WSL source coverage and the VS Code importer plan](docs/wsl-sources.md) for limitations, diagnostics, and verification steps.
 
 ### If it does not appear
 

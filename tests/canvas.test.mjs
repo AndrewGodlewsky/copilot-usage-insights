@@ -17,7 +17,7 @@ test('settings validate paths, persist atomic changes, and never replace corrupt
   const dir = await fixture(t), settings = createSettings(dir);
   await settings.set({ extraHomes: [dir] });
   await Promise.all([settings.set({ disabledHomes: [dir] }), settings.set({ extraHomes: [] })]);
-  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true });
+  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true, includeWsl: true });
   await assert.rejects(settings.set({ extraHomes: ['relative'] }), /absolute/);
   await assert.rejects(settings.set({ unexpected: true }), /Unknown/);
   await fs.writeFile(path.join(dir, 'settings.json'), '{bad');
@@ -32,7 +32,7 @@ test('text size defaults to small and persists only supported choices without ch
   assert.equal((await settings.get()).textSize, 'small');
   for (const textSize of ['large', 'medium', 'small']) {
     await settings.set({ textSize });
-    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true });
+    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true, includeWsl: true });
   }
   for (const textSize of ['huge', '', 1, null, {}]) await assert.rejects(settings.set({ textSize }), /textSize/);
   assert.equal((await settings.get()).textSize, 'small');
@@ -49,6 +49,15 @@ test('number simplification defaults on for existing settings, validates boolean
   assert.deepEqual(saved.extraHomes, [dir]);
   for (const simplifyNumbers of ['false', 0, 1, null, {}, []]) await assert.rejects(settings.set({ simplifyNumbers }), /simplifyNumbers/);
   assert.equal((await settings.get()).simplifyNumbers, false);
+});
+
+test('WSL discovery defaults on, validates booleans and persists independently of manual sources', async t => {
+  const settings = createSettings(await fixture(t));
+  assert.equal((await settings.get()).includeWsl, true);
+  await settings.set({ includeWsl: false, extraHomes: [os.tmpdir()] });
+  assert.equal((await settings.get()).includeWsl, false);
+  assert.deepEqual((await settings.get()).extraHomes, [path.normalize(os.tmpdir())]);
+  for (const includeWsl of ['true', null, 0, {}]) await assert.rejects(settings.set({ includeWsl }), /includeWsl/);
 });
 
 test('dashboard API requires the instance token and same origin, and validates requests', async t => {

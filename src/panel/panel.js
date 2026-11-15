@@ -1135,8 +1135,9 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     const config = await request('settings.get');
     $('text-size').value = config.textSize ?? 'small';
     $('simplify-numbers').checked = config.simplifyNumbers !== false;
+    $('include-wsl').checked = config.includeWsl !== false;
     reviewModelOptions([], config.reviewModel);
-    settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes]);
+    settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false]);
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
     $('settings-save').disabled = false;
@@ -1148,10 +1149,10 @@ $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value });
     applyPreferences(config); render();
     $('settings-dialog').close();
-    await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes]));
+    await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false]));
   } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
   finally { $('settings-save').disabled = false; }
 };

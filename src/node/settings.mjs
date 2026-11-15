@@ -23,9 +23,9 @@ function validate(input) {
       result.reviewModel = value;
       continue;
     }
-    if (key === 'simplifyNumbers') {
-      if (typeof value !== 'boolean') throw new TypeError('simplifyNumbers must be a boolean');
-      result.simplifyNumbers = value;
+    if (key === 'simplifyNumbers' || key === 'includeWsl') {
+      if (typeof value !== 'boolean') throw new TypeError(`${key} must be a boolean`);
+      result[key] = value;
       continue;
     }
     if (key === 'textSize') {
@@ -47,8 +47,8 @@ export function createSettings(dir = configDir()) {
   const file = path.join(dir, 'settings.json');
   let queue = Promise.resolve();
   async function get() {
-    try { return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
-    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    try { return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
+    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
   }
   return {
     get,
