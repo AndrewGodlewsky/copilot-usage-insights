@@ -1,5 +1,7 @@
 # Token-efficiency section roadmap
 
+This document records the initial v0.1.53 scope. For the implemented token explorer measurements in v0.1.69, see the [updated data contract](../token-explorer-insights.md). The workflow sections under Worth a closer look are unchanged by that update.
+
 Version 0.1.53 separates the approved topics between **Where did the tokens go?** (consumption measurements) and **Worth a closer look** (workflow patterns and experiments). Each dashboard has an independent section picker and shows one panel at a time. Overview and Findings are the defaults. Navigation is local and does not inspect context, read logs, or invoke AI. AI review remains a separate existing manual workflow; generated insights are not developed in this change.
 
 | Section | Dashboard | Current measurements | Further work to evaluate |

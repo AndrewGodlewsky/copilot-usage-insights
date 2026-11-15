@@ -32,7 +32,9 @@ const addTo = (map, id, value) => { if (!map.has(id)) map.set(id, new Set()); ma
 
 export function summarizePromptCredits(events = [], records = [], query, start, end, now) {
   const result = { prompts: 0, eligiblePrompts: 0, credits: null, averageCredits: null, modelFiltered: !!query.models,
-    excluded: { attribution: 0, accounting: 0, unfinished: 0 }, unlinkedRequests: 0 };
+    excluded: { attribution: 0, accounting: 0, unfinished: 0 }, unlinkedRequests: 0,
+    work: { requests: 0, averageRequests: null, maxRequests: null, tokenPrompts: 0, tokens: null, averageTokens: null } };
+  const recordByKey = new Map(records.map(r => [r.key, r]));
   const unique = new Map();
   for (const event of events) if (event.ms <= now.getTime()) unique.set(JSON.stringify(event), event);
   const order = { user: 0, 'turn-start': 1, receipt: 2, message: 3, 'tool-start': 4, 'agent-start': 5, 'agent-end': 6, 'tool-end': 7, 'turn-end': 8 };
@@ -252,10 +254,22 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     if (group.prompts.length !== 1 || group.nodes.some(n => n.bad || n.events.some(e => uncertainSessions.has(e.sessionId))) || prompt.origin === 'unspecified' && !initial) result.excluded.attribution++;
     else if (!charges.length || group.nodes.some(n => n.accounting)) result.excluded.accounting++;
     else if (group.nodes.some(n => n.unfinished)) result.excluded.unfinished++;
-    else { result.eligiblePrompts++; for (const r of selected) nano += BigInt(r.nano); }
+    else {
+      result.eligiblePrompts++; for (const r of selected) nano += BigInt(r.nano);
+      const work = result.work;
+      work.requests += selected.length;
+      work.maxRequests = Math.max(work.maxRequests ?? 0, selected.length);
+      const measured = selected.map(r => recordByKey.get(r.receiptKey));
+      if (measured.every(r => r && Number.isSafeInteger(r.inputTotal) && r.inputTotal >= 0 && Number.isSafeInteger(r.output) && r.output >= 0)) {
+        work.tokenPrompts++;
+        work.tokens = (work.tokens ?? 0) + measured.reduce((sum, r) => sum + r.inputTotal + r.output, 0);
+      }
+    }
   }
   result.unlinkedRequests = records.filter(r => r.ms <= now.getTime() && !assignedReceipts.has(r.key) && inScope(r) && (!query.models || query.models.includes(r.model))).length;
   result.projectPrompts = [...projectPrompts.values()];
   if (result.eligiblePrompts) { result.credits = Number(nano) / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }
+  result.work.averageRequests = result.eligiblePrompts ? result.work.requests / result.eligiblePrompts : null;
+  result.work.averageTokens = result.work.tokenPrompts ? result.work.tokens / result.work.tokenPrompts : null;
   return result;
 }

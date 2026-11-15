@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.69",
+    "summary": "Explore all ten token-efficiency sections with measured breakdowns and practical experiments. See work per prompt, delegated calls, cache reuse, reasoning, tool and skill footprints, and spend concentration, with clear coverage and limits."
+  },
+  {
     "version": "0.1.68",
     "summary": "All AI Review usage now appears under one project named Usage Insights, with a separate session for each review. Earlier reviews join the same project without changing their saved accounting."
   },

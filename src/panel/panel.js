@@ -468,7 +468,7 @@ $('efficiency-context-read').onclick = async () => {
     efficiencyContextSnapshot = undefined;
     clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
     $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical sections are still available.</p>';
-  } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); }
+  } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); renderSelectedTokenTopic(); }
 };
 function renderEfficiencyContext() {
   const c = efficiencyContextSnapshot;
@@ -482,7 +482,7 @@ function renderEfficiencyContext() {
   const categories = { systemPrompt: 'System instructions', customInstructions: 'Custom instructions', systemTools: 'Built-in tool definitions', mcpTools: 'MCP tool definitions', messages: 'Conversation & tool results' };
   const parentLabels = new Map(c.entries.map(entry => [entry.id, entry.label]));
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
-  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details><p class="footnote integration-note">Start with the largest contributor you control. Shorten repeated instructions, move task-specific detail into a skill or reference loaded when needed, or remove unrelated tool definitions for a focused task. Then inspect again and verify the agent still has the context it needs.</p>`;
+  $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, credits: creditNumber, context: c })}`;
 }
 let reviewRunning = false, reviewConnectionPending = false, preparedReviewModel = '';
 $('efficiency-review-open').onclick = async () => {
@@ -653,9 +653,8 @@ function renderSelectedTokenTopic() {
   const topic = TOKEN_TOPICS.find(item => item.id === tokenTopic);
   $('token-topic-title').textContent = topic.label;
   $('token-topic-question').textContent = topic.question;
-  $('token-topic-scope').textContent = ['results', 'skills'].includes(tokenTopic) ? 'Current conversation · separate from the selected history'
-    : tokenTopic === 'delegation' ? 'Measurement not available yet' : 'Selected history · current filters';
-  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber });
+  $('token-topic-scope').textContent = ['tools', 'results', 'skills'].includes(tokenTopic) ? 'Selected history + current conversation snapshot' : 'Selected history · current filters';
+  $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
 $('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
@@ -698,6 +697,12 @@ function openTokenContext() {
 }
 $('token-detail-panel').onclick = event => { if (event.target.closest('[data-token-context]')) openTokenContext(); };
 $('efficiency-inspect-instructions').onclick = openTokenContext;
+$('token-overview-panel').onclick = event => {
+  const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;
+  if (!topic) return;
+  showTokenTopic(topic, true);
+  $('efficiency-topic').focus({ preventScroll: true });
+};
 function renderEfficiency() {
   const efficiency = state.report?.efficiency;
   if (!efficiency) return;
@@ -706,6 +711,8 @@ function renderEfficiency() {
   const failedServer = (state.report.mcp?.rows || []).filter(s => s.failures >= 3).sort((a, b) => b.failures - a.failures)[0];
   const focused = document.activeElement?.dataset;
   renderEfficiencyFlow(summary);
+  $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report, { number, credits: creditNumber });
+  $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report, { number, credits: creditNumber });
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   renderSelectedTokenTopic();
@@ -726,6 +733,9 @@ function renderEfficiency() {
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
     (button || $('view').querySelector('[data-view="efficiency"]'))?.focus({ preventScroll: true });
+  } else if (focused?.tokenJump) {
+    const button = [...$('token-overview-insight').querySelectorAll('[data-token-jump]')].find(b => b.dataset.tokenJump === focused.tokenJump);
+    (button || $('efficiency-topic')).focus({ preventScroll: true });
   }
 }
 async function inspectEfficiency(target) {

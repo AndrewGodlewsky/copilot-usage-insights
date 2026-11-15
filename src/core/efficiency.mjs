@@ -26,8 +26,8 @@ export function summarizeInteractions(records, activity, query, start, end, now)
     averageTurnsPerSession: turnSessions.size ? result.turns / turnSessions.size : null };
 }
 
-const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, creditRequests: 0, creditNano: 0n,
-  pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, reasoningRequests: 0, reasoningTokens: 0 });
+const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, cacheWrite: 0, creditRequests: 0, creditNano: 0n,
+  pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, toolCountRequests: 0, availableTools: 0, reasoningRequests: 0, reasoningTokens: 0, reasoningOutput: 0 });
 const known = value => Number.isFinite(value) && value >= 0;
 function addMeasurement(b, r) {
   b.requests++;
@@ -37,9 +37,10 @@ function addMeasurement(b, r) {
   if (known(r.toolTokenCount) && known(r.inputTotal) && r.toolTokenCount <= r.inputTotal) {
     b.toolRequests++; b.toolTokens += r.toolTokenCount; b.toolInput += r.inputTotal;
   }
-  if (known(r.reasoning) && known(r.output) && r.reasoning <= r.output) { b.reasoningRequests++; b.reasoningTokens += r.reasoning; }
+  if (known(r.availableToolCount)) { b.toolCountRequests++; b.availableTools += r.availableToolCount; }
+  if (known(r.reasoning) && known(r.output) && r.reasoning <= r.output) { b.reasoningRequests++; b.reasoningTokens += r.reasoning; b.reasoningOutput += r.output; }
   if (r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
-    b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead;
+    b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead; b.cacheWrite += r.cacheWrite;
   }
   if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') { b.creditRequests++; b.creditNano += BigInt(r.nanoAiu); }
 }
@@ -50,6 +51,10 @@ function finishMeasurement(b) {
     averageInput: b.inputRequests ? b.inputTokens / b.inputRequests : null,
     averageOutput: b.outputRequests ? b.outputTokens / b.outputRequests : null,
     averageToolTokens: b.toolRequests ? b.toolTokens / b.toolRequests : null,
+    averageAvailableTools: b.toolCountRequests ? b.availableTools / b.toolCountRequests : null,
+    uncachedInput: b.cacheRequests ? b.cacheInput - b.cacheRead - b.cacheWrite : null,
+    otherOutput: b.reasoningRequests ? b.reasoningOutput - b.reasoningTokens : null,
+    reasoningShare: b.reasoningOutput > 0 ? b.reasoningTokens / b.reasoningOutput * 100 : null,
     toolShare: b.toolInput > 0 ? b.toolTokens / b.toolInput * 100 : null,
     cacheHitRate: b.cacheInput > 0 ? b.cacheRead / b.cacheInput * 100 : null,
     averageCredits: b.creditRequests ? credits / b.creditRequests : null };
@@ -59,11 +64,17 @@ const medianInput = samples => samples.map(s => s.input).sort((a, b) => a - b)[1
 
 export function createEfficiencyAccumulator() {
   const total = measurement(), models = new Map(), groups = new Map();
+  const initiators = new Map(['user', 'agent', 'sub-agent', 'unknown'].map(id => [id, measurement()])), delegatedModels = new Map();
   return {
     add(r) {
       addMeasurement(total, r);
       if (!models.has(r.model)) models.set(r.model, measurement());
       addMeasurement(models.get(r.model), r);
+      addMeasurement(initiators.get(initiators.has(r.initiator) ? r.initiator : 'unknown'), r);
+      if (r.initiator === 'sub-agent') {
+        if (!delegatedModels.has(r.model)) delegatedModels.set(r.model, measurement());
+        addMeasurement(delegatedModels.get(r.model), r);
+      }
       // Parallel subagents cannot be reliably ordered as one growing conversation.
       if (!['user', 'agent'].includes(r.initiator)) return;
       const key = JSON.stringify([r.project, r.sessionId, r.model, r.initiator]);
@@ -101,7 +112,10 @@ export function createEfficiencyAccumulator() {
         const row = charged[0];
         insights.push({ kind: 'spend', model: row.name, credits: row.credits, share: row.credits / summary.credits * 100, samples: summary.creditRequests, requests: summary.requests });
       }
-      return { summary, models: rows, insights };
+      return { summary, models: rows, insights,
+        byInitiator: [...initiators].map(([id, b]) => ({ id, ...finishMeasurement(b) })),
+        delegatedModels: [...delegatedModels].map(([name, b]) => ({ name, ...finishMeasurement(b) }))
+          .sort((a, b) => b.requests - a.requests || a.name.localeCompare(b.name)) };
     },
   };
 }

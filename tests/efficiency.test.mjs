@@ -15,6 +15,28 @@ function analyze(records) {
   return analysis.finish(new Map([['s1', 'Work']]));
 }
 
+test('explorer measurements use matched samples and keep unknown initiators separate', () => {
+  const result = analyze([
+    record(0, { inputTotal: 100, cacheRead: 60, cacheWrite: 10, output: 40, reasoning: 10, availableToolCount: 0 }),
+    record(1, { initiator: 'agent', inputTotal: 200, cacheRead: 50, cacheWrite: 100, output: 20, reasoning: null, availableToolCount: 4 }),
+    record(2, { initiator: 'sub-agent', output: 100, reasoning: 200, nanoAiu: 0 }),
+    record(3, { initiator: '', output: null, reasoning: 50, creditStatus: 'partial' }),
+  ]);
+  assert.equal(result.summary.reasoningRequests, 1);
+  assert.equal(result.summary.reasoningOutput, 40);
+  assert.equal(result.summary.reasoningShare, 25);
+  assert.equal(result.summary.otherOutput, 30);
+  assert.equal(result.summary.averageAvailableTools, 2);
+  assert.equal(result.summary.cacheWrite, 2110);
+  assert.equal(result.summary.uncachedInput, 14080);
+  assert.deepEqual(result.byInitiator.map(r => [r.id, r.requests]), [['user', 1], ['agent', 1], ['sub-agent', 1], ['unknown', 1]]);
+  assert.equal(result.delegatedModels[0].credits, 0);
+  assert.equal(result.byInitiator[3].credits, null, 'partial charges do not become complete credit averages');
+  assert.equal(analyze([]).summary.reasoningShare, null);
+  assert.equal(analyze([]).summary.otherOutput, null);
+  assert.equal(analyze([]).summary.uncachedInput, null);
+});
+
 test('context overhead uses matched samples, excludes invalid subsets and preserves missing cache details', () => {
   const normalized = normalizeUsage({ provider: { kind: 'copilot' }, inputTokens: 10000, outputTokens: 500,
     cacheReadTokens: 0, cacheWriteTokens: 0, cacheDetailsReported: false, toolTokenCount: 2500, availableToolCount: 12 },
@@ -96,15 +118,18 @@ test('cache and credit directions require enough coverage and retain bounded evi
 });
 
 test('efficiency follows report date/model/project/session scope and is unchanged by cache display preference', () => {
-  const records = [record(1), record(2, { project: 'Other', model: 'Model B', sessionId: 's2' }),
+  const records = [record(1), record(2, { project: 'Other', model: 'Model B', sessionId: 's2', initiator: 'sub-agent' }),
     record(3, { ms: now.getTime() - 86400000, sessionId: 'old' }), record(4, { ms: now.getTime() + 86400000 })];
   for (const input of [{ range: '1d' }, { range: '7d', models: ['Model A'] }, { range: '7d', project: 'Other' }, { range: '7d', session: 's1' },
     { range: 'custom', startDate: '2026-11-13', endDate: '2026-11-13' }]) {
     const report = buildReport(records, input, now);
     assert.equal(report.efficiency.summary.requests, report.totals.requests);
+    assert.equal(report.efficiency.byInitiator.reduce((sum, row) => sum + row.requests, 0), report.totals.requests);
     assert.deepEqual(report.efficiency.models.map(r => r.name).sort(), report.models.map(r => r.name).sort());
     assert.deepEqual(buildReport(records, { ...input, includeCache: false }, now).efficiency, report.efficiency);
   }
   assert.equal(buildReport(records, { range: '1d' }, now).efficiency.summary.requests, 2);
   assert.equal(buildReport(records, { range: '7d', session: 'old' }, now).efficiency.summary.requests, 1);
+  assert.equal(buildReport(records, { range: '7d', project: 'Other' }, now).efficiency.delegatedModels[0].name, 'Model B');
+  assert.equal(buildReport(records, { range: '7d', models: ['Model A'] }, now).efficiency.delegatedModels.length, 0);
 });

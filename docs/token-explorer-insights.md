@@ -1,0 +1,24 @@
+# Token explorer measurements
+
+Implementation based on v0.1.68's existing receipts, activity, prompt links, and explicit context snapshot. No new log source, background recorder, model call, or automatic context inspection.
+
+| Section | Useful view | Evidence boundary |
+| --- | --- | --- |
+| Overview | Input/output balance, request averages, coverage, and links to deeper views | Token volume is not cost share or task value |
+| Always-loaded context | Instructions/definitions versus conversation in the current snapshot; largest sources | Current hosting conversation only; not historical or necessarily loaded on every call |
+| Tool and MCP footprint | Tool-definition tokens per call, weighted input share, model comparisons; current attributed definitions | Definitions are part of input; available tools differ from executed tools |
+| Files, searches, and tool results | Conversation/context volume, tool-attributed sources, top executed tools | Conversation includes user/assistant/tool messages; no historical per-file or per-result token bill |
+| Cache reuse | Matched uncached input, cache reads and writes; per-model reuse | Missing cache detail is not zero; no inferred cause or savings |
+| Skills and instruction footprint | Current instruction tokens and skill sources; recorded uses/failures | Sources overlap; use counts do not measure tokens or prove skill value. Skill activity retains its existing model-filter exception |
+| Work behind each prompt | Model calls and tokens per eligible prompt alongside credits and exclusions | Reuse whole-prompt eligibility and submission-date semantics; model filters are contributions only |
+| Delegated work | Explicit request-initiator distribution and subagent model usage | Unknown initiators stay unknown; no guessed parent attribution or quality assessment |
+| Reasoning and generated output | Output totals, matched reasoning share and remaining output, model comparisons | Reasoning is a subset of output; subtract only on the same valid measured calls |
+| Biggest spend drivers | Top sessions, recorded credit shares and coverage | Partial charges can change ranking; expensive does not mean wasteful |
+
+Every view should offer an evidence-led observation and one concrete experiment with a measurement to compare. Lists are bounded, labels wrap, zero/missing/partial values remain distinct, and existing number/theme/text-size settings apply. Keep the current navigation and dedicated Overview, Context, and Cache panels. Leave Worth a closer look and AI Review behavior unchanged.
+
+Context category and entry semantics were checked against the installed Copilot SDK `generated/rpc.d.ts`, `SessionContextAttribution`: `systemPrompt` excludes custom instructions, `systemTools` excludes MCP definitions, and `messages` includes user/assistant/tool messages. Entry kinds are open-ended (`skill`, `subagent`, `mcpServer`, `tool`, `system`, `toolDefinition`, `plugin`); labels are presentation-only and must not be used to infer source identity. Entries can overlap through parent relationships. Do not sum them.
+
+Validation: synthetic matched/missing/zero metrics; prompt eligibility, replay, subagents and date/model boundaries; context kind filtering and escaping; all ten sections with empty and populated data; navigation and refresh preserve selection, focus and snapshots without extra network calls; build and full suite before release. In-app visual testing remains manual.
+
+Implemented in v0.1.69. `npm run build` and all 260 tests pass, including matched/zero/missing measurements, prompt linking and filtering, sparse delegated-call coverage, escaping, all ten sections, snapshot reuse, and focus restoration. Independent review corrected MCP-source wording and added independent sample coverage to delegated model averages. No browser or desktop automation, paid calls, or live context inspection was performed; narrow-panel layout, large text, and visual balance need a manual check in Copilot.

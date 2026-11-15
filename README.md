@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.68** groups all AI Review usage under **Usage Insights**, with a separate session for each review. Earlier reviews appear in the same project without rewriting their saved accounting. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.69** builds out all ten sections of **Efficiency → Where did the tokens go?**, with measured breakdowns, coverage, and practical experiments to try. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -243,7 +243,26 @@ The section order is **Overview**, then **Always-loaded context**, **Tool and MC
 
 Both selections survive refreshes, filter changes, settings changes, and tab changes within the open dashboard. Switching sections makes no requests, scans no logs, and invokes no AI. Reopening starts at Overview and Findings. **AI review** stays separate: neither dashboard appears inside it, and this reorganization adds no AI-generation behavior.
 
-This first increment reuses available report measurements and the explicit context inspector. Delegated-work splits, compaction effects, model-transition analysis, and repeated-exploration detection are labeled **Not measured yet**. Files/results and skill footprint link to current source attribution without inventing historical costs. The [section roadmap](docs/research/2026-11-14-token-sections.md) records what each section shows now and what remains to develop. These views overlap; their token counts are not added together.
+Each token explorer section now provides measurements, an observation, an experiment to try, and what to compare afterward:
+
+| Section | What you can explore |
+| --- | --- |
+| Overview | Matched input/output balance, request averages, and shortcuts to deeper views |
+| Always-loaded context | Current instructions and tool definitions as a share of occupied context, plus attributed sources |
+| Tool and MCP footprint | Definition tokens and available tools per call, input share, and model comparisons |
+| Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
+| Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model |
+| Skills and instruction footprint | Current custom-instruction tokens and attributed skills alongside historical uses and failed loads |
+| Work behind each prompt | Average model calls, AI credits, tokens, and the largest call count among eligible prompts |
+| Delegated work | Explicit user, agent-continuation, subagent, and unknown initiators, plus models used by subagents |
+| Reasoning and generated output | Output volume and the reasoning/other-output split on calls with both measurements |
+| Biggest spend drivers | The five highest recorded session/project charges and their share of recorded spend |
+
+Historical measurements reuse the existing filtered report. **Work behind each prompt** reuses complete prompt accounting: groups are formed before filtering and dated by the user's submission, including reliably linked continuations and delegated work. Its token average includes only eligible prompts with input and output recorded for every included call; cached input is counted once. Model filters explicitly show selected-model contributions. These prompt-date totals can differ from request-date totals elsewhere. **Delegated work** instead groups request-date usage by the recorded initiator; unknown initiators remain unknown, and this does not establish parent links.
+
+Context is fetched only when you select **Inspect context**. The same snapshot is reused in the context, tool, result, and skill views until you inspect again. It describes the conversation hosting this dashboard, independently of history filters. Conversation context includes user, assistant, and tool messages together. Attributed MCP entries can include both definitions and messages, and parent/child sources can overlap. Skill use counts retain the existing model-filter exception shown in Breakdown. Neither installed skills nor invocation counts establish historical token cost or unused context.
+
+Lists show at most five contributors. Missing measurements remain **Unavailable**, recorded zeros remain zero, and partial charges retain their markers. Each comparison keeps its measured denominator visible. These views overlap; their token counts are not added together. The [measurement contract](docs/token-explorer-insights.md) records the data and attribution limits. Compaction effects, model-transition analysis, and repeated-exploration detection under **Worth a closer look** remain **Not measured yet**; see the [original section roadmap](docs/research/2026-11-14-token-sections.md).
 
 **Conversation habits** includes current instruction-presence context, user messages, messages per session, characters per prompt, input tokens per model call, and root-agent turns per session. Prompt-size measurements are folded into this section rather than repeated in a separate panel. Prompt characters and input tokens are separate averages, not a matched ratio. **Model comparisons** retains the model table and its recorded credits per request. Length counts displayed-text UTF-16 units, not tokens, prompt detail, or quality; attachments and transformed content are excluded. Averages use only sessions with observed relevant events within the selected dates, not full lifetime session lengths. One user message can cause several turns and model requests.
 

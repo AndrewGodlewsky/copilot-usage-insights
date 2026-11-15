@@ -24,13 +24,14 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   }));
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
   // Model the persistent navigation children without running a browser.
-  for (const id of ['token-topic-stops', 'token-track-nodes']) {
+  for (const id of ['token-topic-stops', 'token-track-nodes', 'token-overview-insight']) {
     let markup = '', children = [];
     Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) {
       markup = value;
-      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest]) => {
+      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node|jump)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest]) => {
         const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-        return { dataset: { [kind === 'stop' ? 'tokenStop' : 'tokenNode']: topic },
+        return { dataset: { [{ stop: 'tokenStop', node: 'tokenNode', jump: 'tokenJump' }[kind]]: topic },
+          focus() { document.activeElement = this; },
           setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
           classList: { toggle(key, on) { this[key] = on; } },
         };
@@ -1457,6 +1458,51 @@ test('simplified numbers apply across views and context, persist, and only chang
 function jumpTokenTopic(get, id) {
   get('token-topic-stops').onclick({ target: { closest: () => ({ dataset: { tokenStop: id } }) } });
 }
+
+test('token insights reuse the explicit snapshot across sections and filters without hidden reads', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, requests, server, document } = await mountPanel(report);
+  assert.match(get('token-overview-insight').innerHTML, /data-token-jump="prompts"/);
+  get('token-overview-panel').onclick({ target: { closest: () => ({ dataset: { tokenJump: 'prompts' } }) } });
+  assert.equal(get('token-selected-title').textContent, 'Work behind each prompt');
+  assert.equal(document.activeElement, get('efficiency-topic'));
+  const before = requests.length;
+  jumpTokenTopic(get, 'skills');
+  assert.match(get('token-topic-body').innerHTML, /not been measured/);
+  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
+  assert.equal(requests.length, before, 'opening the inspector is local navigation');
+  server.contextSnapshot = { available: true, checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, limit: 10000,
+    categories: { systemPrompt: 100, customInstructions: 50, systemTools: 80, mcpTools: 20, messages: 750 },
+    entries: [{ id: 'skill', kind: 'skill', label: '<Snapshot skill>', tokens: 50 }, { id: 'tool', kind: 'tool', label: '<Snapshot result>', tokens: 100 }], omitted: 0 };
+  await get('efficiency-context-read').onclick();
+  assert.match(get('efficiency-context-result').innerHTML, /Instructions \+ definitions/);
+  assert.match(get('efficiency-context-result').innerHTML, />250<\/strong>/);
+  const inspected = requests.length;
+  jumpTokenTopic(get, 'skills');
+  assert.match(get('token-topic-body').innerHTML, /&lt;Snapshot skill&gt;/);
+  assert.doesNotMatch(get('token-topic-body').innerHTML, /Snapshot result/);
+  jumpTokenTopic(get, 'results');
+  assert.match(get('token-topic-body').innerHTML, /&lt;Snapshot result&gt;/);
+  assert.doesNotMatch(get('token-topic-body').innerHTML, /Snapshot skill/);
+  assert.equal(requests.length, inspected);
+  get('efficiency-topic').focus();
+  await get('refresh').onclick();
+  get('model').value = 'Another model';
+  await get('model').onchange();
+  assert.equal(get('token-selected-title').textContent, 'Files, searches, and tool results');
+  assert.equal(document.activeElement, get('efficiency-topic'));
+  assert.match(get('token-topic-body').innerHTML, /&lt;Snapshot result&gt;/);
+  assert.equal(requests.filter(r => r.method === 'efficiency.context').length, 1);
+  server.contextSnapshot = { available: false, reason: 'empty' };
+  await get('efficiency-context-read').onclick();
+  assert.doesNotMatch(get('token-topic-body').innerHTML, /Snapshot result/);
+  assert.match(get('token-topic-body').innerHTML, /not been measured/);
+  jumpTokenTopic(get, 'overview');
+  const shortcut = get('token-overview-insight').querySelector('[data-token-jump="output"]');
+  shortcut.focus();
+  await get('refresh').onclick();
+  assert.equal(document.activeElement.dataset.tokenJump, 'output');
+});
 
 test('Efficiency section pickers separate topics, switch locally, and retain independent selections', async () => {
   const { get, requests, windowListeners, timeouts, document } = await requestPanel();

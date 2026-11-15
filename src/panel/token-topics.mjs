@@ -1,4 +1,5 @@
-import { esc, usageValue } from './charts.mjs';
+import { esc } from './charts.mjs';
+import { renderTokenInsight } from './token-insights.mjs';
 
 export const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', iconPath: 'M4 19v-6h3v6m4 0V9h3v10m4 0V5h3v14M3 21h19', group: '', question: 'See the overall balance of input and output.' },
@@ -30,13 +31,12 @@ export const PATTERN_TOPICS = [
   { id: 'models', label: 'Model comparisons', group: '', question: 'Compare recorded charges and context use across models.' },
 ];
 
-export function renderTokenTopic(id, report, { number, credits }) {
-  const summary = report.efficiency?.summary || {};
+export function renderTokenTopic(id, report, formats) {
+  if (TOKEN_TOPICS.some(topic => topic.id === id)) return renderTokenInsight(id, report, formats);
+  const { number } = formats;
   const metric = (label, value, detail, format = number) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(format(value))}</strong><span class="sub">${esc(detail)}</span></div>`;
   const metrics = (...items) => `<div class="efficiency-metrics">${items.join('')}</div>`;
   const note = text => `<p class="footnote">${esc(text)}</p>`;
-  const coverage = count => `${number(count ?? 0)} of ${number(summary.requests ?? 0)} model calls`;
-  const inspect = '<button data-token-context="true">Open context inspector</button>';
   const unmeasured = text => `<p class="token-topic-status">Not measured yet</p><p>${esc(text)}</p>`;
 
   if (id === 'growth') {
@@ -46,30 +46,6 @@ export function renderTokenTopic(id, report, { number, credits }) {
       metric('Earlier input / call', growth.early, 'Median of the first three measured calls'),
       metric('Later input / call', growth.late, 'Median of the last three measured calls'),
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
-  }
-  if (id === 'tools') return metrics(
-    metric('Tool definitions / call', summary.averageToolTokens, coverage(summary.toolRequests)),
-    metric('Share of measured input', summary.toolShare, 'Definitions and input measured on the same calls', value => value == null ? 'Unavailable' : `${number(value)}%`),
-  ) + note('These describe available tools, not their results or execution costs. Definitions are already included in input. Inspect current context to see built-in and MCP definitions separately, when the host reports them.') + inspect;
-  if (id === 'results') return '<p>The current context inspector groups conversation and tool-result messages together and lists individual sources when Copilot attributes them.</p>' + note('A separate historical token breakdown for files, searches, and tool results is not measured yet. Their combined context category should not be presented as tool-result tokens alone.') + inspect;
-  if (id === 'skills') return '<p>Inspect the largest attributed sources in current context to look for loaded skills and instructions. Source detail depends on what Copilot reports.</p>' + note('Installed skills and invocation counts do not establish context cost. Historical tokens per skill are not measured. Parent and child sources may overlap and should not be added together.') + inspect;
-  if (id === 'prompts') {
-    const prompts = report.promptCredits || {};
-    return (prompts.modelFiltered ? '<p class="token-topic-status">Selected-model contribution only</p>' : '') + metrics(
-      metric('AI credits / prompt', prompts.averageCredits, `${number(prompts.eligiblePrompts ?? 0)} of ${number(prompts.prompts ?? 0)} prompts eligible`, credits),
-      metric('Recorded AI credits', prompts.credits, 'Charges attributable to eligible prompts', credits),
-    ) + note('Includes initial calls, agent continuations, and subagent work with reliable parent links. Prompts need complete accounting and finished linked work. They are dated by submission, with all linked work grouped before filtering. A model filter shows only that model’s contribution to eligible prompts; local logs may be incomplete.') + note('A per-prompt call-count and initial-versus-follow-up breakdown is not displayed here yet.');
-  }
-  if (id === 'delegation') return unmeasured('A separate subagent usage breakdown is not available here yet. Complete prompt charges already include delegated work when parent links and accounting are reliable. Missing links must remain unattributed, rather than being assigned by timing or agent name.');
-  if (id === 'output') return metrics(
-    metric('Generated output', summary.outputRequests ? summary.outputTokens : null, coverage(summary.outputRequests)),
-    metric('Reported reasoning', summary.reasoningRequests ? summary.reasoningTokens : null, coverage(summary.reasoningRequests)),
-  ) + note('Reasoning is part of output, not an extra token category to add. Reporting coverage can differ, so these totals are not subtracted to invent a non-reasoning total. Output can include tool-call arguments and does not measure the usefulness of the answer.');
-  if (id === 'drivers') {
-    const rows = (report.sessions || []).filter(row => Number.isFinite(row.credits))
-      .slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name)).slice(0, 5);
-    if (!rows.length) return '<p class="muted">No session charges are recorded for these filters. Unavailable charges are not zero.</p>';
-    return '<p>Up to five session/project groups with the largest recorded AI credit totals.</p><div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Session</th><th>Project</th><th>AI credits</th></tr></thead><tbody>' + rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td><td class="text-cell"><span class="cell-text">${esc(row.project)}</span></td><td>${esc(usageValue(row, 'credits', credits))}</td></tr>`).join('') + '</tbody></table></div>' + note('An asterisk marks incomplete charges, which can affect the ranking. A session spanning projects can appear more than once. These are recorded charges, not a judgment of task value.');
   }
   if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
   if (id === 'transitions') return unmeasured('Changes in input and cache reuse around model switches and resumed sessions are not measured here yet. Those comparisons need reliable transition events and must distinguish manual choices, automatic routing, and subagent work.');

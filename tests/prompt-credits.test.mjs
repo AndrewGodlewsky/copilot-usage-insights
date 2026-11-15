@@ -36,6 +36,35 @@ function snapshot(events) {
 const report = (events, query = {}) => { const s = snapshot(events); return buildReport(s.records, { range: 'all', ...query }, now, s); };
 const metrics = (events, query) => report(events, query).promptCredits;
 
+test('prompt work counts linked calls once and only averages fully measured prompt tokens', () => {
+  const f = fixture(); f.user('a'); f.call('a', 'initial', 0, { terminal: false });
+  f.call('a', 'followup', 0, { turn: '1', initiator: 'agent', model: 'Model B' });
+  f.user('b'); f.call('b', 'single', 1);
+  const all = metrics([...f.events, ...f.events]);
+  assert.deepEqual(all.work, { requests: 3, averageRequests: 1.5, maxRequests: 2, tokenPrompts: 2, tokens: 360, averageTokens: 180 });
+  assert.deepEqual(metrics(f.events, { models: ['Model B'] }).work, { requests: 1, averageRequests: 1, maxRequests: 1, tokenPrompts: 1, tokens: 120, averageTokens: 120 });
+  const missing = structuredClone(f.events);
+  delete missing.find(e => e.data?.usage?.apiCallId === 'initial').data.usage.outputTokens;
+  const partialTokens = metrics(missing);
+  assert.equal(partialTokens.eligiblePrompts, 2, 'missing tokens do not alter complete credit accounting');
+  assert.equal(partialTokens.work.tokenPrompts, 1);
+  assert.equal(partialTokens.work.averageTokens, 120, 'partial prompt token totals are excluded');
+  assert.equal(metrics([]).work.averageRequests, null);
+  assert.equal(metrics([]).work.averageTokens, null);
+});
+
+test('prompt work follows existing delegated, incomplete and date-boundary eligibility', () => {
+  const delegatedWork = metrics(delegated().events);
+  assert.equal(delegatedWork.work.requests, 3);
+  assert.equal(delegatedWork.work.averageTokens, 360);
+  const f = fixture(); f.time(new Date(2026, 10, 13, 23, 59)); f.user('a'); f.call('a', 'first', 1, { terminal: false });
+  f.time(new Date(2026, 10, 14, 1)); f.call('a', 'second', 2, { turn: '1', initiator: 'agent' });
+  assert.equal(metrics(f.events, { range: '1d' }).work.averageRequests, null);
+  assert.equal(metrics(f.events, { range: 'custom', startDate: '2026-11-13', endDate: '2026-11-13' }).work.averageRequests, 2);
+  f.user('unfinished'); f.call('unfinished', 'unfinished-call', 2, { complete: false });
+  assert.equal(metrics(f.events).work.requests, 2);
+});
+
 test('Usage projects count human submissions independently of model turns and complete billing', () => {
   const f = fixture(); f.user('a'); f.call('a', 'initial', 1, { terminal: false });
   f.call('a', 'continuation', 2, { turn: '1', initiator: 'agent' });
