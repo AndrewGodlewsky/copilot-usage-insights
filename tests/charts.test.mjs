@@ -48,6 +48,33 @@ test('daily hover targets follow the columns rather than the whole day slot', ()
   assert.match(chart, /data-day="2026-11-13"[^>]*tabindex="0"/);
 });
 
+test('small positive days remain visible beside large days without inventing usage on empty days', () => {
+  const today = { input: 1000, output: 900, cacheRead: 6000, cacheWrite: 1000, total: 8900, credits: .001 };
+  for (const count of [7, 15, 30, 90]) for (const keys of [['input', 'output', 'cacheRead', 'cacheWrite'], ['credits']]) {
+    const days = Array.from({ length: count }, (_, i) => ({ ...day(new Date(2026, 0, i + 1).toLocaleDateString('en-CA'), 0) }));
+    Object.assign(days[0], { input: 100_000_000, credits: 100 });
+    Object.assign(days.at(-1), today);
+    const before = structuredClone(days);
+    const chart = stackedBars(days, { keys, height: 230, width: 600, selectable: true, selectedDay: days.at(-1).day });
+    wellFormed(chart);
+    const hits = [...chart.matchAll(/class="column-hit"[^>]*height="([^"]+)"/g)].map(match => Number(match[1]));
+    assert.ok(hits.at(-1) >= 4, 'today must have a visible, usable target, even when its scaled height is below one pixel');
+    assert.equal(hits[0], count <= 14 ? 182 : 194, 'the largest day retains its linear scale');
+    assert.doesNotMatch(chart, /<clipPath id="sb-c1">/, 'zero days must not gain a colored stack');
+    const stack = chart.split(`<g clip-path="url(#sb-c${count - 1})">`)[1].split('</g>')[0];
+    const segments = [...stack.matchAll(/height="([^"]+)" fill=/g)].map(match => Number(match[1]));
+    const total = keys.reduce((sum, key) => sum + today[key], 0);
+    assert.equal(segments.length, keys.length);
+    for (const [i, key] of keys.entries()) assert.ok(Math.abs(segments[i] / hits.at(-1) - today[key] / total) < 1e-10, 'minimum-height stacks retain their token mix');
+    assert.match(chart, /Minimum height for visibility/);
+    assert.ok(chart.includes(keys.length > 1 ? 'Total: 8900' : 'credits: 0.001'), 'accessible tooltip values retain the real amount');
+    assert.ok(chart.includes(`data-day="${days.at(-1).day}" role="button" tabindex="0" aria-pressed="true"`));
+    assert.deepEqual(days, before, 'rendering never changes recorded counts');
+  }
+  const single = stackedBars([{ ...today, day: '2026-11-15' }], { height: 230, selectable: true });
+  assert.doesNotMatch(single, /Minimum height for visibility/, 'Today-only charts retain their normal scale');
+});
+
 test('column tooltips preserve full numbers and partial, unavailable, and zero charges', () => {
   const tokens = [{ ...day('2026-11-12', 1000), requests: 1, knownTokenRequests: 1 },
     { ...day('2026-11-13', 10), requests: 2, knownTokenRequests: 1, missingTokens: 1 },

@@ -66,6 +66,22 @@ test('reports sum actual credits, flag partial coverage, and respect local dates
   assert.equal(buildReport(records, { range: '1d', includeCache: false }, now).totals.total, 100);
   assert.equal(buildReport(records, { range: 'custom', startDate: '2026-11-12', endDate: '2026-11-12' }, now).totals.requests, 0);
 });
+
+test('today retains the same counts in every preset across month, year, and daylight-saving boundaries', () => {
+  for (const now of [new Date(2026, 10, 15, 12), new Date(2026, 10, 1, 12), new Date(2026, 2, 8, 12), new Date(2026, 0, 1, 12)]) {
+    const records = parse([
+      { ...receipt({ inputTokens: 100_000_000 }, 'earlier'), timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 10).toISOString() },
+      { ...receipt({ inputTokens: 8000, outputTokens: 900 }, 'today'), timestamp: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10).toISOString() },
+    ]).records;
+    const today = buildReport(records, { range: '1d' }, now).daily[0];
+    assert.equal(today.total, 8900);
+    assert.equal(today.credits, .25);
+    for (const range of ['7d', 'mtd', '30d', '90d']) {
+      assert.deepEqual(buildReport(records, { range }, now).daily.at(-1), today, `${range} retains today's full usage`);
+    }
+  }
+});
+
 test('incomplete token records use the same known subtotal across every report view', () => {
   const records = parse([receipt({ cacheReadTokens: undefined })]).records;
   const now = new Date(2026, 10, 13, 12);

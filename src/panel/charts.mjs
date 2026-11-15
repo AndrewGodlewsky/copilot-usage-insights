@@ -76,12 +76,17 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
   daily.forEach((d, i) => {
     const x = i * slot + (slot - barW) / 2
     const total = totals[i]
-    const h = (total / (max || 1)) * plotH
+    const scaledH = (total / (max || 1)) * plotH
+    // Keep nonzero days discoverable beside large historical totals; tooltips retain exact values.
+    const h = total > 0 ? Math.max(4, scaledH) : 0
+    const minimumHeight = h > scaledH
+    const corner = Math.min(radius, h / 2)
     const show = (v) => (fmt ? fmt(v) : v)
     const rows = keys.map((k) => [labels[k] ?? k, usageValue(d, k, show)])
     if (d.missingCredits && keys.includes('credits')) rows.push(['Charges unavailable', d.missingCredits])
     if (d.partialCredits && keys.includes('credits')) rows.push(['Partial charges', d.partialCredits])
     if (d.missingTokens && !keys.includes('credits')) rows.push(['Incomplete token counts', d.missingTokens])
+    if (minimumHeight) rows.push(['Display', 'Minimum height for visibility'])
     const shownTotal = keys.length > 1 ? usageValue({ ...d, total }, 'total', show) : undefined
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows, total: shownTotal }))
     const selection = selectable ? ` data-day="${esc(d.day)}" role="button" tabindex="0" aria-pressed="${d.day === selectedDay}" aria-label="${esc(d.day)}: show token breakdown" aria-describedby="${id}-d${i}"` : ''
@@ -92,16 +97,16 @@ export function stackedBars(daily, { keys = TOKEN_KEYS, width = 360, height = 17
     body += `<rect class="column-hit" x="${x}" y="${targetY}" width="${barW}" height="${targetH}" rx="${radius}"/>`
     if (h > 0) {
       const cid = `${id}-c${i}`
-      defs += `<clipPath id="${cid}"><rect x="${x}" y="${top + plotH - h}" width="${barW}" height="${h + radius}" rx="${radius}"/></clipPath>`
+      defs += `<clipPath id="${cid}"><rect x="${x}" y="${top + plotH - h}" width="${barW}" height="${h + corner}" rx="${corner}"/></clipPath>`
       body += `<g clip-path="url(#${cid})">`
       let y = top + plotH
       let drawn = 0
       for (const k of keys) {
         const v = d[k] || 0
         if (v <= 0) continue
-        const sh = (v / max) * plotH
+        const sh = (v / total) * h
         y -= sh
-        const gap = drawn++ > 0 ? Math.min(2, sh / 2) : 0 // 2px surface gap between stacked segments
+        const gap = drawn++ > 0 && !minimumHeight ? Math.min(2, sh / 2) : 0 // Small markers keep their full token mix visible.
         body += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(0, sh - gap)}" fill="${colors[k] ?? 'var(--s1)'}"/>`
       }
       body += `</g>`

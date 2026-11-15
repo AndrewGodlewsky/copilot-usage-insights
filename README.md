@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.74** loads usage immediately and refreshes every **15 minutes** while visible to reduce background work. The **Refresh** button still updates on demand. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.75** keeps small daily token and AI credit bars visible beside much larger days, with exact recorded amounts in their tooltips. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### If it does not appear
 
@@ -139,6 +139,8 @@ These buildings identify the selected filter and stay in place regardless of usa
 **Cache hit rate** is cache-read tokens divided by all input tokens. If a cache split is missing, the rate is unavailable. Turning off **Include cache tokens** removes cache from totals and charts; the individual input/output/cache counts remain visible for reference. An asterisk marks incomplete coverage. Missing counts show **Unavailable**.
 
 The daily chart fits the selected date range without horizontal scrolling or value labels above the bars. Hover over a stacked column to see its token or credit details in the tooltip. The column gently enlarges without an outline on mouse hover to show that it is clickable; click it to inspect that day's token types. Selecting a day keeps its column at full color and gently mutes the other columns, without a blue selection border. Clearing the day restores all colors. Keyboard focus still outlines the column itself. Keyboard focus also shows the tooltip; Escape dismisses it. Empty days retain a small baseline target and keyboard access. Reduced-motion preferences disable enlargement while preserving outlines. Tooltip values follow **Simplify numbers**, including partial/unavailable indicators.
+
+Daily token and credit charts scale independently against the largest day in the selected range. Nonzero bars have a minimum height of four chart pixels so small days remain visible and clickable. Their stacked colors retain the recorded proportions, and the tooltip notes when that minimum is used. This affects display height only; counts and charges stay unchanged, and zero or unavailable days do not gain colored bars.
 
 - Only requests attributed to GitHub Copilot in local records. Models used **through Copilot** appear regardless of their model vendor. Custom-provider and bring-your-own-key requests are excluded.
 - Both desktop and CLI usage can appear when they share the same Copilot home. This is local recorded activity, not an account-wide billing report.

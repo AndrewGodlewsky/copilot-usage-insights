@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.75",
+    "summary": "Small amounts of daily usage remain visible and clickable beside much busier days in token and AI credit charts. Tooltips keep the recorded amounts and explain when a bar uses a minimum visible height."
+  },
+  {
     "version": "0.1.74",
     "summary": "Usage loads immediately and refreshes every 15 minutes while visible, reducing background work. Returning to the dashboard refreshes only when its last successful scan is at least 15 minutes old; the Refresh button still updates on demand."
   },
