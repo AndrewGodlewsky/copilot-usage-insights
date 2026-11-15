@@ -1,45 +1,66 @@
-import { normalizeQuery, localDay, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
+import { normalizeQuery, localDay, dayOfMs, dayKey, parseDateDay, RANGE_DAYS } from './query.mjs';
 import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
 
-const tokenFields = ['input', 'inputTotal', 'output', 'cacheRead', 'cacheWrite', 'reasoning'];
-const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0, missing: Object.fromEntries(tokenFields.map(k => [k, 0])), missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0, nano: 0n, completeCreditRequests: 0, completeCreditNano: 0n, creditTokenRequests: 0, creditTokens: 0, creditTokenNano: 0n, sessions: new Set() });
+const MAX = Number.MAX_SAFE_INTEGER, NONE = Symbol('none');
+const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0,
+  missing: { input: 0, inputTotal: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, missingTokens: 0, knownTokenRequests: 0, missingCache: 0, missingCredits: 0, partialCredits: 0, chargedRequests: 0,
+  nano: 0, completeCreditRequests: 0, completeCreditNano: 0, creditTokenRequests: 0, creditTokens: 0, creditTokenNano: 0, sessions: new Set(), wide: null });
 const knownTokens = (r, includeCache) => ((includeCache ? r.inputTotal : r.input) ?? 0) + (r.output ?? 0);
+// Credit totals are exact integers. They stay ordinary numbers until one would leave the safe
+// range, and only then continue as a BigInt, so no request allocates one.
+function addNano(b, field, value) {
+  if (Number.isSafeInteger(value) && value >= 0 && b[field] <= MAX - value) b[field] += value;
+  else { (b.wide ??= { nano: 0n, completeCreditNano: 0n, creditTokenNano: 0n })[field] += BigInt(b[field]) + BigInt(value); b[field] = 0; }
+}
+const nanoTotal = (b, field) => b.wide ? Number(b.wide[field] + BigInt(b[field])) : b[field];
 function add(b, r, includeCache) {
   b.requests++; b.sessions.add(r.sessionId);
-  for (const k of tokenFields) { b[k] += r[k] ?? 0; if (r[k] == null) b.missing[k]++; }
+  const missing = b.missing;
+  if (r.input == null) missing.input++; else b.input += r.input;
+  if (r.inputTotal == null) missing.inputTotal++; else b.inputTotal += r.inputTotal;
+  if (r.output == null) missing.output++; else b.output += r.output;
+  if (r.cacheRead == null) missing.cacheRead++; else b.cacheRead += r.cacheRead;
+  if (r.cacheWrite == null) missing.cacheWrite++; else b.cacheWrite += r.cacheWrite;
+  if (r.reasoning == null) missing.reasoning++; else b.reasoning += r.reasoning;
   if (r.input === null) { b.missingCache++; b.unclassifiedInput += r.inputTotal ?? 0; }
   const input = includeCache ? r.inputTotal : r.input;
   if (input === null || r.output === null) b.missingTokens++;
   if (input !== null || r.output !== null) b.knownTokenRequests++;
   if (input != null && r.output != null) { b.completeTokens += input + r.output; b.completeTokenRequests++; }
-  b.total += knownTokens(r, includeCache);
+  b.total += (input ?? 0) + (r.output ?? 0);
   if (r.nanoAiu === null) b.missingCredits++;
-  else { b.nano += BigInt(r.nanoAiu); b.chargedRequests++; }
+  else { addNano(b, 'nano', r.nanoAiu); b.chargedRequests++; }
   if (r.creditStatus === 'partial') b.partialCredits++;
   if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') {
-    b.completeCreditRequests++; b.completeCreditNano += BigInt(r.nanoAiu);
+    b.completeCreditRequests++; addNano(b, 'completeCreditNano', r.nanoAiu);
     if (input != null && r.output != null) {
-      b.creditTokenRequests++; b.creditTokens += input + r.output; b.creditTokenNano += BigInt(r.nanoAiu);
+      b.creditTokenRequests++; b.creditTokens += input + r.output; addNano(b, 'creditTokenNano', r.nanoAiu);
     }
   }
 }
 function finish(b) {
-  const { nano, sessions, completeTokens, completeCreditNano, creditTokens, creditTokenNano, ...rest } = b;
-  return { ...rest, sessions: sessions.size, averageTokens: b.completeTokenRequests ? completeTokens / b.completeTokenRequests : null, credits: b.requests && !b.chargedRequests ? null : Number(nano) / 1e9,
-    averageCredits: b.completeCreditRequests ? Number(completeCreditNano) / 1e9 / b.completeCreditRequests : null,
-    creditsPerMillionTokens: creditTokens > 0 ? Number(creditTokenNano) / 1e9 / creditTokens * 1e6 : null };
+  const { nano, sessions, completeTokens, completeCreditNano, creditTokens, creditTokenNano, wide, ...rest } = b;
+  return { ...rest, sessions: sessions.size, averageTokens: b.completeTokenRequests ? completeTokens / b.completeTokenRequests : null, credits: b.requests && !b.chargedRequests ? null : nanoTotal(b, 'nano') / 1e9,
+    averageCredits: b.completeCreditRequests ? nanoTotal(b, 'completeCreditNano') / 1e9 / b.completeCreditRequests : null,
+    creditsPerMillionTokens: creditTokens > 0 ? nanoTotal(b, 'creditTokenNano') / 1e9 / creditTokens * 1e6 : null };
 }
-function skillReport(records, activity, input, start, end, now) {
-  const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
+// Sessions with Copilot usage on or before `now`: the only ones activity can be attributed to.
+function copilotSessionsAt(records, nowMs) {
+  const sessions = new Set();
+  for (const r of records) if (r.ms <= nowMs) sessions.add(r.sessionId);
+  return sessions;
+}
+function skillReport(copilotSessions, activity, input, start, end, now) {
+  const nowMs = now.getTime();
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
   const candidates = new Map(), seenFailures = new Set();
   const identity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
   const attributed = event => copilotSessions.has(event.sessionId) && !excluded.has(event.sessionId);
   const scope = (event, name) => JSON.stringify([event.sessionId, event.project, name]);
   const matching = event => {
-    const day = localDay(new Date(event.ms));
+    const day = dayOfMs(event.ms);
     return day >= start && day <= end && (!input.project || input.project === event.project) && (!input.session || input.session === event.sessionId);
   };
   function rowFor(skill, event) {
@@ -53,8 +74,9 @@ function skillReport(records, activity, input, start, end, now) {
   }
   let invocations = 0, failures = 0, omitted = 0, omittedFailures = 0;
   for (const skill of activity.skills || []) {
-    if (skill.ms > now.getTime()) continue;
-    if (attributed(skill)) {
+    if (skill.ms > nowMs) continue;
+    const known = attributed(skill);
+    if (known) {
       projectOptions.add(skill.project);
       // Use all available identities, so narrowing dates cannot make an ambiguous name look unique.
       const key = scope(skill, skill.name);
@@ -63,7 +85,7 @@ function skillReport(records, activity, input, start, end, now) {
     }
     if (!matching(skill)) continue;
     // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
-    if (!attributed(skill)) { omitted++; continue; }
+    if (!known) { omitted++; continue; }
     const row = rowFor(skill, skill);
     row.invocations++;
     const trigger = skill.trigger === 'user-invoked' ? 'manual' : skill.trigger === 'agent-invoked' ? 'agent' : skill.trigger === 'context-load' ? 'preloaded' : 'unknown';
@@ -72,7 +94,7 @@ function skillReport(records, activity, input, start, end, now) {
   }
   for (const tool of activity.tools || []) {
     if (tool.name !== 'skill' || tool.server || tool.mcpTool || tool.success !== false || tool.completedMs == null ||
-      tool.completedMs < tool.ms || tool.completedMs > now.getTime() || tool.ms > now.getTime() || seenFailures.has(tool.key)) continue;
+      tool.completedMs < tool.ms || tool.completedMs > nowMs || tool.ms > nowMs || seenFailures.has(tool.key)) continue;
     seenFailures.add(tool.key);
     if (attributed(tool)) projectOptions.add(tool.project);
     if (!matching(tool)) continue;
@@ -87,38 +109,55 @@ function skillReport(records, activity, input, start, end, now) {
   return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, projectOptions: [...projectOptions] };
 }
 
-function toolReport(records, activity, input, start, end, now) {
-  const copilotSessions = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId));
-  const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), projectOptions = new Set();
+function toolReport(records, copilotSessions, activity, input, start, end, now) {
+  const nowMs = now.getTime();
+  const excluded = new Set(activity.skillExcludedSessions || []), groups = [], byName = new Map(), projectOptions = new Set();
   // The selector uses display labels; tool events carry raw model IDs.
-  const modelIds = new Set(records.filter(r => r.ms <= now.getTime() && r.modelId && input.models?.includes(r.model)).map(r => JSON.stringify([r.sessionId, r.modelId])));
-  let calls = 0, omitted = 0, mcpOmitted = 0;
+  let modelIds = null;
+  if (input.models) {
+    modelIds = new Map();
+    for (const r of records) if (r.ms <= nowMs && r.modelId && input.models.includes(r.model)) {
+      let ids = modelIds.get(r.sessionId);
+      if (!ids) modelIds.set(r.sessionId, ids = new Set());
+      ids.add(r.modelId);
+    }
+  }
+  let calls = 0, omitted = 0, mcpOmitted = 0, lastSession = NONE, lastAttributed = false;
   for (const tool of activity.tools || []) {
-    if (tool.ms > now.getTime()) continue;
-    const attributed = copilotSessions.has(tool.sessionId) && !excluded.has(tool.sessionId);
+    if (tool.ms > nowMs) continue;
+    if (tool.sessionId !== lastSession) { lastSession = tool.sessionId; lastAttributed = copilotSessions.has(lastSession) && !excluded.has(lastSession); }
+    const attributed = lastAttributed;
     if (attributed) projectOptions.add(tool.project);
-    const day = localDay(new Date(tool.ms));
-    const matchingModel = !input.models || input.models.includes(tool.model) || modelIds.has(JSON.stringify([tool.sessionId, tool.model]));
+    const day = dayOfMs(tool.ms);
+    const matchingModel = !input.models || input.models.includes(tool.model) || !!modelIds.get(tool.sessionId)?.has(tool.model);
     if (day < start || day > end || input.project && input.project !== tool.project || input.session && input.session !== tool.sessionId || !matchingModel) continue;
     if (!attributed) { omitted++; if (tool.server) mcpOmitted++; continue; }
-    const key = JSON.stringify([tool.name, tool.server, tool.mcpTool]);
-    if (!groups.has(key)) groups.set(key, { name: tool.name, server: tool.server, mcpTool: tool.mcpTool, calls: 0, successes: 0, failures: 0, unknown: 0, lastUsed: tool.ts });
-    const row = groups.get(key);
+    // One row per (name, server, MCP tool), kept in the order each first appeared.
+    let servers = byName.get(tool.name);
+    if (!servers) byName.set(tool.name, servers = new Map());
+    let mcpTools = servers.get(tool.server);
+    if (!mcpTools) servers.set(tool.server, mcpTools = new Map());
+    let row = mcpTools.get(tool.mcpTool);
+    if (!row) { mcpTools.set(tool.mcpTool, row = { name: tool.name, server: tool.server, mcpTool: tool.mcpTool, calls: 0, successes: 0, failures: 0, unknown: 0, lastUsed: tool.ts }); groups.push(row); }
     row.calls++; calls++;
-    const outcome = tool.completedMs != null && tool.completedMs >= tool.ms && tool.completedMs <= now.getTime() ? tool.success : null;
+    const outcome = tool.completedMs != null && tool.completedMs >= tool.ms && tool.completedMs <= nowMs ? tool.success : null;
     row[outcome === true ? 'successes' : outcome === false ? 'failures' : 'unknown']++;
     if (tool.ts > row.lastUsed) row.lastUsed = tool.ts;
   }
-  const rows = [...groups.values()].map(row => ({ ...row, successRate: row.successes + row.failures ? row.successes / (row.successes + row.failures) * 100 : null }))
+  const rows = groups.map(row => ({ ...row, successRate: row.successes + row.failures ? row.successes / (row.successes + row.failures) * 100 : null }))
     .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name) || a.server.localeCompare(b.server));
   return { rows, calls, omitted, mcpOmitted, projectOptions: [...projectOptions] };
 }
 
 function usageScope(records, input, now) {
-  const q = normalizeQuery(input, now), today = localDay(now);
+  const q = normalizeQuery(input, now), today = localDay(now), nowMs = now.getTime();
   for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
-  const history = records.filter(r => r.ms <= now.getTime() && (!q.models || q.models.includes(r.model)) && (!input.project || r.project === input.project) && (!input.session || r.sessionId === input.session));
-  const first = history.reduce((min, r) => Math.min(min, localDay(new Date(r.ms))), today);
+  const models = q.models, project = input.project, session = input.session, history = [];
+  let first = today;
+  for (const r of records) if (r.ms <= nowMs && (!models || models.includes(r.model)) && (!project || r.project === project) && (!session || r.sessionId === session)) {
+    history.push(r);
+    first = Math.min(first, dayOfMs(r.ms));
+  }
   const start = q.range === 'custom' ? parseDateDay(q.startDate) : q.range === 'all' ? first : today - RANGE_DAYS.get(q.range) + 1;
   const end = q.range === 'custom' ? parseDateDay(q.endDate) : today;
   return { q, today, history, start, end };
@@ -132,8 +171,9 @@ function modelRequestScope(records, input, now, extra) {
   if (input.id !== undefined && (typeof input.id !== 'string' || !input.id || input.id.length > 8192)) throw new TypeError('Invalid request ID');
   const { q, history, start, end } = usageScope(records, input, now);
   const matching = history.filter(r => {
-    const day = localDay(new Date(r.ms));
-    return r.model === input.model && day >= start && day <= end && (input.id === undefined || r.key === input.id);
+    if (r.model !== input.model || input.id !== undefined && r.key !== input.id) return false;
+    const day = dayOfMs(r.ms);
+    return day >= start && day <= end;
   });
   return { q, matching };
 }
@@ -151,27 +191,34 @@ export function buildRequestPage(records, input = {}, now = new Date()) {
   }) };
 }
 
-function sessionNames(records) {
+// Labels depend only on the records. A scanner never alters a list it has returned, so its
+// cache keeps the labels for as long as the same list is current.
+function sessionNames(records, cache) {
+  if (cache?.labels?.records === records) return cache.labels.names;
   const sessionInfo = new Map();
+  let lastId = NONE, previous;
   for (const r of records) {
-    const previous = sessionInfo.get(r.sessionId);
-    if (!previous || r.ms < previous.ms) sessionInfo.set(r.sessionId, { ms: r.ms, project: r.project, name: r.sessionName || previous?.name || '' });
+    if (r.sessionId !== lastId) { lastId = r.sessionId; previous = sessionInfo.get(lastId); }
+    if (!previous || r.ms < previous.ms) sessionInfo.set(lastId, previous = { ms: r.ms, project: r.project, name: r.sessionName || previous?.name || '' });
     else if (!previous.name && r.sessionName) previous.name = r.sessionName;
   }
   const nameCounts = new Map();
   for (const s of sessionInfo.values()) if (s.name) nameCounts.set(s.name, (nameCounts.get(s.name) || 0) + 1);
-  return new Map([...sessionInfo].map(([id, s]) => {
+  const names = new Map();
+  for (const [id, s] of sessionInfo) {
     const name = s.name || (s.project === 'Unknown project' ? 'Session' : s.project);
     const dated = !s.name || nameCounts.get(s.name) > 1;
-    return [id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name];
-  }));
+    names.set(id, dated ? `${name} · ${new Date(s.ms).toLocaleString()}` : name);
+  }
+  if (cache) cache.labels = { records, names };
+  return names;
 }
 
-export function buildModelSessionPage(records, input = {}, now = new Date()) {
+export function buildModelSessionPage(records, input = {}, now = new Date(), activity = {}) {
   const { q, matching } = modelRequestScope(records, input, now, 'sort');
   const sort = input.sort ?? 'total';
   if (!['total', 'credits', 'requests'].includes(sort)) throw new TypeError('Invalid session sort');
-  const names = sessionNames(records), sessions = new Map();
+  const names = sessionNames(records, activity.cache), sessions = new Map();
   for (const r of matching) {
     if (!sessions.has(r.sessionId)) sessions.set(r.sessionId, bucket());
     add(sessions.get(r.sessionId), r, q.includeCache);
@@ -188,7 +235,7 @@ export function buildSessionModels(records, input = {}, now = new Date()) {
   for (const key of ['project', 'session']) if (typeof input[key] !== 'string' || !input[key].trim()) throw new TypeError(`Expected a ${key}`);
   const { q, history, start, end } = usageScope(records, input, now), models = new Map();
   for (const r of history) {
-    const day = localDay(new Date(r.ms));
+    const day = dayOfMs(r.ms);
     if (day < start || day > end) continue;
     if (!models.has(r.model)) models.set(r.model, bucket());
     add(models.get(r.model), r, q.includeCache);
@@ -199,26 +246,41 @@ export function buildSessionModels(records, input = {}, now = new Date()) {
 
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
   const { q, today, history, start, end } = usageScope(records, input, now);
-  const sessionLabels = sessionNames(records);
-  const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map();
+  const includeCache = q.includeCache, nowMs = now.getTime();
+  const sessionLabels = sessionNames(records, activity.cache);
+  const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map(), sessionsByProject = new Map();
   const efficiency = createEfficiencyAccumulator();
-  const calendar = new Map(), rhythm = Array(168).fill(0);
-  const get = (map, key) => { if (!map.has(key)) map.set(key, bucket()); return map.get(key); };
+  // Only the latest 182 days are drawn; older days matter solely for the length of the streak.
+  const calendar = new Map(), activeDays = new Set(), calendarStart = today - 181, rhythm = Array(168).fill(0);
+  const get = (map, key) => { let b = map.get(key); if (!b) map.set(key, b = bucket()); return b; };
+  // Consecutive requests usually share a day, model, project and session, so each bucket is found once per run.
+  let day, calendarDay, dayTotal, model = NONE, modelTotal, project = NONE, projectTotal, projectSessions, sessionId = NONE, sessionTotal;
   for (const r of history) {
-    const date = new Date(r.ms), day = localDay(date);
-    add(get(calendar, day), r, q.includeCache);
-    if (day === today) add(todayTotal, r, q.includeCache);
+    const ms = r.ms;
+    if (dayOfMs(ms) !== day) { day = dayOfMs(ms); calendarDay = day >= calendarStart ? get(calendar, day) : null; dayTotal = null; activeDays.add(day); }
+    if (calendarDay) add(calendarDay, r, includeCache);
+    if (day === today) add(todayTotal, r, includeCache);
     if (day < start || day > end) continue;
     efficiency.add(r);
-    add(totals, r, q.includeCache); add(get(days, day), r, q.includeCache);
-    add(get(models, r.model), r, q.includeCache); add(get(projects, r.project), r, q.includeCache); add(get(sessions, JSON.stringify([r.project, r.sessionId])), r, q.includeCache);
-    rhythm[date.getDay() * 24 + date.getHours()] += knownTokens(r, q.includeCache);
+    add(totals, r, includeCache); add(dayTotal ??= get(days, day), r, includeCache);
+    if (r.model !== model) { model = r.model; modelTotal = get(models, model); }
+    add(modelTotal, r, includeCache);
+    if (r.project !== project) { project = r.project; projectTotal = get(projects, project); projectSessions = sessionsByProject.get(project); if (!projectSessions) sessionsByProject.set(project, projectSessions = new Map()); sessionId = NONE; }
+    add(projectTotal, r, includeCache);
+    if (r.sessionId !== sessionId) {
+      sessionId = r.sessionId; sessionTotal = projectSessions.get(sessionId);
+      if (!sessionTotal) projectSessions.set(sessionId, sessionTotal = get(sessions, JSON.stringify([project, sessionId])));
+    }
+    add(sessionTotal, r, includeCache);
+    const date = new Date(ms);
+    rhythm[date.getDay() * 24 + date.getHours()] += knownTokens(r, includeCache);
   }
   const ranked = map => [...map].map(([name, b]) => ({ name, ...finish(b) })).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   let current = 0;
-  for (let d = calendar.has(today) ? today : today - 1; calendar.has(d); d--) current++;
+  for (let d = activeDays.has(today) ? today : today - 1; activeDays.has(d); d--) current++;
   const activityStart = q.range === 'all' ? -Infinity : start;
-  const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now);
+  const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now,
+    activity.cache ? { memo: activity.cache, unique: activity.cache.uniquePromptEvents === true } : undefined);
   const { projectPrompts, ...promptSummary } = promptCredits;
   const promptCounts = new Map(projectPrompts.map(p => [p.name, p]));
   const withPrompts = rows => rows.map(row => {
@@ -226,26 +288,38 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     return { ...row, userPrompts: p && (p.count || !p.uncertain) ? p.count : null, uncertainPrompts: p?.uncertain || 0 };
   });
   // Choice lists ignore their own filter, so other choices remain available after selection.
-  const modelChoices = new Map(), projectChoices = new Map();
+  const modelChoices = new Map(), projectChoices = new Map(), modelOptions = new Set(), projectOptionSet = new Set(), copilotSessions = new Set();
+  const models_ = q.models, projectFilter = input.project, sessionFilter = input.session;
+  model = project = NONE;
+  let modelChoice, projectChoice, modelWanted = true, optionModel = NONE, optionProject = NONE, optionSession = NONE;
   for (const r of records) {
-    const day = localDay(new Date(r.ms));
-    if (r.ms > now.getTime() || day < activityStart || day > end || input.session && r.sessionId !== input.session) continue;
-    if (!input.project || r.project === input.project) add(get(modelChoices, r.model), r, q.includeCache);
-    if (!q.models || q.models.includes(r.model)) add(get(projectChoices, r.project), r, q.includeCache);
+    if (r.model !== optionModel) modelOptions.add(optionModel = r.model);
+    if (r.project !== optionProject) projectOptionSet.add(optionProject = r.project);
+    if (r.ms <= nowMs && r.sessionId !== optionSession) copilotSessions.add(optionSession = r.sessionId);
+    if (r.ms > nowMs || sessionFilter && r.sessionId !== sessionFilter) continue;
+    const recordDay = dayOfMs(r.ms);
+    if (recordDay < activityStart || recordDay > end) continue;
+    if (r.model !== model) { model = r.model; modelChoice = null; modelWanted = !models_ || models_.includes(model); }
+    if (r.project !== project) { project = r.project; projectChoice = null; }
+    if (!projectFilter || project === projectFilter) add(modelChoice ??= get(modelChoices, model), r, includeCache);
+    if (modelWanted) add(projectChoice ??= get(projectChoices, project), r, includeCache);
   }
   for (const p of projectPrompts) if (p.count) get(projectChoices, p.name);
-  const { projectOptions, ...skills } = skillReport(records, activity, input, activityStart, end, now);
-  const { projectOptions: toolProjects, ...tools } = toolReport(records, activity, { ...input, models: q.models }, activityStart, end, now);
+  const { projectOptions, ...skills } = skillReport(copilotSessions, activity, input, activityStart, end, now);
+  const { projectOptions: toolProjects, ...tools } = toolReport(records, copilotSessions, activity, { ...input, models: q.models }, activityStart, end, now);
+  for (const name of projectOptions) projectOptionSet.add(name);
+  for (const name of toolProjects) projectOptionSet.add(name);
+  for (const name of projectChoices.keys()) projectOptionSet.add(name);
   return {
     generatedAt: now.toISOString(), query: q, totals: finish(totals), today: finish(todayTotal), streak: { current },
     daily: Array.from({ length: end - start + 1 }, (_, i) => ({ day: dayKey(start + i), ...finish(days.get(start + i) ?? bucket()) })),
-    calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(today - 181 + i), ...finish(calendar.get(today - 181 + i) ?? bucket()) })),
+    calendar: Array.from({ length: 182 }, (_, i) => ({ day: dayKey(calendarStart + i), ...finish(calendar.get(calendarStart + i) ?? bucket()) })),
     rhythm, models: ranked(models), projects: withPrompts(ranked(projects)), usageChoices: { models: ranked(modelChoices), projects: withPrompts(ranked(projectChoices)) }, sessions: ranked(sessions).map(s => {
       const [project, id] = JSON.parse(s.name);
       return { ...s, project, id, name: sessionLabels.get(id) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now) },
-    options: { models: [...new Set(records.map(r => r.model))].sort(), projects: [...new Set([...records.map(r => r.project), ...projectOptions, ...toolProjects, ...projectChoices.keys()])].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
+    efficiency: { ...efficiency.finish(sessionLabels), interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
+    options: { models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

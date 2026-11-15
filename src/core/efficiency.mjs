@@ -1,16 +1,19 @@
-import { localDay } from './query.mjs';
+import { dayOfMs } from './query.mjs';
 
-export function summarizeInteractions(records, activity, query, start, end, now) {
+export function summarizeInteractions(records, activity, query, start, end, now, copilotSessions) {
   const result = { prompts: 0, promptSamples: 0, promptSessions: 0, averagePromptChars: null, averagePromptsPerSession: null,
     turns: 0, turnSessions: 0, averageTurnsPerSession: null, sessionErrors: 0, observedSessions: 0, omitted: 0 };
   if (query.models) return { ...result, reason: 'model-filter' };
-  const eligible = new Set(records.filter(r => r.ms <= now.getTime()).map(r => r.sessionId)), excluded = new Set(activity.skillExcludedSessions || []);
+  const nowMs = now.getTime(), excluded = new Set(activity.skillExcludedSessions || []);
+  // The caller may already know which sessions have Copilot usage by now.
+  let eligible = copilotSessions;
+  if (!eligible) { eligible = new Set(); for (const r of records) if (r.ms <= nowMs) eligible.add(r.sessionId); }
   const promptSessions = new Set(), turnSessions = new Set(), observed = new Set(), seen = new Set();
   let chars = 0;
   for (const event of activity.interactions || []) {
-    if (seen.has(event.key) || !Number.isFinite(event.ms) || event.ms > now.getTime()) continue;
+    if (seen.has(event.key) || !Number.isFinite(event.ms) || event.ms > nowMs) continue;
     seen.add(event.key);
-    const day = localDay(new Date(event.ms));
+    const day = dayOfMs(event.ms);
     if (day < start || day > end || query.project && query.project !== event.project || query.session && query.session !== event.sessionId) continue;
     if (!eligible.has(event.sessionId) || excluded.has(event.sessionId)) { result.omitted++; continue; }
     observed.add(event.sessionId);
@@ -26,7 +29,7 @@ export function summarizeInteractions(records, activity, query, start, end, now)
     averageTurnsPerSession: turnSessions.size ? result.turns / turnSessions.size : null };
 }
 
-const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, cacheWrite: 0, creditRequests: 0, creditNano: 0n,
+const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, cacheWrite: 0, creditRequests: 0, creditNano: 0, creditWide: 0n,
   pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, toolCountRequests: 0, availableTools: 0, reasoningRequests: 0, reasoningTokens: 0, reasoningOutput: 0 });
 const known = value => Number.isFinite(value) && value >= 0;
 function addMeasurement(b, r) {
@@ -42,11 +45,16 @@ function addMeasurement(b, r) {
   if (r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
     b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead; b.cacheWrite += r.cacheWrite;
   }
-  if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') { b.creditRequests++; b.creditNano += BigInt(r.nanoAiu); }
+  if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') {
+    b.creditRequests++;
+    // An exact integer total: a BigInt is involved only if the sum would leave the safe range.
+    if (b.creditNano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { b.creditWide += BigInt(b.creditNano); b.creditNano = 0; }
+    b.creditNano += r.nanoAiu;
+  }
 }
 function finishMeasurement(b) {
-  const { creditNano, ...rest } = b;
-  const credits = Number(creditNano) / 1e9;
+  const { creditNano, creditWide, ...rest } = b;
+  const credits = (creditWide ? Number(creditWide + BigInt(creditNano)) : creditNano) / 1e9;
   return { ...rest, credits: b.creditRequests ? credits : null,
     averageInput: b.inputRequests ? b.inputTokens / b.inputRequests : null,
     averageOutput: b.outputRequests ? b.outputTokens / b.outputRequests : null,
@@ -62,14 +70,24 @@ function finishMeasurement(b) {
 const compareSamples = (a, b) => a.ms - b.ms || a.key.localeCompare(b.key);
 const medianInput = samples => samples.map(s => s.input).sort((a, b) => a - b)[1];
 
+// Keeps the three earliest (or latest) samples in order without sorting on every request.
+function keep(list, sample, earliest) {
+  if (list.length === 3 && (earliest ? compareSamples(sample, list[2]) >= 0 : compareSamples(sample, list[0]) < 0)) return;
+  let at = list.length;
+  while (at > 0 && compareSamples(list[at - 1], sample) > 0) at--;
+  list.splice(at, 0, sample);
+  if (list.length > 3) { if (earliest) list.pop(); else list.shift(); }
+}
+
 export function createEfficiencyAccumulator() {
-  const total = measurement(), models = new Map(), groups = new Map();
+  const total = measurement(), models = new Map(), groups = [], bySession = new Map(), NONE = Symbol('none');
+  let model = NONE, modelTotal, project = NONE, session = NONE, sessionGroups;
   const initiators = new Map(['user', 'agent', 'sub-agent', 'unknown'].map(id => [id, measurement()])), delegatedModels = new Map();
   return {
     add(r) {
       addMeasurement(total, r);
-      if (!models.has(r.model)) models.set(r.model, measurement());
-      addMeasurement(models.get(r.model), r);
+      if (r.model !== model) { model = r.model; modelTotal = models.get(model); if (!modelTotal) models.set(model, modelTotal = measurement()); }
+      addMeasurement(modelTotal, r);
       addMeasurement(initiators.get(initiators.has(r.initiator) ? r.initiator : 'unknown'), r);
       if (r.initiator === 'sub-agent') {
         if (!delegatedModels.has(r.model)) delegatedModels.set(r.model, measurement());
@@ -77,15 +95,22 @@ export function createEfficiencyAccumulator() {
       }
       // Parallel subagents cannot be reliably ordered as one growing conversation.
       if (!['user', 'agent'].includes(r.initiator)) return;
-      const key = JSON.stringify([r.project, r.sessionId, r.model, r.initiator]);
-      if (!groups.has(key)) groups.set(key, { project: r.project, session: r.sessionId, model: r.model, initiator: r.initiator, requests: 0, inputRequests: 0, first: [], last: [] });
-      const group = groups.get(key);
+      // One group per (project, session, model, initiator), listed in the order each first appeared.
+      if (r.project !== project || r.sessionId !== session) {
+        project = r.project; session = r.sessionId;
+        const key = JSON.stringify([project, session]);
+        sessionGroups = bySession.get(key);
+        if (!sessionGroups) bySession.set(key, sessionGroups = new Map());
+      }
+      let byInitiator = sessionGroups.get(r.model);
+      if (!byInitiator) sessionGroups.set(r.model, byInitiator = { user: null, agent: null });
+      let group = byInitiator[r.initiator];
+      if (!group) groups.push(group = byInitiator[r.initiator] = { project: r.project, session: r.sessionId, model: r.model, initiator: r.initiator, requests: 0, inputRequests: 0, first: [], last: [] });
       group.requests++;
       if (!known(r.inputTotal) || !Number.isFinite(r.ms)) return;
       group.inputRequests++;
       const sample = { key: r.key, ms: r.ms, input: r.inputTotal };
-      group.first.push(sample); group.first.sort(compareSamples); group.first = group.first.slice(0, 3);
-      group.last.push(sample); group.last.sort(compareSamples); group.last = group.last.slice(-3);
+      keep(group.first, sample, true); keep(group.last, sample, false);
     },
     finish(sessionLabels = new Map()) {
       const summary = finishMeasurement(total);
@@ -93,7 +118,7 @@ export function createEfficiencyAccumulator() {
         .sort((a, b) => b.requests - a.requests || a.name.localeCompare(b.name));
       const insights = [];
       let growth;
-      for (const g of groups.values()) {
+      for (const g of groups) {
         if (g.inputRequests < 6 || g.inputRequests / g.requests < .8 || g.first[2].ms >= g.last[0].ms) continue;
         const early = medianInput(g.first), late = medianInput(g.last), increase = late - early;
         if (early <= 0 || late < early * 2 || increase < 10000) continue;

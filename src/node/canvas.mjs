@@ -1,4 +1,6 @@
-import { startServer as startUsageServer } from './canvas-server.mjs';
+// The dashboard server brings the journal parser, YAML and SQLite with it. It is loaded when a
+// dashboard is first opened, not for every Copilot session that merely has the plugin installed.
+const startUsageServer = async options => (await import('./canvas-server.mjs')).startServer(options);
 import { createIntegrationReader } from './integrations.mjs';
 import { createContextReader } from './context.mjs';
 

@@ -12,6 +12,23 @@ export function dayNumber(year, monthIndex, date) {
 }
 export function dayKey(day) { return new Date(day * DAY_MS).toISOString().slice(0, 10); }
 export function localDay(now = new Date()) { return dayNumber(now.getFullYear(), now.getMonth(), now.getDate()); }
+// localDay(new Date(ms)) for many timestamps. Each local day is one contiguous span of time, so
+// its bounds are looked up once and reused; this holds for any offset or daylight-saving rule.
+const daySpans = new Map();
+export function dayOfMs(ms) {
+  const bucket = Math.floor(ms / DAY_MS);
+  let spans = daySpans.get(bucket);
+  if (spans) for (const span of spans) if (ms >= span.start && ms < span.end) return span.day;
+  const date = new Date(ms), day = localDay(date);
+  if (!Number.isFinite(day)) return day;
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const end = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
+  // Only trust a span that demonstrably contains this instant.
+  if (!(ms >= start && ms < end)) return day;
+  if (!spans) { if (daySpans.size > 4096) daySpans.clear(); daySpans.set(bucket, spans = []); }
+  spans.push({ start, end, day });
+  return day;
+}
 export function parseDateDay(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RangeError('date must use YYYY-MM-DD');
   const [year, month, date] = value.split('-').map(Number);

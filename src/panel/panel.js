@@ -1,5 +1,5 @@
 import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
-import { pixelBanner, nextBuildingPatterns } from './art.mjs';
+import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
@@ -33,10 +33,10 @@ function applyPreferences(config = {}) {
   state.simplifyNumbers = simplified;
   if (changed && efficiencyContextSnapshot && !$('efficiency-context-read').disabled) renderEfficiencyContext();
 }
-async function request(method, input = {}, refresh = false, signal) {
+async function request(method, input = {}, refresh = false, signal, known) {
   const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined };
   const work = async () => {
-    const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}) }), ...(signal ? { signal } : {}) });
+    const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }), ...(signal ? { signal } : {}) });
     fields.httpStatus = response.status;
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
@@ -164,8 +164,18 @@ async function load(force = false, refresh = false) {
       const rescan = state.rescan; state.rescan = false;
       try {
         const input = query(), filterKey = JSON.stringify(input);
-        const report = await request(method, input, rescan);
+        // When this very view is already on screen, the server may answer that nothing changed.
+        const known = method === 'usage.report' && state.report && !state.creditsUnavailable && filterKey === state.filterKey ? state.report.revision : undefined;
+        const report = await request(method, input, rescan, undefined, known);
         if (version !== state.version) continue;
+        if (report.unchanged) {
+          const sky = skyFor(new Date(state.report.generatedAt).getHours());
+          state.report.generatedAt = report.generatedAt; state.report.scannedAt = report.scannedAt;
+          renderClock(sky);
+          if (!inventorySnapshot || rescan) void loadInventory(rescan);
+          $('live').textContent = 'Usage updated';
+          continue;
+        }
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.filterKey = filterKey; }
         applyPreferences(report.preferences);
         state.creditsUnavailable = false;
@@ -190,8 +200,13 @@ async function load(force = false, refresh = false) {
     } while (version !== state.version);
   } finally { state.pending = false; $('refresh').disabled = $('footer-refresh').disabled = false; }
 }
+const builtOptions = new Map();
 function options(id, values, all) {
   const select = $(id), selected = select.value;
+  // A long history has thousands of sessions; the list is rebuilt only when it differs.
+  const key = JSON.stringify([selected, all, values]);
+  if (builtOptions.get(id) === key) return;
+  builtOptions.set(id, key);
   const choices = values.map(v => typeof v === 'string' ? { id: v, name: v } : v);
   const available = selected && !choices.some(v => v.id === selected) ? [{ id: selected, name: selected }, ...choices] : choices;
   const title = choice => choice.name === choice.id ? choice.name : `${choice.name} — ${choice.id}`;
@@ -804,6 +819,21 @@ $('efficiency-models').onclick = event => {
 function render() {
   return clientDiagnostics.measure('ui.render', {}, renderContent);
 }
+function renderBanner(r) {
+  const banner = $('banner');
+  state.buildingPatterns = nextBuildingPatterns(state.buildingPatterns, state.bannerRange, r.query.range);
+  state.bannerRange = r.query.range;
+  banner.innerHTML = pixelBanner(r, { patterns: state.buildingPatterns, h: Math.max(34, Math.ceil(120 * banner.clientHeight / Math.max(1, banner.clientWidth))) });
+}
+function renderUpdated(r) {
+  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
+}
+// The data is the same as before; only what follows the clock is redrawn.
+function renderClock(previousSky) {
+  const r = state.report;
+  renderUpdated(r);
+  if (skyFor(new Date(r.generatedAt).getHours()) !== previousSky) renderBanner(r);
+}
 function visibleChoices(rows, selected, limit, sort) {
   const visible = sortActivity(rows, sort).slice(0, limit);
   if (selected && !visible.some(r => r.name === selected)) visible.push(rows.find(r => r.name === selected) || { name: selected, requests: 0, total: 0, userPrompts: null, uncertainPrompts: 0 });
@@ -868,10 +898,7 @@ function renderContent() {
   const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
   $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(usageValue(scope, key, number))}">${esc(usageValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
   $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache. Percentages show shares of recorded tokens.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
-  const banner = $('banner');
-  state.buildingPatterns = nextBuildingPatterns(state.buildingPatterns, state.bannerRange, r.query.range);
-  state.bannerRange = r.query.range;
-  banner.innerHTML = pixelBanner(r, { patterns: state.buildingPatterns, h: Math.max(34, Math.ceil(120 * banner.clientHeight / Math.max(1, banner.clientWidth))) });
+  renderBanner(r);
   $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
   $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
   const width = Math.max(280, $('daily').clientWidth);
@@ -891,7 +918,7 @@ function renderContent() {
   $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
   $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
-  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 60 seconds while visible.`;
+  renderUpdated(r);
   renderBreakdown();
   renderEfficiency();
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });

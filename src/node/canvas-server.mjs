@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
 import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
@@ -9,10 +9,20 @@ import { openSkillFolder } from './skill-folder.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
+import { localDay } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
 
-const MAX_BODY = 64 * 1024;
+const MAX_BODY = 64 * 1024, MAX_REPORTS = 12;
+// The latest time carried by anything in a scan: until then, the clock can still change a report.
+function latestTime(scan) {
+  let latest = -Infinity;
+  for (const list of [scan.records, scan.skills, scan.interactions, scan.promptEvents, scan.tools]) for (const item of list || []) {
+    if (item.ms > latest) latest = item.ms;
+    if (item.completedMs > latest) latest = item.completedMs;
+  }
+  return latest;
+}
 export async function startServer({ settings = createSettings(), scanner = createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()] }), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -21,6 +31,23 @@ export async function startServer({ settings = createSettings(), scanner = creat
   let origin;
   const pending = new Set();
   let history, reviewRequest;
+  // Reports already built from the current scan, by filter. A scan is never altered once it is
+  // returned, so a report stays right until the scan is replaced, the local day changes, or
+  // something dated later than the report's own moment comes due.
+  let reports = { scan: null, latest: -Infinity, built: new Map() };
+  function reportFor(scan, input, at) {
+    if (reports.scan !== scan) reports = { scan, latest: latestTime(scan), built: new Map() };
+    const key = JSON.stringify(input), day = localDay(at), ms = at.getTime();
+    let entry = reports.built.get(key);
+    const cached = !!entry && entry.day === day && ms >= entry.ms && reports.latest <= entry.ms;
+    if (!cached) {
+      entry = { day, ms, report: buildReport(scan.records, input, at, scan), sent: null };
+      reports.built.delete(key);
+      if (reports.built.size >= MAX_REPORTS) reports.built.delete(reports.built.keys().next().value);
+      reports.built.set(key, entry);
+    }
+    return { entry, cached };
+  }
   function readHistory(config, { refresh = false, force = false } = {}) {
     const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes]);
     if (!history || history.key !== key || refresh || force) {
@@ -49,7 +76,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
   });
   server.requestTimeout = 120000;
   server.headersTimeout = 10000;
-  const json = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
+  const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(body); };
+  const json = (res, status, data) => send(res, status, JSON.stringify(data));
   async function handle(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -74,6 +102,7 @@ export async function startServer({ settings = createSettings(), scanner = creat
       const input = message.input ?? {};
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('input must be an object');
       if (message.refresh !== undefined && typeof message.refresh !== 'boolean') throw new TypeError('refresh must be a boolean');
+      if (message.known !== undefined && typeof message.known !== 'string') throw new TypeError('known must be a string');
       Object.assign(fields, { method: message.method, range: input.range, refresh: message.refresh === true, detail: message.method === 'usage.requests' && input.id !== undefined });
       if (message.method !== 'diagnostics.get') diagnostics.record('info', 'api.request', { ...fields, phase: 'started' });
       let result;
@@ -123,14 +152,36 @@ export async function startServer({ settings = createSettings(), scanner = creat
         buildReport([], input, now());
         const config = await settings.get();
         const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
-        result = { ...diagnostics.measure('report.build', { records: scan.records.length, range: input.range }, () => buildReport(scan.records, input, now(), scan)), scannedAt, sources: scan.sources, coverage: scan.coverage, preferences: { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true } };
-        await diagnostics.measure('skills.versions', { rows: result.skills.rows.length }, () => addInstalledSkillVersions(result.skills.rows));
+        const at = now(), buildFields = { records: scan.records.length, range: input.range };
+        const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cached = found.cached; return found; });
+        // Installed versions are read from disk each time, onto copies, so the kept report stays as built.
+        const rows = entry.report.skills.rows.map(row => ({ ...row }));
+        await diagnostics.measure('skills.versions', { rows: rows.length }, () => addInstalledSkillVersions(rows));
+        const preferences = { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true };
+        const { generatedAt, ...report } = entry.report;
+        const extras = JSON.stringify([rows.map(row => row.installedVersion), preferences]);
+        let content;
+        // Everything the dashboard shows except the two timestamps. Its fingerprint lets a
+        // dashboard that already holds this exact content skip the download and the redraw.
+        if (entry.sent?.extras !== extras) {
+          content = JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+          entry.sent = { extras, revision: createHash('sha256').update(content).digest('base64url') };
+        }
+        const head = `{"generatedAt":${JSON.stringify(at.toISOString())},"scannedAt":${JSON.stringify(scannedAt)},"revision":${JSON.stringify(entry.sent.revision)}`;
+        fields.unchanged = message.known === entry.sent.revision;
+        if (fields.unchanged) send(res, 200, head + ',"unchanged":true}');
+        else {
+          content ??= JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+          send(res, 200, head + ',' + content.slice(1));
+        }
+        diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
+        return;
       } else if (['usage.requests', 'usage.sessions', 'usage.sessionModels'].includes(message.method)) {
         const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
         buildPage([], input, now());
         const config = await settings.get();
         const { scan } = await readHistory(config);
-        result = buildPage(scan.records, input, now());
+        result = buildPage(scan.records, input, now(), scan);
         if (input.id !== undefined) {
           const ids = new Set(result.rows.map(row => row.id));
           const promptFields = { rows: ids.size };
@@ -144,8 +195,8 @@ export async function startServer({ settings = createSettings(), scanner = creat
       } else if (message.method === 'skills.openFolder') {
         if (typeof input.id !== 'string' || !input.id || Object.keys(input).some(key => key !== 'id')) throw new TypeError('Expected a recorded skill ID.');
         const config = await settings.get();
-        const scan = await scanner.scan([defaultHome, ...config.extraHomes], { disabled: config.disabledHomes });
-        const row = buildReport(scan.records, { range: 'all' }, now(), scan).skills.rows.find(skill => skill.id === input.id);
+        const { scan } = await readHistory(config, { refresh: true });
+        const row = reportFor(scan, { range: 'all' }, now()).entry.report.skills.rows.find(skill => skill.id === input.id);
         if (!row?.path) throw new TypeError('This skill location is not available in the current sources. Refresh the dashboard and try again.');
         await openFolder(row.path);
         result = { ok: true };

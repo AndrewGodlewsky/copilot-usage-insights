@@ -2,7 +2,9 @@ import { open, stat } from 'node:fs/promises';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 import { isLocalSkillFilePath } from './skill-folder.mjs';
 
-const MAX_HEADER_BYTES = 64 * 1024;
+const MAX_HEADER_BYTES = 64 * 1024, MAX_REMEMBERED = 512;
+// A skill file's version is reread only when the file's size or timestamps change.
+const remembered = new Map();
 const result = (status, value = null) => ({ value, status });
 const mapping = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -30,20 +32,25 @@ export async function readInstalledSkillVersion(file) {
   if (!isLocalSkillFilePath(file)) return result('unavailable');
   let handle;
   try {
-    if (!(await stat(file)).isFile()) return result('unavailable');
+    const found = await stat(file);
+    if (!found.isFile()) return result('unavailable');
+    const known = remembered.get(file);
+    if (known && known.size === found.size && known.mtime === found.mtimeMs && known.ctime === found.ctimeMs) return { ...known.version };
     handle = await open(file, 'r');
     // Read only a bounded prefix; retain the version, never the skill instructions.
-    const buffer = Buffer.alloc(MAX_HEADER_BYTES);
+    const buffer = Buffer.allocUnsafe(MAX_HEADER_BYTES);
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    return parseSkillVersion(buffer.toString('utf8', 0, bytesRead));
-  } catch { return result('unavailable'); }
+    const version = parseSkillVersion(buffer.toString('utf8', 0, bytesRead));
+    if (remembered.size >= MAX_REMEMBERED) remembered.clear();
+    remembered.set(file, { size: found.size, mtime: found.mtimeMs, ctime: found.ctimeMs, version: { ...version } });
+    return version;
+  } catch { remembered.delete(file); return result('unavailable'); }
   finally { await handle?.close(); }
 }
 
 export async function addInstalledSkillVersions(rows) {
   const versions = new Map();
-  for (const row of rows) {
-    if (!versions.has(row.path)) versions.set(row.path, await readInstalledSkillVersion(row.path));
-    row.installedVersion = versions.get(row.path);
-  }
+  for (const row of rows) if (!versions.has(row.path)) versions.set(row.path, null);
+  await Promise.all([...versions.keys()].map(async file => versions.set(file, await readInstalledSkillVersion(file))));
+  for (const row of rows) row.installedVersion = versions.get(row.path);
 }
