@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.85** adds projects between models and sessions in Usage breakdown. Its **User prompts** column counts distinct human submissions instead of model turns. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.86** stabilizes the token explorer when switching between sections of different heights, including with a coverage notice visible. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 
@@ -274,7 +274,7 @@ The **Overview** section in **Where did the tokens go?** shows the input/output 
 
 Coverage is visible under summary values and in model-value tooltips. Missing data shows **Unavailable**, not zero. Explicit `cacheDetailsReported: false` is treated as missing cache detail even if placeholder zero counts exist. Older records may lack tool-definition counts. Definitions describe available tools; they are already part of input and do not measure tool-result size or per-skill cost.
 
-**Where did the tokens go?** has a compact horizontal token explorer, starting with **Overview**. Drag the blue inspection lens between sections, click a topic icon, or use the **Previous / Next** arrows. With the lens focused, use arrow keys to move one section or **Home / End** to jump to either end. All ten stops fit the panel without horizontal scrolling. Hover over an icon for its full name; the buttons also have full names for screen readers. The lens changes its symbol with the selected topic, and the full selected title remains visible below the track. All sections are available immediately, and only one is shown at a time.
+**Where did the tokens go?** has a compact horizontal token explorer, starting with **Overview**. Drag the blue inspection lens between sections, click a topic icon, or use the **Previous / Next** arrows. With the lens focused, use arrow keys to move one section or **Home / End** to jump to either end. All ten stops fit the panel without horizontal scrolling. Hover over an icon for its full name; the buttons also have full names for screen readers. The lens changes its symbol with the selected topic, and the full selected title remains visible below the track. All sections are available immediately, and only one is shown at a time. Short sections reserve the remaining viewport space during navigation so the page does not pull the slider away from your pointer; changing content is excluded from browser scroll anchoring. Navigation does not fetch data or inspect context.
 
 The section order is **Overview**, then **Always-loaded context**, **Tool and MCP footprint**, **Files, searches, and tool results**, **Cache reuse**, and **Skills and instruction footprint** under Context; **Work behind each prompt**, **Delegated work**, and **Reasoning and generated output** under Agent work; and **Biggest spend drivers** under Spending. The selected section's group and position appear above its title.
 

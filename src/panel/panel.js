@@ -807,6 +807,9 @@ function showTokenTopic(id, announce = false) {
   if (tokenTopic !== id) {
     tokenTopic = id;
     syncTokenNavigation();
+    // Keep short panels from shrinking the document past the current viewport during navigation.
+    const content = $('token-topic-content');
+    content.style.minHeight = `${Math.max(0, (document.documentElement.clientHeight || innerHeight) - Math.max(0, content.getBoundingClientRect().top))}px`;
     renderSelectedTokenTopic();
     if (announce) $('token-topic-announcement').textContent = `Showing ${TOKEN_TOPICS.find(topic => topic.id === id).label}`;
   }

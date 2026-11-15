@@ -15,6 +15,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
       setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
       addEventListener(name, callback) { this[`on${name}`] = callback; },
+      getBoundingClientRect: () => ({ top: 0 }),
       style: { setProperty(key, value) { this[key] = String(value); } },
       before(node) { node.nextElementSibling = this; },
       focus() { document.activeElement = this; },
@@ -2188,6 +2189,50 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
   assert.equal(document.activeElement, lens);
   assert.equal(renders, 3, 'fresh reports update the selected content');
   assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]')[0], stops[0], 'stop nodes are never rebuilt');
+});
+
+test('token explorer keeps the viewport steady when a warning pushes it down and topic heights change', async () => {
+  const { get, requests, document, viewport } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('coverage').hidden, false, 'fixture includes the orange coverage notice');
+  const content = get('token-topic-content'), lens = get('efficiency-topic');
+  const heights = { overview: 1100, context: 180, cache: 460, detail: 900 };
+  const contentTop = 980, footerHeight = 100;
+  let scrollY = 640;
+  viewport.innerHeight = 800;
+  content.getBoundingClientRect = () => ({ top: contentTop - scrollY });
+  const layout = () => {
+    const name = Object.keys(heights).find(name => !get(`token-${name}-panel`).hidden);
+    const height = Math.max(heights[name], parseFloat(content.style.minHeight) || 0);
+    // A browser clamps its scroll offset when the replacement panel shortens the document.
+    scrollY = Math.min(scrollY, Math.max(0, contentTop + height + footerHeight - viewport.innerHeight));
+  };
+  const before = requests.length;
+  lens.focus();
+  for (const index of [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1]) {
+    lens.value = String(index); lens.oninput(); layout();
+    assert.equal(scrollY, 640, 'switching to a shorter topic must not pull the slider away from the pointer');
+    assert.equal(content.getBoundingClientRect().top, 340);
+    assert.equal(document.activeElement, lens);
+    assert.equal(get('coverage').hidden, false);
+  }
+  // Without a warning, a viewport resize must also remain stable.
+  get('coverage').hidden = true;
+  viewport.innerHeight = 900;
+  lens.onkeydown({ key: 'End', preventDefault() {} }); layout();
+  jumpTokenTopic(get, 'context'); layout();
+  assert.equal(scrollY, 640);
+  // At the top of the document, content below the fold needs no reserved space.
+  scrollY = 0;
+  lens.onkeydown({ key: 'Home', preventDefault() {} }); layout();
+  assert.equal(scrollY, 0);
+  assert.equal(parseFloat(content.style.minHeight), 0);
+  scrollY = 1300;
+  jumpTokenTopic(get, 'context');
+  assert.equal(parseFloat(content.style.minHeight), 900, 'jumps from deep content reserve at most one viewport');
+  assert.equal(requests.length, before, 'layout stabilization does not load usage or inspect context');
+  const css = await fs.readFile(new URL('../src/panel/panel.css', import.meta.url), 'utf8');
+  assert.match(css, /#token-topic-content\{overflow-anchor:none\}/, 'changing content must not become the scroll anchor');
 });
 
 test('compact token explorer retains keyboard, direct jumps, and endpoint focus', async () => {

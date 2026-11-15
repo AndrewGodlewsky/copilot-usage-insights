@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.86",
+    "summary": "The token explorer keeps the page steady when switching between tall and short sections, including when a coverage notice is visible. The slider stays in place while you explore."
+  },
+  {
     "version": "0.1.85",
     "summary": "Model breakdowns now expand into projects, then sessions, while keeping columns aligned. User prompts replaces the model-call count, so you can see your own submissions separately from the agent's follow-up work."
   },

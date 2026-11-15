@@ -55,6 +55,7 @@ html.light .support-footer button,html.light .support-footer a{color:var(--q4)}
 .token-topic-navigation{display:flex;align-items:center;gap:12px 24px;flex-wrap:wrap}.token-topic-navigation label{width:min(100%,360px);flex-shrink:0}.token-topic-navigation select{max-width:100%;text-overflow:ellipsis}.token-topic-navigation>p{flex:1;min-width:min(100%,220px);max-width:60ch}.token-topic-detail p{max-width:88ch}.token-topic-detail .efficiency-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));margin-bottom:16px}.token-topic-detail .table-wrap{margin-top:16px}#token-topic-body>p+ p,#token-topic-body>button{margin-top:12px}.token-topic-status{font-weight:600;margin-block:18px 8px}
 /* A fluid ten-stop track keeps every topic in view, even in narrow panels. */
 .token-explorer{--lens-blue:#74b5ed;--lens-ink:#123953;min-width:0;display:flex;flex-direction:column;gap:8px}
+#token-topic-content{overflow-anchor:none}
 .token-track-inner{min-width:0;padding:0 8px}
 .token-track-nodes,.token-topic-stops{display:grid;grid-template-columns:repeat(var(--token-topic-count),minmax(0,1fr))}
 .token-track{height:40px;position:relative}
