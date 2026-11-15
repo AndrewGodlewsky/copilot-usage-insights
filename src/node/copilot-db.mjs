@@ -8,9 +8,20 @@ export function readDesktopSessionNames(file, sessionIds) {
     db.exec('PRAGMA query_only = ON; PRAGMA busy_timeout = 1000;');
     const columns = new Set(db.prepare('PRAGMA table_info(sessions)').all().map(c => c.name));
     if (!columns.has('id') || !columns.has('title')) return new Map();
-    const query = db.prepare('SELECT title FROM sessions WHERE id = ?'), names = new Map();
+    const names = new Map();
+    // Many sessions are read in one pass over the table instead of one query each. That is the
+    // same answer only while IDs are plain, unique text compared exactly; otherwise ask per ID.
+    let titles = null;
+    if (sessionIds.size > 32 && !/collate/i.test(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sessions'").get()?.sql ?? 'collate')) {
+      titles = new Map();
+      for (const row of db.prepare('SELECT id, title FROM sessions').iterate()) {
+        if (typeof row.id !== 'string' || titles.has(row.id)) { titles = null; break; }
+        titles.set(row.id, row.title);
+      }
+    }
+    const query = titles ? null : db.prepare('SELECT title FROM sessions WHERE id = ?');
     for (const id of sessionIds) {
-      const name = normalizeSessionName(query.get(id)?.title);
+      const name = normalizeSessionName(titles ? titles.get(id) : query.get(id)?.title);
       if (name) names.set(id, name);
     }
     return names;
@@ -34,7 +45,10 @@ export function readUsageDatabase(file, receiptSessions, source) {
     if (sc.has('id')) projects = new Map(db.prepare(`SELECT id, ${sc.has('cwd') ? 'cwd' : "'' AS cwd"}, ${sc.has('repository') ? 'repository' : "'' AS repository"}, ${sc.has('summary') ? 'summary' : "'' AS summary"} FROM sessions`).all().map(s => [s.id, s]));
     const records = [], occurrences = new Map(), skillExcludedSessions = new Set();
     let unclassified = 0, invalid = 0;
-    for (const row of supported ? db.prepare(sql).iterate() : []) {
+    // Rows of sessions that have journal receipts are skipped, which for most histories is every
+    // row. One pass over the distinct session IDs avoids fetching rows only to discard them.
+    const needed = supported && db.prepare('SELECT DISTINCT session_id COLLATE BINARY AS session_id FROM assistant_usage_events').all().some(row => !receiptSessions.has(row.session_id));
+    for (const row of needed ? db.prepare(sql).iterate() : []) {
       if (receiptSessions.has(row.session_id)) continue;
       const fingerprint = JSON.stringify(['sqlite', row.session_id, row.created_at, row.model, row.input_tokens, row.output_tokens, row.cache_read_tokens, row.cache_write_tokens, row.total_nano_aiu]);
       const n = occurrences.get(fingerprint) ?? 0; occurrences.set(fingerprint, n + 1);

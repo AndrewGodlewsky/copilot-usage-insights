@@ -1,5 +1,5 @@
 // Only accounting and activity metadata leaves this parser; payload text is discarded.
-import { linkId, promptEvent } from './prompt-credits.mjs';
+import { linkId, intern, promptEvent, promptEventTypes, createPromptEventSet } from './prompt-credits.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -19,11 +19,11 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
   const creditStatus = nanoAiu === null ? 'unavailable' : usage.aiCreditsStatus && usage.aiCreditsStatus !== 'complete' ? 'partial' : 'complete';
   return { record: {
     key, ts: new Date(ms).toISOString(), ms, sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', cwd, source,
-    model: textValue(usage.modelDisplayName) || textValue(usage.model) || 'Unknown model',
-    modelId: textValue(usage.model),
-    apiCallId: linkId(usage.apiCallId),
-    responseModel: textValue(usage.responseModel).slice(0, 256),
-    initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? usage.initiator : '',
+    model: intern(textValue(usage.modelDisplayName) || textValue(usage.model) || 'Unknown model'),
+    modelId: intern(textValue(usage.model)),
+    apiCallId: intern(linkId(usage.apiCallId)),
+    responseModel: intern(textValue(usage.responseModel).slice(0, 256)),
+    initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? intern(usage.initiator) : '',
     isAuto: typeof usage.isAuto === 'boolean' ? usage.isAuto : null,
     duration: Number.isFinite(usage.duration) && usage.duration >= 0 ? usage.duration : null,
     toolTokenCount: count(usage.toolTokenCount), availableToolCount: count(usage.availableToolCount),
@@ -36,31 +36,58 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
   } };
 }
 
-export function createReceiptParser({ sessionId: initialSession, source, logFile = '' }) {
-  let sessionId = initialSession, cwd = '', project = '';
+// Every event type this parser reads. Lines of any other type hold nothing the dashboard uses.
+const usedTypes = new Set(['session.start', 'session.context_changed', 'session.error', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
+const checkpointTypes = new Set(['session.usage_checkpoint', 'session.shutdown']);
+// Copilot writes each line as {"type":"<name>",...}. Returns the name, or '' for any other shape.
+function leadingType(line) {
+  if (!line.startsWith('{"type":"')) return '';
+  const end = line.indexOf('"', 9);
+  if (end < 10 || end > 80 || line.charCodeAt(end + 1) !== 44 || line.charCodeAt(line.length - 1) !== 125) return '';
+  const name = line.slice(9, end);
+  return /^[a-z0-9_.]+$/.test(name) ? name : '';
+}
+
+export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false }) {
+  let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
-  const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), seen = new Set();
-  const toolStarts = new Map(), toolOutcomes = new Map(), interactions = new Map();
-  const promptEvents = new Map();
+  // `rejected` remembers receipts that produced no record, so a replayed line is still counted once.
+  const records = new Map(), skills = new Map(), receiptSessions = new Set(), skillExcludedSessions = new Set(), rejected = new Set();
+  // Every session ID this journal files anything under. Two journals can repeat each other's
+  // entries only if these overlap, which is how a copied or moved session is recognised.
+  const sessions = new Set([initialSession]);
+  // `tools` holds each call as it will be reported: its start plus the latest outcome seen so far.
+  const tools = new Map(), toolOutcomes = new Map(), interactions = new Map();
+  const promptEvents = createPromptEventSet();
+  const relabel = () => { label = project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project'; };
+  const note = (set, value) => { if (!set.has(value)) { set.add(value); revision++; } };
   const collectPrompt = (e, accounting = {}) => {
-    const metadata = promptEvent(e, { sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', ...accounting });
-    if (metadata) promptEvents.set(JSON.stringify(metadata), metadata);
+    const metadata = promptEvent(e, { sessionId, project: label, ...accounting });
+    if (metadata && promptEvents.add(metadata) === metadata) revision++;
   };
   return {
     push(line) {
       if (!line.trim()) return;
+      if (skipUnused) {
+        const type = leadingType(line);
+        if (checkpointTypes.has(type)) { if (!hasCheckpoint) { hasCheckpoint = true; revision++; } return; }
+        if (type && !usedTypes.has(type)) return;
+      }
       let e;
-      try { e = JSON.parse(line); } catch { invalid++; return; }
+      try { e = JSON.parse(line); } catch { invalid++; revision++; return; }
       if (e?.type !== 'session.usage_record') collectPrompt(e);
       if (e?.type === 'session.start') {
         sessionId = textValue(e.data?.sessionId) || sessionId;
+        note(sessions, sessionId);
         cwd = textValue(e.data?.context?.cwd);
         project = textValue(e.data?.context?.repository);
         // Older review exports had this label and no working directory. Keep them in the same project.
         if (!cwd && project === 'Usage Insights AI Review') project = 'Usage Insights';
+        relabel();
       } else if (e?.type === 'session.context_changed') {
         cwd = textValue(e.data?.cwd) || cwd;
         project = textValue(e.data?.repository) || cwd.split(/[\\/]/).filter(Boolean).at(-1) || project;
+        relabel();
       } else if (['user.message', 'assistant.turn_start', 'session.error'].includes(e?.type)) {
         if (e.ephemeral || e.checkpoint || e.agentId || e.data?.parentToolCallId) return;
         const kind = e.type === 'user.message' ? 'prompt' : e.type === 'assistant.turn_start' ? 'turn' : 'error';
@@ -68,58 +95,75 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         const id = textValue(kind === 'turn' ? e.data?.turnId : kind === 'prompt' ? e.data?.messageId || e.id : e.id), ms = Date.parse(e.timestamp);
         if (!id || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) return;
         const key = JSON.stringify(['interaction', kind, sessionId, id]);
-        if (!interactions.has(key)) interactions.set(key, { key, kind, sessionId, ms,
-          project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project',
-          chars: kind === 'prompt' && typeof e.data?.content === 'string' ? e.data.content.length : null });
+        if (!interactions.has(key)) {
+          revision++;
+          interactions.set(key, { key, kind, sessionId, ms, project: label,
+            chars: kind === 'prompt' && typeof e.data?.content === 'string' ? e.data.content.length : null });
+        }
       } else if (e?.type === 'tool.execution_start' || e?.type === 'tool.execution_complete') {
         if (e.ephemeral) return;
         const id = textValue(e.id), callId = textValue(e.data?.toolCallId), ms = Date.parse(e.timestamp);
         const starting = e.type === 'tool.execution_start', name = textValue(e.data?.toolName).trim();
-        if (!id || !callId || starting && !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidTools++; return; }
+        if (!id || !callId || starting && !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidTools++; revision++; return; }
         const key = JSON.stringify(['tool', sessionId, callId]);
         if (starting) {
-          if (!toolStarts.has(key)) toolStarts.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(), name,
-            project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project',
-            model: textValue(e.data?.model), server: textValue(e.data?.mcpConfigServerName) || textValue(e.data?.mcpServerName),
-            mcpTool: textValue(e.data?.mcpToolName),
-            skillName: name === 'skill' ? textValue(e.data?.arguments?.skill).trim() : '',
-          });
+          if (!tools.has(key)) {
+            revision++;
+            const outcome = toolOutcomes.get(key);
+            tools.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(), name: intern(name), project: label,
+              model: intern(textValue(e.data?.model)), server: intern(textValue(e.data?.mcpConfigServerName) || textValue(e.data?.mcpServerName)),
+              mcpTool: intern(textValue(e.data?.mcpToolName)),
+              skillName: name === 'skill' ? textValue(e.data?.arguments?.skill).trim() : '',
+              success: outcome ? outcome.success : null, completedMs: outcome ? outcome.completedMs : null,
+            });
+          }
         } else if (!toolOutcomes.has(key) || ms > toolOutcomes.get(key).completedMs) {
-          toolOutcomes.set(key, { success: typeof e.data?.success === 'boolean' ? e.data.success : null, completedMs: ms });
+          revision++;
+          const outcome = { key, success: typeof e.data?.success === 'boolean' ? e.data.success : null, completedMs: ms };
+          toolOutcomes.set(key, outcome);
+          // Reported objects are never altered once handed out; a changed call gets a new one.
+          const tool = tools.get(key);
+          if (tool) tools.set(key, { ...tool, success: outcome.success, completedMs: ms });
         }
       } else if (e?.type === 'skill.invoked' || e?.type === 'skill.invoked_ref') {
         if (e.ephemeral) return;
         const id = textValue(e.id), name = textValue(e.data?.name).trim(), ms = Date.parse(e.timestamp);
-        if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; return; }
+        if (!id || !name || !Number.isFinite(ms) || ms < Date.UTC(2020, 0, 1) || ms >= Date.UTC(2100, 0, 1)) { invalidSkills++; revision++; return; }
         const key = JSON.stringify(['skill', sessionId, id]);
-        if (!skills.has(key)) skills.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(),
-          project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', name,
-          plugin: textValue(e.data?.pluginName), version: textValue(e.data?.pluginVersion), path: textValue(e.data?.path),
-          trigger: ['user-invoked', 'agent-invoked', 'context-load'].includes(e.data?.trigger) ? e.data.trigger : 'unknown',
-        });
-      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') hasCheckpoint = true;
+        if (!skills.has(key)) {
+          revision++;
+          skills.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(), project: label, name,
+            plugin: textValue(e.data?.pluginName), version: textValue(e.data?.pluginVersion), path: textValue(e.data?.path),
+            trigger: ['user-invoked', 'agent-invoked', 'context-load'].includes(e.data?.trigger) ? e.data.trigger : 'unknown',
+          });
+        }
+      } else if (e?.type === 'session.usage_checkpoint' || e?.type === 'session.shutdown') { if (!hasCheckpoint) { hasCheckpoint = true; revision++; } }
       else if (e?.type === 'session.usage_record') {
-        receiptSessions.add(sessionId);
-        receiptSessions.add(initialSession);
+        note(receiptSessions, sessionId);
+        note(receiptSessions, initialSession);
         const u = e.data?.usage;
-        const sourceSession = textValue(u?.accounting?.sourceSessionId) || sessionId;
-        receiptSessions.add(sourceSession);
+        const sourceSession = intern(textValue(u?.accounting?.sourceSessionId)) || sessionId;
+        note(receiptSessions, sourceSession);
+        note(sessions, sourceSession);
         const id = textValue(u?.accounting?.usageId) || textValue(e.id);
         const key = id ? JSON.stringify(['receipt', sourceSession, id]) : '';
-        const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project, source });
+        const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId: sourceSession, cwd, project: label, source });
         collectPrompt(e, { receipt: result.record, receiptKey: key });
-        if (key && seen.has(key)) return;
-        if (key) seen.add(key);
+        if (key && (records.has(key) || rejected.has(key))) return;
+        revision++;
         if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
-        if (result.record) records.set(key, { ...result.record, logFile });
-        else if (result.reason === 'excluded') excluded++;
+        if (result.record) { result.record.logFile = logFile; records.set(key, result.record); }
+        else if (key) rejected.add(key);
+        if (result.record) return;
+        if (result.reason === 'excluded') excluded++;
         else if (result.reason === 'unclassified') unclassified++;
         else invalid++;
       }
     },
-    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: [...promptEvents.values()],
-      tools: [...toolStarts.values()].map(tool => ({ ...tool, success: null, completedMs: null, ...toolOutcomes.get(tool.key) })),
-      toolOutcomes: [...toolOutcomes].map(([key, outcome]) => ({ key, ...outcome })),
+    // Changes only when something a snapshot reports has changed, so a caller can keep an earlier snapshot.
+    revision: () => revision,
+    snapshot: () => ({ records: [...records.values()], skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: promptEvents.events.slice(),
+      tools: [...tools.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && receiptSessions.size === 0 }),
   };
 }

@@ -2,39 +2,211 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
+import { createPromptEventSet } from '../core/prompt-credits.mjs';
 import { readUsageDatabase, readDesktopSessionNames } from './copilot-db.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 
-const MAX_LINE = 8 * 1024 * 1024;
+const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
+// File system calls wait on the operating system, so several session folders are read at once.
+const PARALLEL = 16;
+// A digest of what was read lets a journal that has grown be continued instead of read again.
+// Journals untouched for a day rarely grow, so they are read without one; if one does change,
+// it is read again from the start, and from then on with a digest.
+const RECENT = 24 * 60 * 60 * 1000;
 const absent = e => e?.code === 'ENOENT' || e?.code === 'ENOTDIR';
-async function workspaceName(file, sessionId) {
-  let handle;
-  try {
-    handle = await fs.open(file, 'r');
-    if (!(await handle.stat()).isFile()) return '';
-    const buffer = Buffer.alloc(64 * 1024 + 1);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    if (bytesRead === buffer.length) return '';
-    const data = load(buffer.toString('utf8', 0, bytesRead), { schema: CORE_SCHEMA, maxDepth: 20, maxAliases: 50 });
-    return data?.id && data.id !== sessionId ? '' : normalizeSessionName(data?.name);
-  } catch { return ''; }
-  finally { await handle?.close(); }
-}
+const sameFile = (known, stat) => known.size === stat.size && known.mtime === stat.mtimeMs && known.ctime === stat.ctimeMs;
+const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
+const sameFields = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true; };
+const chunks = [];
 async function hashPrefix(handle, length) {
-  const hash = createHash('sha256'), buffer = Buffer.alloc(256 * 1024);
-  for (let position = 0; position < length;) {
-    const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, length - position), position);
-    if (!bytesRead) throw new Error('Session log changed while reading; refresh to retry');
-    hash.update(buffer.subarray(0, bytesRead)); position += bytesRead;
-  }
+  const hash = createHash('sha256'), buffer = chunks.pop() || Buffer.allocUnsafe(CHUNK);
+  try {
+    for (let position = 0; position < length;) {
+      const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, length - position), position);
+      if (!bytesRead) throw new Error('Session log changed while reading; refresh to retry');
+      hash.update(buffer.subarray(0, bytesRead)); position += bytesRead;
+    }
+  } finally { chunks.push(buffer); }
   return hash;
 }
-export function createScanner({ optionalHomes = [] } = {}) {
-  const files = new Map();
-  let queue = Promise.resolve();
+// Runs `task` over every item with bounded concurrency; results keep the items' order.
+async function inOrder(items, task) {
+  const results = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(PARALLEL, items.length) }, async () => {
+    while (next < items.length) { const i = next++; results[i] = await task(items[i]); }
+  }));
+  return results;
+}
+
+// Combines every journal's contribution, in folder order. Every entry is filed under a session
+// ID, so journals can repeat one another only when they share one: a copied or moved session.
+// Those few are reconciled entry by entry, the first copy winning; all others are simply joined
+// end to end. Pure: the result is kept for as long as the same snapshots are current.
+function mergeJournals(snapshots) {
+  const records = [], skills = [], interactions = [], promptEvents = [], tools = [];
+  const receiptSessions = new Set(), skillExcludedSessions = new Set(), sessionsByHome = new Map(), added = new Array(snapshots.length).fill(0);
+  const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
+  const owner = new Map(), overlapping = new Set();
+  for (let i = 0; i < snapshots.length; i++) for (const id of snapshots[i].sessions) {
+    const first = owner.get(id);
+    if (first === undefined) owner.set(id, i);
+    else if (first !== i) { overlapping.add(first); overlapping.add(i); }
+  }
+  const seenRecords = new Set(), seenInteractions = new Set(), seenSkills = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
+  let home, homeSessions, session;
+  const keep = r => {
+    records.push(r);
+    if (r.source !== home) { home = r.source; homeSessions = sessionsByHome.get(home); if (!homeSessions) sessionsByHome.set(home, homeSessions = new Set()); session = undefined; }
+    if (r.sessionId !== session) homeSessions.add(session = r.sessionId);
+  };
+  for (let i = 0; i < snapshots.length; i++) {
+    const s = snapshots[i];
+    for (const id of s.receiptSessions) receiptSessions.add(id);
+    for (const id of s.skillExcludedSessions) skillExcludedSessions.add(id);
+    for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools']) coverage[k] += s[k];
+    if (s.aggregateOnly) coverage.aggregateOnly++;
+    if (!overlapping.has(i)) {
+      for (const r of s.records) keep(r);
+      added[i] = s.records.length;
+      for (const event of s.interactions) interactions.push(event);
+      for (const event of s.promptEvents) promptEvents.push(event);
+      for (const skill of s.skills) skills.push(skill);
+      for (const tool of s.tools) tools.push(tool);
+      continue;
+    }
+    for (const r of s.records) if (!seenRecords.has(r.key)) { seenRecords.add(r.key); keep(r); added[i]++; }
+    for (const event of s.interactions) if (!seenInteractions.has(event.key)) { seenInteractions.add(event.key); interactions.push(event); }
+    for (const event of s.promptEvents) if (seenEvents.add(event) === event) promptEvents.push(event);
+    for (const skill of s.skills) if (!seenSkills.has(skill.key)) { seenSkills.add(skill.key); skills.push(skill); }
+    for (const tool of s.tools) {
+      const at = toolAt.get(tool.key);
+      if (at === undefined) { toolAt.set(tool.key, tools.length); tools.push(tool); }
+      else if ((tool.completedMs ?? -Infinity) > (tools[at].completedMs ?? -Infinity)) tools[at] = tool;
+    }
+    for (const outcome of s.toolOutcomes) {
+      const previous = outcomes.get(outcome.key);
+      if (!previous || outcome.completedMs > previous.completedMs) outcomes.set(outcome.key, outcome);
+    }
+  }
+  // Copied journals can contain separate portions of a call's start and completion.
+  for (const [key, at] of toolAt) {
+    const outcome = outcomes.get(key), tool = tools[at];
+    if (outcome && (outcome.success !== tool.success || outcome.completedMs !== tool.completedMs)) tools[at] = { ...tool, ...outcome };
+  }
+  return { recordList: records, skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
+}
+
+export function createScanner({ optionalHomes = [], skipUnused = false } = {}) {
+  // Journals and session names are reread only when their size or timestamps change.
+  const files = new Map(), names = new Map();
+  // Shared by every result of this scanner, so later stages can keep work between scans.
+  const cache = { uniquePromptEvents: true };
+  let queue = Promise.resolve(), merge = null, fallback = new Map(), previous = null;
+
+  async function workspaceName(file, sessionId, force) {
+    let handle;
+    try {
+      const known = force ? undefined : names.get(file);
+      if (known && sameFile(known, await fs.stat(file))) return known.name;
+      handle = await fs.open(file, 'r');
+      const stat = await handle.stat();
+      if (!stat.isFile()) { names.delete(file); return ''; }
+      const buffer = Buffer.allocUnsafe(MAX_NAME_FILE + 1);
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+      let name = '';
+      if (bytesRead < buffer.length) {
+        try {
+          const data = load(buffer.toString('utf8', 0, bytesRead), { schema: CORE_SCHEMA, maxDepth: 20, maxAliases: 50 });
+          name = data?.id && data.id !== sessionId ? '' : normalizeSessionName(data?.name);
+        } catch { name = ''; }
+      }
+      names.set(file, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, name });
+      return name;
+    } catch { names.delete(file); return ''; }
+    finally { await handle?.close(); }
+  }
+
+  // Lines the dashboard does not use leave the earlier snapshot, and everything built on it, valid.
+  function current(entry) {
+    if (!entry.parser) return entry.snapshot;
+    const revision = entry.parser.revision();
+    if (entry.revision !== revision) { entry.snapshot = entry.parser.snapshot(); entry.revision = revision; }
+    return entry.snapshot;
+  }
+
+  async function readJournal(file, stat, real, sessionId, force) {
+    let entry = files.get(file);
+    if (!force && entry && sameFile(entry, stat)) return current(entry);
+    const handle = await fs.open(file, 'r');
+    const chunk = chunks.pop() || Buffer.allocUnsafe(CHUNK);
+    try {
+      let prefixMatches = false, hash;
+      if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino) {
+        hash = await hashPrefix(handle, entry.offset);
+        prefixMatches = hash.copy().digest('hex') === entry.digest;
+      }
+      if (!prefixMatches) {
+        const growing = Date.now() - stat.mtimeMs < RECENT || !!entry && (!force || entry.digest !== null);
+        hash = growing ? createHash('sha256') : null;
+        entry = { parser: createReceiptParser({ sessionId, source: real, logFile: file, skipUnused }), offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
+      }
+      const parser = entry.parser;
+      let position = entry.offset, pending = [], pendingLength = 0, dropping = false, consumed = null;
+      try {
+        while (position < stat.size) {
+          const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - position), position);
+          if (!bytesRead) break;
+          const block = chunk.subarray(0, bytesRead);
+          // Verify the entire consumed prefix, retaining only its digest between scans.
+          if (hash) {
+            const lastNewline = block.lastIndexOf(10);
+            if (lastNewline >= 0) { hash.update(block.subarray(0, lastNewline + 1)); consumed = hash.copy(); hash.update(block.subarray(lastNewline + 1)); }
+            else hash.update(block);
+          }
+          let begin = 0;
+          for (let end = block.indexOf(10); end !== -1; end = block.indexOf(10, begin)) {
+            if (dropping || pendingLength + end - begin > MAX_LINE) parser.push('{oversized line');
+            else if (pendingLength) { pending.push(block.subarray(begin, end)); parser.push(Buffer.concat(pending).toString('utf8')); }
+            else parser.push(block.toString('utf8', begin, end));
+            pending = []; pendingLength = 0; dropping = false; begin = end + 1; entry.offset = position + begin;
+          }
+          if (!dropping && begin < block.length) {
+            if (pendingLength + block.length - begin > MAX_LINE) { pending = []; pendingLength = 0; dropping = true; }
+            // The chunk is reused for the next read, so an unfinished line is copied out of it.
+            else { pending.push(Buffer.from(block.subarray(begin))); pendingLength += block.length - begin; }
+          }
+          position += bytesRead;
+        }
+      } finally { if (consumed) entry.digest = consumed.digest('hex'); }
+      Object.assign(entry, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, ino: stat.ino });
+      files.set(file, entry);
+      // A journal read without a digest is never continued, only read again, so what its parser
+      // remembers for recognising repeated lines can be let go.
+      if (entry.digest === null) { entry.snapshot = entry.parser.snapshot(); entry.parser = null; }
+      return current(entry);
+    } finally { chunks.push(chunk); await handle.close(); }
+  }
+
+  async function readSession(stateDir, real, sessionId, force) {
+    // A folder name has nothing to normalise, so its paths are put together directly.
+    const dir = stateDir + path.sep + sessionId;
+    const found = { id: sessionId, name: '', nameFile: dir + path.sep + 'workspace.yaml', file: '', snapshot: null, error: null };
+    try {
+      found.name = await workspaceName(found.nameFile, sessionId, force);
+      const file = dir + path.sep + 'events.jsonl', stat = await fs.stat(file);
+      if (!stat.isFile()) return found;
+      found.file = file;
+      found.snapshot = await readJournal(file, stat, real, sessionId, force);
+    } catch (e) { found.error = e; }
+    return found;
+  }
+
   async function scan(roots, { force = false, disabled = [] } = {}) {
-    const seenRoots = new Set(), seenFiles = new Set(), sources = [], snapshots = [], databases = [], sessionNames = new Map();
+    const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
+    const nameIn = (home, id) => sessionNames.get(home)?.get(id);
+    const setName = (home, id, name) => { let map = sessionNames.get(home); if (!map) sessionNames.set(home, map = new Map()); map.set(id, name); };
     for (const root of new Set([...roots, ...optionalHomes])) {
       let real;
       try { real = await fs.realpath(root); }
@@ -53,107 +225,75 @@ export function createScanner({ optionalHomes = [] } = {}) {
       let dirs = [];
       try { dirs = await fs.readdir(stateDir, { withFileTypes: true }); }
       catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
-      for (const dir of dirs) {
-        if (!dir.isDirectory() || dir.name.startsWith('.')) continue;
-        const file = path.join(stateDir, dir.name, 'events.jsonl');
-        try {
-          const name = await workspaceName(path.join(stateDir, dir.name, 'workspace.yaml'), dir.name);
-          if (name) sessionNames.set(JSON.stringify([real, dir.name]), name);
-          const stat = await fs.stat(file);
-          if (!stat.isFile()) continue;
-          seenFiles.add(file); source.files++;
-          let entry = files.get(file);
-          if (!force && entry && entry.size === stat.size && entry.mtime === stat.mtimeMs && entry.ctime === stat.ctimeMs) { snapshots.push({ ...entry.parser.snapshot(), source }); continue; }
-          const handle = await fs.open(file, 'r');
-          try {
-            let prefixMatches = false, hash;
-            if (!force && entry && stat.size > entry.size && entry.ino === stat.ino) {
-              hash = await hashPrefix(handle, entry.offset);
-              prefixMatches = hash.copy().digest('hex') === entry.digest;
-            }
-            if (!prefixMatches) {
-              hash = createHash('sha256');
-              entry = { parser: createReceiptParser({ sessionId: dir.name, source: real, logFile: file }), offset: 0, digest: hash.copy().digest('hex') };
-            }
-            let position = entry.offset, pending = Buffer.alloc(0), dropping = false;
-            const chunk = Buffer.alloc(256 * 1024);
-            while (position < stat.size) {
-              const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - position), position);
-              if (!bytesRead) break;
-              const block = chunk.subarray(0, bytesRead);
-              // Verify the entire consumed prefix, retaining only its digest between scans.
-              const lastNewline = block.lastIndexOf(10);
-              if (lastNewline >= 0) entry.digest = hash.copy().update(block.subarray(0, lastNewline + 1)).digest('hex');
-              hash.update(block);
-              let begin = 0;
-              for (let i = 0; i < block.length; i++) if (block[i] === 10) {
-                if (!dropping && pending.length + i - begin <= MAX_LINE) entry.parser.push(Buffer.concat([pending, block.subarray(begin, i)]).toString('utf8'));
-                else entry.parser.push('{oversized line');
-                pending = Buffer.alloc(0); dropping = false; begin = i + 1; entry.offset = position + begin;
-              }
-              if (!dropping) {
-                if (pending.length + block.length - begin > MAX_LINE) { pending = Buffer.alloc(0); dropping = true; }
-                else pending = Buffer.concat([pending, block.subarray(begin)]);
-              }
-              position += bytesRead;
-            }
-            Object.assign(entry, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, ino: stat.ino });
-            files.set(file, entry);
-            snapshots.push({ ...entry.parser.snapshot(), source });
-          } finally { await handle.close(); }
-        } catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
+      const sessions = dirs.filter(dir => dir.isDirectory() && !dir.name.startsWith('.'));
+      // Outcomes are applied in folder order, so the result does not depend on which read finished first.
+      for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force))) {
+        seenNames.add(found.nameFile);
+        if (found.name) setName(real, found.id, found.name);
+        if (found.file) { seenFiles.add(found.file); source.files++; }
+        if (found.snapshot) { snapshots.push(found.snapshot); owners.push(source); }
+        if (found.error && !absent(found.error)) { source.state = 'error'; source.message = found.error.message; source.diagnostic = diagnosticError(found.error); }
       }
       const db = path.join(real, 'session-store.db');
       try { await fs.access(db); databases.push({ db, source }); }
       catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
-    const receiptSessions = new Set(snapshots.flatMap(s => s.receiptSessions));
-    const records = new Map(), skills = new Map(), tools = new Map(), toolOutcomes = new Map(), interactions = new Map(), promptEvents = new Map(), skillExcludedSessions = new Set(snapshots.flatMap(s => s.skillExcludedSessions));
-    const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
-    for (const s of snapshots) {
-      for (const r of s.records) if (!records.has(r.key)) { records.set(r.key, r); s.source.records++; }
-      for (const event of s.interactions) if (!interactions.has(event.key)) interactions.set(event.key, event);
-      for (const event of s.promptEvents) promptEvents.set(JSON.stringify(event), event);
-      for (const skill of s.skills) if (!skills.has(skill.key)) skills.set(skill.key, skill);
-      for (const tool of s.tools) {
-        const previous = tools.get(tool.key);
-        if (!previous || (tool.completedMs ?? -Infinity) > (previous.completedMs ?? -Infinity)) tools.set(tool.key, tool);
-      }
-      for (const outcome of s.toolOutcomes) {
-        const previous = toolOutcomes.get(outcome.key);
-        if (!previous || outcome.completedMs > previous.completedMs) toolOutcomes.set(outcome.key, outcome);
-      }
-      for (const k of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools']) coverage[k] += s[k];
-      if (s.aggregateOnly) coverage.aggregateOnly++;
-    }
-    // Copied journals can contain separate portions of a call's start and completion.
-    for (const [key, tool] of tools) if (toolOutcomes.has(key)) tools.set(key, { ...tool, ...toolOutcomes.get(key) });
+    for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
+    if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };
+    const journals = merge.journals, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
+    for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
+    let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
     for (const { db, source } of databases) {
       try {
-        const result = readUsageDatabase(db, receiptSessions, source.path);
+        const result = readUsageDatabase(db, journals.receiptSessions, source.path);
         if (result.warning) { source.state = 'warning'; source.message = result.warning; }
-        for (const [id, name] of result.sessionNames) {
-          const key = JSON.stringify([source.path, id]);
-          if (name && !sessionNames.has(key)) sessionNames.set(key, name);
+        for (const [id, name] of result.sessionNames) if (name && !nameIn(source.path, id)) setName(source.path, id, name);
+        if (result.skillExcludedSessions.length) {
+          if (skillExcluded === journals.skillExcludedSessions) skillExcluded = new Set(skillExcluded);
+          for (const session of result.skillExcludedSessions) skillExcluded.add(session);
         }
-        for (const session of result.skillExcludedSessions) skillExcludedSessions.add(session);
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
-        for (const r of result.records) if (!records.has(r.key)) { records.set(r.key, r); source.records++; coverage.fallbackRequests++; }
+        // The database is read afresh every scan; rows that have not changed keep their earlier objects.
+        const before = fallback.get(db), rows = new Map();
+        for (let r of result.records) {
+          const known = before?.get(r.key);
+          if (known && sameFields(r, known)) r = known;
+          rows.set(r.key, r);
+          // Database rows are keyed apart from journal receipts; only another database can repeat one.
+          if (extra.has(r.key)) continue;
+          extra.set(r.key, r); source.records++; coverage.fallbackRequests++;
+          if (sessionsByHome === journals.sessionsByHome) sessionsByHome = new Map([...sessionsByHome].map(([home, ids]) => [home, new Set(ids)]));
+          if (!sessionsByHome.has(r.source)) sessionsByHome.set(r.source, new Set());
+          sessionsByHome.get(r.source).add(r.sessionId);
+        }
+        kept.set(db, rows);
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
-    const sessionIdsByHome = new Map();
-    for (const record of records.values()) {
-      if (!sessionIdsByHome.has(record.source)) sessionIdsByHome.set(record.source, new Set());
-      sessionIdsByHome.get(record.source).add(record.sessionId);
-    }
-    for (const [home, ids] of sessionIdsByHome) {
-      for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) {
-        sessionNames.set(JSON.stringify([home, id]), name);
-      }
-    }
+    fallback = kept;
+    for (const [home, ids] of sessionsByHome) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
     for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    return { records: [...records.values()].map(r => ({ ...r, sessionName: sessionNames.get(JSON.stringify([r.source, r.sessionId])) || '' })), skills: [...skills.values()], interactions: [...interactions.values()], promptEvents: [...promptEvents.values()], tools: [...tools.values()], skillExcludedSessions: [...skillExcludedSessions], sources, coverage };
+    // A record carries its session's current name. The name is written onto the record itself
+    // rather than onto a copy, so a rename is noted here to stop an earlier result being reused.
+    let home, homeNames, renamed = false;
+    const named = r => {
+      if (r.source !== home) { home = r.source; homeNames = sessionNames.get(home); }
+      const sessionName = homeNames?.get(r.sessionId) || '';
+      if (r.sessionName !== sessionName) { r.sessionName = sessionName; renamed = true; }
+      return r;
+    };
+    const records = new Array(journals.recordList.length + extra.size);
+    let n = 0;
+    for (const r of journals.recordList) records[n++] = named(r);
+    for (const r of extra.values()) records[n++] = named(r);
+    const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage };
+    // Nothing changed: hand back the very same result, so everything derived from it stays valid.
+    if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools
+      && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)
+      && sameFields(previous.coverage, coverage) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
+    if (previous && !renamed && sameList(previous.records, records)) result.records = previous.records;
+    Object.defineProperty(result, 'cache', { value: cache });
+    return previous = result;
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }
