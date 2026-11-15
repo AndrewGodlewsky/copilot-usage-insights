@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.64",
+    "summary": "Automatically includes retained Enhance Prompt background usage under the Enhanced Prompt project, with separate sessions for each helper. Recorded tokens and AI credits stay available after helpers finish; prompts and responses are not retained."
+  },
+  {
     "version": "0.1.63",
     "summary": "Made the token explorer shorter and flexible enough to fit narrow panels without a horizontal scrollbar. Small topic icons replace the labels, the blue lens changes its symbol as you move, and the selected section's full title stays visible."
   },

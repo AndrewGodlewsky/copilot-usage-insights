@@ -4,6 +4,8 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 export const copilotHome = () => path.resolve(process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot'));
+export const enhancePromptUsageHome = () => path.resolve(process.env.ENHANCE_PROMPT_DATA_DIR
+  || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'copilot-enhance-prompt'), 'usage');
 export function configDir() {
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
     : process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support')

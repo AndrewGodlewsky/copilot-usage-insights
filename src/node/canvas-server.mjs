@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createScanner } from './copilot-source.mjs';
-import { createSettings, copilotHome } from './settings.mjs';
+import { createSettings, copilotHome, enhancePromptUsageHome } from './settings.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildSessionModels } from '../core/copilot-report.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { openSkillFolder } from './skill-folder.mjs';
@@ -13,7 +13,7 @@ import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { createContextReader } from './context.mjs';
 
 const MAX_BODY = 64 * 1024;
-export async function startServer({ settings = createSettings(), scanner = createScanner(), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
+export async function startServer({ settings = createSettings(), scanner = createScanner({ optionalHomes: [enhancePromptUsageHome()] }), defaultHome = copilotHome(), html, now = () => new Date(), openFolder = openSkillFolder, readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics() } = {}) {
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');

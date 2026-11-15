@@ -30,15 +30,18 @@ async function hashPrefix(handle, length) {
   }
   return hash;
 }
-export function createScanner() {
+export function createScanner({ optionalHomes = [] } = {}) {
   const files = new Map();
   let queue = Promise.resolve();
   async function scan(roots, { force = false, disabled = [] } = {}) {
     const seenRoots = new Set(), seenFiles = new Set(), sources = [], snapshots = [], databases = [], sessionNames = new Map();
-    for (const root of roots) {
+    for (const root of new Set([...roots, ...optionalHomes])) {
       let real;
       try { real = await fs.realpath(root); }
-      catch (e) { sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue; }
+      catch (e) {
+        if (absent(e) && optionalHomes.includes(root) && !roots.includes(root)) continue;
+        sources.push({ path: root, state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
+      }
       const identity = process.platform === 'win32' ? real.toLowerCase() : real;
       if (seenRoots.has(identity)) continue;
       seenRoots.add(identity);

@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.63** makes the token explorer shorter and fits all ten topic icons within the panel. The blue lens changes its symbol with the selected topic, whose full name remains visible below the track. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.64** automatically includes retained Enhance Prompt background usage under **Enhanced Prompt**, with separate sessions for each helper and recorded token and AI-credit totals. Start a new session and reopen Usage Insights after updating. Restart Copilot if an older canvas is still running.
 
 ### If it does not appear
 
@@ -166,6 +166,10 @@ Expanding a project session loads its model totals from the existing in-memory u
 Long model, project, session, skill, tool/server, plugin, and version names wrap within bounded table columns, including names without spaces. The full text is retained; numeric columns stay on one line and tables scroll horizontally when needed. Filter controls stay within their columns; hover over a selected filter to read its full name (and the session ID for sessions). Chart model labels remain shortened to fit, with the full name in the chart tooltip. Source paths, notices, and tooltip text also wrap.
 
 Use **Settings** to add mounted/copied Copilot homes or disable a home. Sources are scanned incrementally while the canvas is visible. **Refresh** forces a complete reread. Source diagnostics explain missing homes, unsupported schemas, and skipped records. Copilot's local event format and canvas APIs are experimental; app updates can require a reader update.
+
+Enhance Prompt 0.2.4 and later retain accounting for their background helpers. Usage Insights automatically reads this optional source when it exists: `%LOCALAPPDATA%/copilot-enhance-prompt/usage` on Windows, or `~/.local/share/copilot-enhance-prompt/usage` when `LOCALAPPDATA` is unset. If Enhance Prompt uses `ENHANCE_PROMPT_DATA_DIR`, set that same environment variable for Usage Insights, or add `<custom data directory>/usage` in **Settings**. Each helper appears as a separate timestamped session under the project **Enhanced Prompt**. The source can be disabled in **Settings**; adding the same home manually or copying its journals does not count the same usage twice. A missing automatic source is simply omitted, and new records appear on refresh.
+
+This export contains accounting metadata only: no prompts, responses, project file contents, endpoint URLs, credentials, or account identities. It leaves Copilot's own session store unchanged. Usage Insights uses recorded tokens and AI-credit charges without estimating missing values; partial and unavailable charges keep their status, and BYOK requests remain excluded. Human submission metadata is absent, so **User prompts** and **AI credits / prompt** are unavailable for these helpers. Usage from older temporary helpers cannot be recovered after their records were deleted.
 
 Settings live in `%LOCALAPPDATA%/copilot-usage-insights/settings.json` on Windows, `~/Library/Application Support/copilot-usage-insights/settings.json` on macOS, or `$XDG_CONFIG_HOME/copilot-usage-insights/settings.json` on Linux (default `~/.config`).
 
