@@ -1,7 +1,7 @@
 import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, coverageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
-import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../core/diagnostics.mjs';
+import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations } from './conversations.mjs';
@@ -101,7 +101,8 @@ async function request(method, input = {}, refresh = false, signal, known) {
       lastResponseAt = Date.now();
       fields.httpStatus = response.status;
       fields.requestStage = 'decode';
-      const result = await response.json();
+      const result = ['usage.report', 'usage.refresh'].includes(method)
+        ? await clientDiagnostics.measure('api.decode', { method }, () => response.json()) : await response.json();
       fields.requestStage = 'http';
       if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
       fields.requestStage = 'complete';
@@ -130,6 +131,8 @@ function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   for (const entry of [...(server?.persisted?.entries || []), ...(importedRuntimeLogs?.entries || [])]) runtime.set(JSON.stringify(entry), entry);
   const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...[...runtime.values()].map(entry => ({ ...entry, source: 'runtime' }))];
   entries.sort((a, b) => a.at.localeCompare(b.at));
+  // Avoid treating older-process runtime snapshots as stages of this dashboard's load.
+  lines.push(loadTimingSummary(entries.filter(entry => entry.source !== 'runtime')), '', 'Structured events', '');
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
 const releaseFamily = version => version.split('.').slice(0, 2).join('.');
@@ -265,6 +268,9 @@ async function load(force = false, refresh = false) {
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
   state.pending = true;
+  const loadStarted = globalThis.performance?.now() ?? Date.now();
+  const loadFields = { loadKind: !state.report ? 'initial' : force ? 'manual' : refresh ? 'automatic' : 'filter', range: state.range };
+  clientDiagnostics.record('info', 'ui.load', { ...loadFields, phase: 'started' });
   setRefreshFeedback('busy');
   let successful = false, manual = false;
   try {
@@ -331,7 +337,10 @@ async function load(force = false, refresh = false) {
         if (state.creditsUnavailable) $('status').before($('filters'));
       }
     } while (version !== state.version);
-  } finally { state.pending = false; setRefreshFeedback(manual && successful ? 'done' : 'idle'); }
+  } finally {
+    state.pending = false; setRefreshFeedback(manual && successful ? 'done' : 'idle');
+    clientDiagnostics.record(successful ? 'info' : 'error', 'ui.load', { ...loadFields, phase: successful ? 'finished' : 'failed', durationMs: (globalThis.performance?.now() ?? Date.now()) - loadStarted });
+  }
 }
 function renderLoadStatus() {
   const matching = state.report && state.filterKey === JSON.stringify(query());

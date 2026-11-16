@@ -29,7 +29,7 @@ function latestTime(scan) {
 }
 export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }), endpoint } = {}) {
   if (endpoint !== undefined && !validEndpoint(endpoint)) throw new TypeError('Invalid dashboard endpoint');
-  scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources() });
+  scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources(), diagnostics });
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
@@ -204,28 +204,36 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         buildReport([], input, now());
         const config = await settings.get();
         const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
-        const at = now(), buildFields = { records: scan.records.length, range: input.range };
-        const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cached = found.cached; return found; });
+        const at = now(), buildFields = { records: scan.records.length, range: input.range, promptEvents: scan.promptEvents?.length ?? 0, tools: scan.tools?.length ?? 0, skills: scan.skills?.length ?? 0 };
+        const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cacheHit = found.cached; return found; });
         // Installed versions are read from disk each time, onto copies, so the kept report stays as built.
         const rows = entry.report.skills.rows.map(row => ({ ...row }));
         await diagnostics.measure('skills.versions', { rows: rows.length }, () => addInstalledSkillVersions(rows));
-        const preferences = { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true };
-        const { generatedAt, ...report } = entry.report;
-        const extras = JSON.stringify([rows.map(row => row.installedVersion), preferences]);
-        let content;
-        // Everything the dashboard shows except the two timestamps. Its fingerprint lets a
-        // dashboard that already holds this exact content skip the download and the redraw.
-        if (entry.sent?.extras !== extras) {
-          content = JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
-          entry.sent = { extras, revision: createHash('sha256').update(content).digest('base64url') };
-        }
-        const head = `{"generatedAt":${JSON.stringify(at.toISOString())},"scannedAt":${JSON.stringify(scannedAt)},"revision":${JSON.stringify(entry.sent.revision)}`;
-        fields.unchanged = message.known === entry.sent.revision;
-        if (fields.unchanged) send(res, 200, head + ',"unchanged":true}');
-        else {
-          content ??= JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
-          send(res, 200, head + ',' + content.slice(1));
-        }
+        const serializationFields = { range: input.range };
+        const payload = diagnostics.measure('report.serialize', serializationFields, () => {
+          const preferences = { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true };
+          const { generatedAt, ...report } = entry.report;
+          const extras = JSON.stringify([rows.map(row => row.installedVersion), preferences]);
+          let content;
+          // Everything the dashboard shows except the two timestamps. Its fingerprint lets a
+          // dashboard that already holds this exact content skip the download and the redraw.
+          if (entry.sent?.extras !== extras) {
+            content = JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+            entry.sent = { extras, revision: createHash('sha256').update(content).digest('base64url') };
+          }
+          const head = `{"generatedAt":${JSON.stringify(at.toISOString())},"scannedAt":${JSON.stringify(scannedAt)},"revision":${JSON.stringify(entry.sent.revision)}`;
+          fields.unchanged = message.known === entry.sent.revision;
+          if (fields.unchanged) return finishPayload(head + ',"unchanged":true}');
+          else {
+            content ??= JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+            return finishPayload(head + ',' + content.slice(1));
+          }
+          function finishPayload(value) {
+            Object.assign(serializationFields, { responseBytes: Buffer.byteLength(value), unchanged: fields.unchanged });
+            return value;
+          }
+        });
+        send(res, 200, payload);
         diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
         return;
       } else if (['usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels'].includes(message.method)) {

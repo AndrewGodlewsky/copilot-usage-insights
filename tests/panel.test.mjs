@@ -746,6 +746,10 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(get('logs-dialog').open, true);
   assert.match(get('logs-output').value, /history\.scan|durationMs/);
   assert.match(get('logs-output').value, /ui\.render/);
+  assert.match(get('logs-output').value, /Load timing summary/);
+  assert.match(get('logs-output').value, /Initial usage load.*finished/);
+  assert.match(get('logs-output').value, /Response download and decoding/);
+  assert.match(get('logs-output').value, /"loadKind":"manual"/);
   assert.match(get('logs-output').value, /ui\.error/);
   assert.match(get('logs-output').value, /ui\.rejection/);
   assert.doesNotMatch(get('logs-output').value, /PRIVATE|SECRET/);
@@ -761,6 +765,7 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   await get('logs-reload').onclick();
   assert.match(get('logs-status').textContent, /last server snapshot/);
   assert.match(get('logs-output').value, /diagnostics\.read/);
+  assert.match(get('logs-output').value, /"event":"ui.load"[^\n]*"phase":"failed"/);
   assert.doesNotMatch(get('logs-output').value, /PRIVATE|SECRET/);
   assert.equal(get('logs-copy').disabled, false);
   get('logs-close').onclick();

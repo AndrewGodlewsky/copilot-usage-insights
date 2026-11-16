@@ -1,8 +1,62 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../src/core/diagnostics.mjs';
+import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../src/core/diagnostics.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { createReceiptParser } from '../src/core/copilot.mjs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createScanner } from '../src/node/copilot-source.mjs';
+
+test('scan diagnostics separate source work and count cold, cached and appended journal reads without private data', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-timing-'));
+  assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep + 'usage-timing-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const dir = path.join(root, 'session-state', 'PRIVATE_SESSION');
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'events.jsonl');
+  const line = JSON.stringify({ type: 'session.start', data: { sessionId: 'PRIVATE_SESSION' } }) + '\n';
+  await fs.writeFile(file, line);
+  await fs.writeFile(path.join(root, 'session-store.db'), 'synthetic database');
+  const diagnostics = createDiagnostics();
+  let failDatabase = false;
+  const scanner = createScanner({ diagnostics,
+    discoverWsl: async () => ({ homes: [], sources: [] }),
+    discoverVSCode: async () => ({ sources: [], snapshots: [], owners: [], files: [] }),
+    readDatabase: async () => {
+      if (failDatabase) throw Object.assign(new Error('SECRET_PATH PRIVATE_CONTENT'), { code: 'EIO' });
+      return { records: [], sessionNames: new Map(), skillExcludedSessions: [], unclassified: 0, invalid: 0 };
+    },
+  });
+  const latest = event => diagnostics.snapshot().entries.filter(e => e.event === event).at(-1);
+  const cold = await scanner.scan([root]);
+  assert.equal(latest('history.journals')?.filesRead, 1);
+  assert.equal(latest('history.journals').bytesRead, Buffer.byteLength(line));
+  assert.equal(latest('history.journals').filesReused, 0);
+  assert.equal(latest('history.journals').folders, 1);
+  assert.equal(latest('history.journals').environmentType, 'local');
+  for (const event of ['history.discovery', 'history.vscode', 'history.merge', 'history.database', 'history.names', 'history.finalize']) {
+    assert.equal(latest(event)?.phase, 'finished', event);
+    assert.ok(Number.isFinite(latest(event).durationMs));
+  }
+  assert.equal(await scanner.scan([root]), cold, 'diagnostic counters do not invalidate snapshots');
+  assert.equal(latest('history.journals').filesRead, 0);
+  assert.equal(latest('history.journals').filesReused, 1);
+  assert.equal(latest('history.journals').bytesRead, 0);
+  assert.equal(latest('history.merge').cacheHit, true);
+  const extra = JSON.stringify({ type: 'ignored', data: { text: 'PRIVATE_CONTENT' } }) + '\n';
+  await fs.appendFile(file, extra);
+  await scanner.scan([root]);
+  assert.equal(latest('history.journals').filesAppended, 1);
+  assert.equal(latest('history.journals').bytesRead, Buffer.byteLength(extra));
+  assert.equal(latest('history.journals').bytesHashed, Buffer.byteLength(line));
+  failDatabase = true;
+  await scanner.scan([root], { force: true });
+  assert.equal(latest('history.journals').filesRead, 1);
+  assert.equal(latest('history.database').phase, 'failed');
+  assert.equal(latest('history.database').errorCode, 'EIO');
+  assert.doesNotMatch(JSON.stringify(diagnostics.snapshot()), /PRIVATE|SECRET|usage-timing-|session-state/);
+});
 
 test('runtime file parsing rejects unknown events and redacts edited or malformed fields', () => {
   const at = '2026-11-15T21:00:00.000Z';
@@ -14,6 +68,24 @@ test('runtime file parsing rejects unknown events and redacts edited or malforme
   assert.equal(parsed.length, 1);
   assert.deepEqual(parsed[0], { at, level: 'error', event: 'extension.crash', errorCode: 'EIO', processId: 42, pluginVersion: '0.1.82', locations: ['copilot-source.mjs:12:3'] });
   assert.doesNotMatch(JSON.stringify(parsed), /PRIVATE|SECRET|script/);
+});
+
+test('load timing summary distinguishes initial loads, partial stages and cached work without exposing names', () => {
+  const logs = createDiagnostics({ clock: () => new Date('2026-11-15T12:00:00Z') });
+  logs.record('info', 'ui.load', { loadKind: 'initial', phase: 'finished', durationMs: 1234 });
+  logs.record('info', 'history.journals', { sourceIndex: 2, sourceKind: 'copilot', environmentType: 'wsl', phase: 'finished', durationMs: 1000, bytesRead: 2048, filesRead: 3, path: 'PRIVATE' });
+  logs.record('info', 'history.journals', { sourceIndex: 2, sourceKind: 'copilot', environmentType: 'wsl', phase: 'started', filesReused: 3 });
+  logs.record('info', 'report.build', { phase: 'finished', durationMs: 10, cacheHit: true });
+  const summary = loadTimingSummary(logs.snapshot().entries);
+  assert.match(summary, /Initial usage load.*1234 ms/);
+  assert.match(summary, /Copilot journals.*source 2.*wsl.*no completion retained/);
+  assert.match(summary, /Report calculations.*10 ms.*cacheHit=true/);
+  assert.match(summary, /overlap/);
+  assert.doesNotMatch(summary, /PRIVATE|1000 ms/);
+  assert.match(loadTimingSummary([]), /No load timings retained/);
+  const persisted = parseRuntimeDiagnostics(logs.snapshot().entries.map(e => JSON.stringify(e)).join('\n'));
+  assert.ok(persisted.some(e => e.event === 'report.build' && e.cacheHit));
+  assert.ok(persisted.some(e => e.event === 'history.journals' && e.environmentType === 'wsl'));
 });
 
 test('diagnostic sinks receive only approved metadata and cannot break logging', () => {
@@ -68,7 +140,9 @@ test('diagnostics API stays available after a data failure and records scan/cach
   assert.equal(scans, 1);
   assert.ok(report.version);
   assert.equal(report.runtime.platform, process.platform);
-  for (const event of ['history.scan', 'history.cache', 'report.build', 'skills.versions', 'inventory.read', 'history.source']) assert.ok(report.entries.some(e => e.event === event), event);
+  for (const event of ['history.scan', 'history.cache', 'report.build', 'report.serialize', 'skills.versions', 'inventory.read', 'history.source']) assert.ok(report.entries.some(e => e.event === event), event);
+  assert.ok(report.entries.some(e => e.event === 'report.serialize' && e.responseBytes > 0));
+  assert.ok(report.entries.some(e => e.event === 'report.build' && e.cacheHit === false));
   assert.ok(report.entries.some(e => e.event === 'api.request' && e.level === 'error' && e.httpStatus === 500 && e.errorCode === 'EACCES'));
   assert.ok(report.entries.some(e => e.event === 'history.scan' && e.records === 1 && e.files === 1 && e.invalid === 2 && Number.isFinite(e.durationMs)));
   assert.doesNotMatch(JSON.stringify(report), /PRIVATE|SECRET|sourceSessionId|apiCallId/);

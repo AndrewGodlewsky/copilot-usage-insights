@@ -1,12 +1,14 @@
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 export const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 'extension.signal', 'extension.exit', 'extension.crash',
   'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response', 'server.endpoint', 'server.endpointReset',
-  'wsl.discovery', 'history.scan', 'history.source']);
+  'wsl.discovery', 'history.scan', 'history.source', 'history.discovery', 'history.copilot', 'history.journals', 'history.vscode', 'history.merge', 'history.database', 'history.names', 'history.finalize', 'report.build', 'report.serialize', 'skills.versions']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'EADDRINUSE', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
 for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', 'SNAPSHOT', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
 const sourceFiles = 'canvas-server|canvas-endpoint|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
+for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills']) numericFields.add(field);
+booleanFields.add('unchanged');
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode', 'pass', 'inputChars', 'cards', 'samples']) numericFields.add(field);
 const enumFields = {
@@ -14,6 +16,9 @@ const enumFields = {
   range: new Set(['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']),
   sourceState: new Set(['error', 'warning', 'missing', 'empty', 'ok', 'off']),
   sourceKind: new Set(['copilot', 'vscode']),
+  environmentType: new Set(['local', 'wsl', 'remote']),
+  databaseReader: new Set(['local', 'wsl']),
+  loadKind: new Set(['initial', 'manual', 'automatic', 'filter']),
   action: new Set(['copy', 'open']),
   kind: new Set(['mcp', 'plugins']),
   reason: new Set(['unsupported', 'invalid-response', 'failed']),
@@ -86,4 +91,37 @@ export function parseRuntimeDiagnostics(text) {
     } catch {}
   }
   return safe.snapshot().entries;
+}
+
+// A readable index into the structured logs. Each line is the latest retained operation,
+// not an additive breakdown: stages can nest and can belong to different loads.
+export function loadTimingSummary(entries) {
+  const labels = {
+    'ui.load': 'Usage load', 'history.scan': 'All history', 'history.discovery': 'WSL source discovery',
+    'history.copilot': 'Copilot source probing and journals', 'history.journals': 'Copilot journals',
+    'history.vscode': 'VS Code discovery and journals', 'history.merge': 'Journal deduplication',
+    'history.database': 'Usage database', 'history.names': 'Session names', 'history.finalize': 'History reconciliation',
+    'report.build': 'Report calculations', 'skills.versions': 'Installed skill versions',
+    'report.serialize': 'Response preparation', 'api.decode': 'Response download and decoding',
+    'ui.render': 'Dashboard DOM update', 'inventory.read': 'Plugin/MCP inventory (separate from usage)',
+  };
+  const latest = new Map();
+  for (const entry of entries) if (Object.hasOwn(labels, entry.event) && ['started', 'finished', 'failed'].includes(entry.phase)) {
+    const key = JSON.stringify([entry.source, entry.event, entry.sourceIndex, entry.loadKind]);
+    const previous = latest.get(key);
+    if (!previous || entry.at >= previous.at) latest.set(key, entry);
+  }
+  const lines = ['Load timing summary', 'Latest retained operations, each with its own timestamp. Nested stages overlap; do not add them together.'];
+  if (!latest.size) lines.push('No load timings retained yet.');
+  for (const entry of latest.values()) {
+    const name = entry.event === 'ui.load' && entry.loadKind === 'initial' ? 'Initial usage load' : labels[entry.event];
+    const context = [entry.source, entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType].filter(Boolean).join(', ');
+    const timing = Number.isFinite(entry.durationMs) ? `${entry.durationMs} ms` : 'no completion retained';
+    const counts = ['records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'bytesRead', 'bytesHashed', 'responseBytes', 'cacheHit', 'unchanged']
+      .filter(key => typeof entry[key] === 'boolean' || Number.isFinite(entry[key])).map(key => `${key}=${entry[key]}`).join(', ');
+    lines.push(`${entry.at} ${name}${context ? ` (${context})` : ''}: ${entry.phase}, ${timing}${counts ? '; ' + counts : ''}`);
+  }
+  lines.push('bytesRead = journal bytes parsed; bytesHashed = additional prefix-validation reads. Source numbers are anonymous and local to each scan.',
+    'Initial usage load starts after the dashboard script loads and excludes Copilot startup and final browser paint. Inventory loads separately.');
+  return lines.join('\n');
 }

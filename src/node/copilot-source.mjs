@@ -24,12 +24,13 @@ const sameFile = (known, stat) => known.size === stat.size && known.mtime === st
 const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
 const sameFields = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true; };
 const chunks = [];
-async function hashPrefix(handle, length) {
+async function hashPrefix(handle, length, metrics) {
   const hash = createHash('sha256'), buffer = chunks.pop() || Buffer.allocUnsafe(CHUNK);
   try {
     for (let position = 0; position < length;) {
       const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, length - position), position);
       if (!bytesRead) throw new Error('Session log changed while reading; refresh to retry');
+      if (metrics) metrics.bytesHashed += bytesRead;
       hash.update(buffer.subarray(0, bytesRead)); position += bytesRead;
     }
   } finally { chunks.push(buffer); }
@@ -108,7 +109,10 @@ function mergeJournals(snapshots) {
   return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
-export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, readDatabase = createUsageDatabaseReader() } = {}) {
+export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, diagnostics, readDatabase = createUsageDatabaseReader() } = {}) {
+  const measure = (event, fields, work) => diagnostics ? diagnostics.measure(event, fields, work) : work();
+  const readMetrics = () => ({ filesRead: 0, filesReused: 0, filesAppended: 0, bytesRead: 0, bytesHashed: 0 });
+  const environmentType = source => source.environment?.startsWith('wsl:') ? 'wsl' : source.environment?.startsWith('remote:') ? 'remote' : 'local';
   // Journals and session names are reread only when their size or timestamps change.
   const files = new Map(), names = new Map();
   // Shared by every result of this scanner, so later stages can keep work between scans.
@@ -149,17 +153,17 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     return entry.snapshot;
   }
 
-  async function readJournal(file, stat, real, sessionId, force, context = {}) {
+  async function readJournal(file, stat, real, sessionId, force, context = {}, metrics) {
     let entry = files.get(file);
     const contextKey = JSON.stringify(context);
     if (entry && entry.contextKey !== contextKey) entry = undefined;
-    if (!force && entry && sameFile(entry, stat)) return current(entry);
+    if (!force && entry && sameFile(entry, stat)) { if (metrics) metrics.filesReused++; return current(entry); }
     const handle = await fs.open(file, 'r');
     const chunk = chunks.pop() || Buffer.allocUnsafe(CHUNK);
     try {
       let prefixMatches = false, hash;
       if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino) {
-        hash = await hashPrefix(handle, entry.offset);
+        hash = await hashPrefix(handle, entry.offset, metrics);
         prefixMatches = hash.copy().digest('hex') === entry.digest;
       }
       if (!prefixMatches) {
@@ -168,12 +172,14 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused, backgroundActivity: context.backgroundActivity });
         entry = { parser, contextKey, environment: context.environment || sourceEnvironment(real).environment, offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
       }
+      if (metrics) metrics[prefixMatches ? 'filesAppended' : 'filesRead']++;
       const parser = entry.parser;
       let position = entry.offset, pending = [], pendingLength = 0, dropping = false, consumed = null;
       try {
         while (position < stat.size) {
           const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - position), position);
           if (!bytesRead) break;
+          if (metrics) metrics.bytesRead += bytesRead;
           const block = chunk.subarray(0, bytesRead);
           // Verify the entire consumed prefix, retaining only its digest between scans.
           if (hash) {
@@ -205,7 +211,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     } finally { chunks.push(chunk); await handle.close(); }
   }
 
-  async function readSession(stateDir, real, sessionId, force, context) {
+  async function readSession(stateDir, real, sessionId, force, context, metrics) {
     // A folder name has nothing to normalise, so its paths are put together directly.
     const dir = stateDir + path.sep + sessionId;
     const found = { id: sessionId, name: '', nameFile: dir + path.sep + 'workspace.yaml', file: '', snapshot: null, error: null };
@@ -214,66 +220,81 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       const file = dir + path.sep + 'events.jsonl', stat = await fs.stat(file);
       if (!stat.isFile()) return found;
       found.file = file;
-      found.snapshot = await readJournal(file, stat, real, sessionId, force, context);
+      found.snapshot = await readJournal(file, stat, real, sessionId, force, context, metrics);
     } catch (e) { found.error = e; }
     return found;
   }
 
   async function scan(roots, { force = false, disabled = [], includeWsl = true, readWslDatabases = true, includeVSCode = true, extraVSCodeHomes = [] } = {}) {
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
-    const discovered = includeWsl && discoverWsl ? await discoverWsl({ disabled }) : { homes: [], sources: [] };
+    const discovered = includeWsl && discoverWsl ? await measure('history.discovery', { environmentType: 'wsl' }, () => discoverWsl({ disabled })) : { homes: [], sources: [] };
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
     const helperHomes = new Set([enhancePromptUsageHome(), reviewUsageHome()].map(p => sourceIdentity(p)));
     const nameIn = (home, id) => sessionNames.get(home)?.get(id);
     const setName = (home, id, name) => { let map = sessionNames.get(home); if (!map) sessionNames.set(home, map = new Map()); map.set(id, name); };
-    for (const root of new Set([...roots, ...optionalHomes, ...discovered.homes])) {
-      const rootIdentity = sourceIdentity(root);
-      if (seenRoots.has(rootIdentity)) continue;
-      // Disabled UNC sources must not be contacted just to resolve their real path.
-      if (disabledIds.has(rootIdentity)) {
-        seenRoots.add(rootIdentity); sources.push({ path: root, ...sourceEnvironment(root), state: 'off', files: 0, records: 0, message: '' }); continue;
+    await measure('history.copilot', { sourceKind: 'copilot', force }, async () => {
+      for (const root of new Set([...roots, ...optionalHomes, ...discovered.homes])) {
+        const rootIdentity = sourceIdentity(root);
+        if (seenRoots.has(rootIdentity)) continue;
+        // Disabled UNC sources must not be contacted just to resolve their real path.
+        if (disabledIds.has(rootIdentity)) {
+          seenRoots.add(rootIdentity); sources.push({ path: root, ...sourceEnvironment(root), state: 'off', files: 0, records: 0, message: '' }); continue;
+        }
+        let real;
+        try { real = await fs.realpath(root); }
+        catch (e) {
+          if (absent(e) && optionalHomes.includes(root) && !roots.includes(root)) continue;
+          sources.push({ path: root, ...sourceEnvironment(root), state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
+        }
+        const identity = sourceIdentity(real);
+        if (seenRoots.has(identity)) continue;
+        seenRoots.add(identity);
+        const off = disabledIds.has(identity);
+        const source = { path: real, ...sourceEnvironment(real), state: off ? 'off' : 'ok', files: 0, records: 0, message: '' };
+        sources.push(source);
+        if (off) continue;
+        const metrics = { sourceIndex: sources.length, sourceKind: 'copilot', environmentType: environmentType(source), force, ...readMetrics() };
+        await measure('history.journals', metrics, async () => {
+          const stateDir = path.join(real, 'session-state');
+          let dirs = [];
+          try { dirs = await fs.readdir(stateDir, { withFileTypes: true }); }
+          catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
+          const sessions = dirs.filter(dir => dir.isDirectory() && !dir.name.startsWith('.'));
+          metrics.folders = sessions.length;
+          // Outcomes are applied in folder order, so the result does not depend on which read finished first.
+          const context = { backgroundActivity: helperHomes.has(rootIdentity) || helperHomes.has(identity) };
+          for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force, context, metrics))) {
+            seenNames.add(found.nameFile);
+            if (found.name) setName(real, found.id, found.name);
+            if (found.file) { seenFiles.add(found.file); source.files++; }
+            if (found.snapshot) { snapshots.push(found.snapshot); owners.push(source); }
+            if (found.error && !absent(found.error)) { source.state = 'error'; source.message = found.error.message; source.diagnostic = diagnosticError(found.error); }
+          }
+        });
+        const db = path.join(real, 'session-store.db');
+        try { await fs.access(db); databases.push({ db, source }); }
+        catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
       }
-      let real;
-      try { real = await fs.realpath(root); }
-      catch (e) {
-        if (absent(e) && optionalHomes.includes(root) && !roots.includes(root)) continue;
-        sources.push({ path: root, ...sourceEnvironment(root), state: absent(e) ? 'missing' : 'error', message: absent(e) ? 'Copilot home not found' : e.message, diagnostic: diagnosticError(e) }); continue;
-      }
-      const identity = sourceIdentity(real);
-      if (seenRoots.has(identity)) continue;
-      seenRoots.add(identity);
-      const off = disabledIds.has(identity);
-      const source = { path: real, ...sourceEnvironment(real), state: off ? 'off' : 'ok', files: 0, records: 0, message: '' };
-      sources.push(source);
-      if (off) continue;
-      const stateDir = path.join(real, 'session-state');
-      let dirs = [];
-      try { dirs = await fs.readdir(stateDir, { withFileTypes: true }); }
-      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
-      const sessions = dirs.filter(dir => dir.isDirectory() && !dir.name.startsWith('.'));
-      // Outcomes are applied in folder order, so the result does not depend on which read finished first.
-      const context = { backgroundActivity: helperHomes.has(rootIdentity) || helperHomes.has(identity) };
-      for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force, context))) {
-        seenNames.add(found.nameFile);
-        if (found.name) setName(real, found.id, found.name);
-        if (found.file) { seenFiles.add(found.file); source.files++; }
-        if (found.snapshot) { snapshots.push(found.snapshot); owners.push(source); }
-        if (found.error && !absent(found.error)) { source.state = 'error'; source.message = found.error.message; source.diagnostic = diagnosticError(found.error); }
-      }
-      const db = path.join(real, 'session-store.db');
-      try { await fs.access(db); databases.push({ db, source }); }
-      catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
-    }
+    });
     for (const source of discovered.sources) if (!sources.some(s => sourceIdentity(s.path) === sourceIdentity(source.path))) sources.push({ ...source, ...(source.path.startsWith('\\\\') ? sourceEnvironment(source.path) : {}) });
     if (discoverVSCode) {
       const cliSessions = new Set(snapshots.flatMap(s => [...s.sessions]));
-      const vscode = await discoverVSCode({ homes: discovered.vscodeHomes || [], extraHomes: extraVSCodeHomes, include: includeVSCode, disabled, cliSessions, readJournal, force });
+      const metrics = { sourceKind: 'vscode', force, ...readMetrics() };
+      const vscode = await measure('history.vscode', metrics, async () => {
+        const result = await discoverVSCode({ homes: discovered.vscodeHomes || [], extraHomes: extraVSCodeHomes, include: includeVSCode, disabled, cliSessions, force,
+          readJournal: (file, stat, source, session, force, context = {}) => readJournal(file, stat, source, session, force, context, metrics) });
+        metrics.sources = result.sources.length;
+        return result;
+      });
       sources.push(...vscode.sources); snapshots.push(...vscode.snapshots); owners.push(...vscode.owners);
       for (const file of vscode.files) seenFiles.add(file);
     }
     for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
     for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
-    if (!merge || !sameList(merge.snapshots, snapshots)) merge = { snapshots, journals: mergeJournals(snapshots) };
+    const mergeFields = { files: snapshots.length, cacheHit: !!merge && sameList(merge.snapshots, snapshots) };
+    measure('history.merge', mergeFields, () => {
+      if (!mergeFields.cacheHit) merge = { snapshots, journals: mergeJournals(snapshots) };
+    });
     const journals = merge.journals, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
     const summaryActivity = new Set(snapshots.map(s => s.summaryActivitySession).filter(Boolean));
     const coverageEntries = snapshots.flatMap(s => [...(s.coverageEntries || []), ...(s.emptySummary && summaryActivity.has(s.emptySummary.sessionId) ? [s.emptySummary] : [])]);
@@ -281,7 +302,12 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
     for (const { db, source } of databases) {
       try {
-        const result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases });
+        const fields = { sourceIndex: sources.indexOf(source) + 1, sourceKind: 'copilot', environmentType: environmentType(source) };
+        const result = await measure('history.database', fields, async () => {
+          const result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases });
+          Object.assign(fields, { records: result.records.length, databaseReader: result.databaseRead === 'wsl' ? 'wsl' : 'local' });
+          return result;
+        });
         if (result.databaseRead === 'wsl') {
           if (!source.message) source.message = 'Usage database read inside WSL; no database copy was created.';
           coverage.wslDatabases = (coverage.wslDatabases || 0) + 1;
@@ -312,43 +338,47 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
     fallback = kept;
-    const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
-    const issues = mergeCoverage(coverageEntries, new Set([...journals.receiptSessions, ...databaseSessions]));
-    for (const kind of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools', 'aggregateOnly']) {
-      coverage[kind] = issues.reduce((total, issue) => total + (issue.kind === kind ? issue.count : 0), 0);
-    }
-    for (const { record, owner } of journals.compactions) {
-      // Whole-session DB fallback already includes compactions; never guess a cross-format row match.
-      if (databaseSessions.has(record.sessionId)) continue;
-      compactions.push(record); owners[owner].records++;
-      if (sessionsByHome === journals.sessionsByHome) sessionsByHome = new Map([...sessionsByHome].map(([home, ids]) => [home, new Set(ids)]));
-      if (!sessionsByHome.has(record.source)) sessionsByHome.set(record.source, new Set());
-      sessionsByHome.get(record.source).add(record.sessionId);
-    }
-    for (const [home, ids] of sessionsByHome) if (!sources.some(s => s.path === home && s.kind === 'vscode')) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
-    for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
-    // A record carries its session's current name. The name is written onto the record itself
-    // rather than onto a copy, so a rename is noted here to stop an earlier result being reused.
-    let home, homeNames, renamed = false;
-    const named = r => {
-      if (r.source !== home) { home = r.source; homeNames = sessionNames.get(home); }
-      const sessionName = homeNames?.get(r.sessionId) || '';
-      if (r.sessionName !== sessionName) { r.sessionName = sessionName; renamed = true; }
-      return r;
-    };
-    const records = new Array(journals.recordList.length + extra.size + compactions.length);
-    let n = 0;
-    for (const r of journals.recordList) records[n++] = named(r);
-    for (const r of extra.values()) records[n++] = named(r);
-    for (const r of compactions) records[n++] = named(r);
-    const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
-    // Nothing changed: hand back the very same result, so everything derived from it stays valid.
-    if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools
-      && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)
-      && sameFields(previous.coverage, coverage) && JSON.stringify(previous.coverageEntries) === JSON.stringify(issues) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
-    if (previous && !renamed && sameList(previous.records, records)) result.records = previous.records;
-    Object.defineProperty(result, 'cache', { value: cache });
-    return previous = result;
+    return measure('history.finalize', { records: journals.recordList.length + extra.size }, () => {
+      const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
+      const issues = mergeCoverage(coverageEntries, new Set([...journals.receiptSessions, ...databaseSessions]));
+      for (const kind of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools', 'aggregateOnly']) {
+        coverage[kind] = issues.reduce((total, issue) => total + (issue.kind === kind ? issue.count : 0), 0);
+      }
+      for (const { record, owner } of journals.compactions) {
+        // Whole-session DB fallback already includes compactions; never guess a cross-format row match.
+        if (databaseSessions.has(record.sessionId)) continue;
+        compactions.push(record); owners[owner].records++;
+        if (sessionsByHome === journals.sessionsByHome) sessionsByHome = new Map([...sessionsByHome].map(([home, ids]) => [home, new Set(ids)]));
+        if (!sessionsByHome.has(record.source)) sessionsByHome.set(record.source, new Set());
+        sessionsByHome.get(record.source).add(record.sessionId);
+      }
+      measure('history.names', { sources: sessionsByHome.size }, () => {
+        for (const [home, ids] of sessionsByHome) if (!sources.some(s => s.path === home && s.kind === 'vscode')) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
+      });
+      for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
+      // A record carries its session's current name. The name is written onto the record itself
+      // rather than onto a copy, so a rename is noted here to stop an earlier result being reused.
+      let home, homeNames, renamed = false;
+      const named = r => {
+        if (r.source !== home) { home = r.source; homeNames = sessionNames.get(home); }
+        const sessionName = homeNames?.get(r.sessionId) || '';
+        if (r.sessionName !== sessionName) { r.sessionName = sessionName; renamed = true; }
+        return r;
+      };
+      const records = new Array(journals.recordList.length + extra.size + compactions.length);
+      let n = 0;
+      for (const r of journals.recordList) records[n++] = named(r);
+      for (const r of extra.values()) records[n++] = named(r);
+      for (const r of compactions) records[n++] = named(r);
+      const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
+      // Nothing changed: hand back the very same result, so everything derived from it stays valid.
+      if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools
+        && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)
+        && sameFields(previous.coverage, coverage) && JSON.stringify(previous.coverageEntries) === JSON.stringify(issues) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
+      if (previous && !renamed && sameList(previous.records, records)) result.records = previous.records;
+      Object.defineProperty(result, 'cache', { value: cache });
+      return previous = result;
+    });
   }
   return { scan(roots, options) { const next = queue.then(() => scan(roots, options)); queue = next.catch(() => {}); return next; } };
 }
