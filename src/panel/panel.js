@@ -756,7 +756,11 @@ function reviewProgress(phase) {
 function renderReviewResult(force = false) {
   if (!reviewResult) return;
   $('review-result').hidden = false;
-  $('review-result-context').textContent = reviewResultCaption(reviewResult, reviewResult.filterKey !== JSON.stringify(reviewQuery()), { number, credits: creditNumber });
+  const stale = reviewResult.filterKey !== JSON.stringify(reviewQuery());
+  $('review-result-context').textContent = 'Last completed review: ' + reviewResultCaption(reviewResult, stale, { number, credits: creditNumber });
+  const followUpNotice = { failed: 'The prompt-excerpt follow-up failed; showing the initial statistical findings.', 'timed-out': 'The prompt-excerpt follow-up timed out; showing the initial statistical findings.', cancelled: 'The prompt-excerpt follow-up was cancelled; showing the initial statistical findings.', unavailable: 'Requested prompt excerpts were unavailable; showing statistical findings.' }[reviewResult.enrichment];
+  $('review-result-note').textContent = [stale ? 'This review uses a previous date range. Create another review to update it.' : '', followUpNotice].filter(Boolean).join(' ');
+  $('review-result-note').hidden = !$('review-result-note').textContent;
   if (force || reviewResultFormat !== state.simplifyNumbers) {
     const open = [...$('review-answer').querySelectorAll('details[open]')].map(node => [...node.parentElement.children].indexOf(node));
     $('review-answer').innerHTML = renderReviewCards(reviewResult, { number, credits: creditNumber });
@@ -769,13 +773,15 @@ $('efficiency-development-dismiss').onclick = () => { $('efficiency-development'
 $('efficiency-review-open').onclick = async () => {
   if (!state.report || reviewRunning || reviewConnectionPending) return;
   const run = reviewRun = { cancelled: false, cancellation: null, analysisStarted: false };
-  const filters = reviewQuery(), allowSamples = $('review-samples').checked === true;
+  const filters = reviewQuery();
   reviewRunning = true;
   reviewAnimationTimes = null;
   reviewAnimationPaused = false;
   $('review-progress').dataset.scene = '0';
-  $('efficiency-review-output').value = '';
-  $('review-preview').hidden = true;
+  if (!reviewResult) {
+    $('efficiency-review-output').value = '';
+    $('review-preview').hidden = true;
+  }
   $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = true;
   $('review-cancel').hidden = false; $('review-cancel').disabled = false;
   $('review-send-model').textContent = 'Checking selected model and reasoning…';
@@ -792,13 +798,13 @@ $('efficiency-review-open').onclick = async () => {
     }
     reviewProgress('analyze');
     run.analysisStarted = true;
-    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples });
+    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples: snapshot.allowSamples === true });
     if (run.cancelled) return;
     reviewResult = { ...result, scope: result.scope || snapshot.scope, filterKey: JSON.stringify(filters), reasoningEffort: result.reasoningEffort || snapshot.reasoningEffort };
     renderReviewResult(true);
     $('efficiency-review-open').dataset.attention = 'false';
     $('review-create-label').textContent = 'Create another review';
-    $('efficiency-review-status').textContent = 'Review complete. Analysis usage is recorded under Usage Insights.';
+    $('efficiency-review-status').textContent = '';
     if (state.view === 'efficiency' && !$('efficiency-review-panel').hidden) $('review-answer').focus();
   } catch (error) { if (!run.cancelled) $('efficiency-review-status').textContent = error.message; }
   finally {
@@ -1375,6 +1381,7 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     const config = await request('settings.get');
     $('text-size').value = config.textSize ?? 'small';
     $('simplify-numbers').checked = config.simplifyNumbers !== false;
+    $('review-samples').checked = config.reviewAllowSamples !== false;
     $('include-wsl').checked = config.includeWsl !== false;
     $('read-wsl-databases').checked = config.readWslDatabases !== false;
     $('include-vscode').checked = config.includeVSCode !== false;
@@ -1395,7 +1402,7 @@ $('settings-save').onclick = async () => {
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   try {
     const effort = savedReviewReasoning || reviewReasoningTouched || reviewModels.some(m => m.id === $('review-model').value) ? { reviewReasoning: $('review-reasoning').value } : {};
-    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, ...effort });
+    const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, reviewAllowSamples: $('review-samples').checked, ...effort });
     applyPreferences(config); render();
     $('settings-dialog').close();
     await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));

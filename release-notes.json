@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.94",
+    "summary": "AI review has less explanatory clutter, with routine metadata tucked into Review details. Targeted prompt excerpts are now an enabled-by-default setting; your choice is saved, and you can turn them off for statistics-only reviews."
+  },
+  {
     "version": "0.1.93",
     "summary": "Compact refresh controls now show a rotating arrow while usage updates and briefly confirm successful refreshes. The feedback stays inside the button, supports reduced motion, and works from both the toolbar and footer."
   },

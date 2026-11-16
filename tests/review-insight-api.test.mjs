@@ -37,6 +37,23 @@ test('preparation reuses loaded history, freezes filters, and analysis consumes 
   assert.equal((await request('review.analyze', input)).status, 500); assert.equal(state.sent.length, 1);
 });
 
+test('excerpt access requires the request, prepared preference and current saved preference', async t => {
+  const { state, request } = await setup(t);
+  for (const [prepared, current, requested, expected] of [
+    [undefined, undefined, true, true], [false, false, true, false],
+    [true, false, true, false], [false, true, true, false], [true, true, false, false],
+  ]) {
+    state.config.reviewAllowSamples = prepared;
+    await request('usage.report', { range: 'all' });
+    const snapshot = (await request('review.prepare', { filters: { range: 'all' } })).body;
+    assert.equal(snapshot.allowSamples, prepared !== false);
+    state.config.reviewAllowSamples = current;
+    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: 'opus-fixture', expectedReasoning: 'medium', allowSamples: requested });
+    assert.equal(result.status, 200);
+    assert.equal(state.sent.at(-1).allowSamples, expected);
+  }
+});
+
 test('changed saved effort/model and stale preparations cannot silently change analysis', async t => {
   const { state, request } = await setup(t); await request('usage.report', { range: 'all' });
   const first = (await request('review.prepare', { filters: { range: 'all' } })).body;

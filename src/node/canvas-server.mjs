@@ -158,18 +158,20 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               const supported = catalog.models.find(m => m.id === config.reviewModel)?.reasoningEfforts || [];
               snapshot.model = config.reviewModel || '';
               snapshot.savedReasoning = config.reviewReasoning;
+              snapshot.allowSamples = config.reviewAllowSamples !== false;
               snapshot.reasoningEffort = config.reviewReasoning || (supported.includes('medium') ? 'medium' : 'default');
               controller.signal.throwIfAborted();
               preparedReview = snapshot;
               result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt,
-                model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0 };
+                model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, allowSamples: snapshot.allowSamples, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0 };
             } else if (message.method === 'review.analyze') {
               const snapshot = preparedReview;
               if (!snapshot || snapshot.id !== input.snapshotId) throw new ReviewError('snapshot');
               if (!input.expectedModel || input.expectedModel !== snapshot.model || config.reviewModel !== snapshot.model) throw new ReviewError('model');
               if (input.expectedReasoning !== snapshot.reasoningEffort || config.reviewReasoning !== snapshot.savedReasoning) throw new ReviewError('effort');
               preparedReview = undefined;
-              result = { ...await reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples: input.allowSamples }, controller.signal),
+              const allowSamples = input.allowSamples && snapshot.allowSamples && config.reviewAllowSamples !== false;
+              result = { ...await reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples }, controller.signal),
                 scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt, filterKey: snapshot.filters };
             } else result = message.method === 'review.catalog' ? await reviewService.catalog(controller.signal)
               : message.method === 'review.reconnect' ? await reviewService.reconnect(config.reviewModel, controller.signal)

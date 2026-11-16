@@ -65,7 +65,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (server.transportError) throw new TypeError('PRIVATE_NETWORK_ERROR');
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
       if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
-      if (message.method === 'review.prepare') return { ok: true, json: async () => server.prepare ? server.prepare(message) : ({ id: 'fixture-snapshot', preview: JSON.stringify({ scope: message.input.filters, limits: ['Session measures unavailable with a model filter.'] }), model: server.config.reviewModel || '', reasoningEffort: server.config.reviewReasoning || 'default', hasEvidence: true, scope: { range: message.input.filters.range, startDate: '2026-11-09', endDate: '2026-11-15' } }) };
+      if (message.method === 'review.prepare') return { ok: true, json: async () => server.prepare ? server.prepare(message) : ({ id: 'fixture-snapshot', preview: JSON.stringify({ scope: message.input.filters, limits: ['Session measures unavailable with a model filter.'] }), model: server.config.reviewModel || '', reasoningEffort: server.config.reviewReasoning || 'default', allowSamples: server.config.reviewAllowSamples !== false, hasEvidence: true, scope: { range: message.input.filters.range, startDate: '2026-11-09', endDate: '2026-11-15' } }) };
       if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model', reasoningEfforts: ['medium', 'high'] }], verified: true } };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
       if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
@@ -2490,7 +2490,7 @@ test('settings restore saved text size and apply changes only after a successful
   await get('settings-open').onclick();
   get('text-size').value = 'medium';
   await get('settings-save').onclick();
-  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '' });
+  assert.deepEqual(requests.find(r => r.method === 'settings.set').input, { textSize: 'medium', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], extraHomes: ['/backup'], disabledHomes: ['/disabled'], reviewModel: '', reviewAllowSamples: true });
   assert.equal(rootStyle.get('--text-scale'), '1.15');
   assert.equal(get('settings-dialog').open, false);
   await get('settings-open').onclick();
@@ -2563,6 +2563,36 @@ test('VS Code source settings load defaults and trigger a refresh when custom st
   assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
 });
 
+test('AI review uses saved excerpt preferences, ignoring unsaved Settings edits', async () => {
+  const { report } = await requestPanel();
+  const { get, server, requests } = await mountPanel(report, { reviewModel: 'fixture-model', reviewAllowSamples: false, extraHomes: [], disabledHomes: [] });
+  server.prepare = () => ({ id: 'snapshot', preview: '{}', model: 'fixture-model', reasoningEffort: 'default', hasEvidence: true, allowSamples: server.config.reviewAllowSamples !== false });
+  server.review = () => ({ cards: [], emptyReason: 'Limited evidence', model: 'fixture-model' });
+  await get('settings-open').onclick();
+  assert.equal(get('review-samples').checked, false);
+  get('review-samples').checked = true;
+  get('settings-close').onclick();
+  await get('efficiency-review-open').onclick();
+  assert.equal(requests.findLast(r => r.method === 'review.analyze').input.allowSamples, false);
+  await get('settings-open').onclick();
+  assert.equal(get('review-samples').checked, false, 'closing without saving discards the edit');
+  get('review-samples').checked = true;
+  await get('settings-save').onclick();
+  assert.equal(server.config.reviewAllowSamples, true);
+  await get('settings-open').onclick();
+  assert.equal(get('review-samples').checked, true);
+  get('review-samples').checked = false;
+  get('settings-close').onclick();
+  await get('efficiency-review-open').onclick();
+  assert.equal(requests.findLast(r => r.method === 'review.analyze').input.allowSamples, true);
+  assert.equal(get('efficiency-review-status').textContent, '', 'routine completion copy does not clutter the cards');
+  assert.equal(get('review-result-note').hidden, true);
+  server.review = () => ({ cards: [], emptyReason: 'Limited evidence', model: 'fixture-model', enrichment: 'failed' });
+  await get('efficiency-review-open').onclick();
+  assert.equal(get('review-result-note').hidden, false, 'failed optional work remains visible');
+  assert.match(get('review-result-note').textContent, /follow-up failed/);
+});
+
 test('one explicit Create action reviews the date range across all filters and safely renders a frozen result', async () => {
   const { report } = await requestPanel();
   const { get, requests, server } = await mountPanel(report);
@@ -2584,7 +2614,7 @@ test('one explicit Create action reviews the date range across all filters and s
   assert.deepEqual(requests.findLast(r => r.method === 'review.prepare').input.filters, { range: 'mtd', includeCache: true });
   assert.ok(requests.slice(beforeSend).some(r => r.method === 'usage.report' && r.refresh === true), 'finished reviews refresh recorded usage immediately');
   assert.equal(requests.findLast(r => r.method === 'usage.report').input.project, 'Existing project', 'review refresh preserves the selected filters');
-  assert.deepEqual(requests.find(r => r.method === 'review.analyze').input, { snapshotId: 'fixture-snapshot', expectedModel: 'fixture-model', expectedReasoning: 'default', allowSamples: false });
+  assert.deepEqual(requests.find(r => r.method === 'review.analyze').input, { snapshotId: 'fixture-snapshot', expectedModel: 'fixture-model', expectedReasoning: 'default', allowSamples: true });
   assert.match(get('review-answer').innerHTML, /&lt;script&gt;untrusted/);
   assert.doesNotMatch(get('review-answer').innerHTML, /<script>/);
   assert.equal(get('review-result').hidden, false);
@@ -2595,6 +2625,31 @@ test('one explicit Create action reviews the date range across all filters and s
   await get('refresh').onclick();
   assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
   assert.match(get('review-result-context').textContent, /Later filter changes/);
+});
+
+test('failed or cancelled preparation preserves the previous review and its details', async () => {
+  const { report } = await requestPanel();
+  const { get, server } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  server.review = () => ({ cards: [], emptyReason: 'Limited evidence', model: 'fixture-model' });
+  await get('efficiency-review-open').onclick();
+  const caption = get('review-result-context').textContent, statistics = get('efficiency-review-output').value;
+  assert.ok(caption); assert.ok(statistics);
+  server.prepare = () => { throw new Error('Preparation unavailable'); };
+  await get('efficiency-review-open').onclick();
+  assert.equal(get('review-result').hidden, false);
+  assert.equal(get('review-preview').hidden, false);
+  assert.equal(get('review-result-context').textContent, caption);
+  assert.equal(get('efficiency-review-output').value, statistics);
+  assert.match(get('efficiency-review-status').textContent, /Preparation unavailable/);
+  let resolve;
+  server.prepare = () => new Promise(done => { resolve = done; });
+  const pending = get('efficiency-review-open').onclick();
+  await new Promise(setImmediate);
+  await get('review-cancel').onclick();
+  resolve({ id: 'cancelled' }); await pending;
+  assert.equal(get('review-preview').hidden, false);
+  assert.equal(get('review-result-context').textContent, caption);
+  assert.equal(get('efficiency-review-output').value, statistics);
 });
 
 test('AI review cancellation and errors keep the response area honest and restore controls', async () => {
@@ -2697,6 +2752,8 @@ test('AI review freezes custom dates and does not mistake unrelated filter chang
   assert.doesNotMatch(get('review-result-context').textContent, /Previous filter snapshot/);
   get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
   assert.match(get('review-result-context').textContent, /Previous filter snapshot/);
+  assert.equal(get('review-result-note').hidden, false);
+  assert.match(get('review-result-note').textContent, /previous date range/);
   assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
 });
 
