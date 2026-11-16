@@ -13,6 +13,9 @@ test('review evidence is frozen, numeric, aliased, with valid zero credits and a
   assert.doesNotMatch(s.preview, /PRIVATE|fixture|session-a/);
   assert.equal(s.payload.evidence.find(e => e.id === 'credits').value, 0);
   assert.equal(s.payload.evidence.find(e => e.id === 'cache').value, 60);
+  assert.equal(s.payload.evidence.find(e => e.id === 'cache').template, 'share');
+  assert.equal(s.payload.evidence.find(e => e.id === 'credits').template, 'statistic');
+  assert.equal(s.payload.evidence.find(e => e.id === 'mcp-1').template, 'share');
   assert.ok(s.payload.evidence.some(e => e.topic === 'skills-instructions'));
   assert.ok(s.payload.evidence.some(e => e.topic === 'tools-mcp'));
   assert.ok(s.payload.evidence.some(e => e.topic === 'delegation'));

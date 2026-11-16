@@ -56,7 +56,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     Date: class extends Date { static now() { return server.now; } },
     innerWidth: 1200, innerHeight: 800,
     document,
-    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
+    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: initial.reducedMotion === true }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
     fetch: async (url, options) => {
@@ -64,7 +64,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
       if (server.transportError) throw new TypeError('PRIVATE_NETWORK_ERROR');
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
       if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
-      if (message.method === 'review.prepare') return { ok: true, json: async () => ({ id: 'fixture-snapshot', preview: JSON.stringify({ scope: message.input.filters, limits: ['Session measures unavailable with a model filter.'] }), model: server.config.reviewModel || '', reasoningEffort: server.config.reviewReasoning || 'default', hasEvidence: true, scope: { range: message.input.filters.range, startDate: '2026-11-09', endDate: '2026-11-15' } }) };
+      if (message.method === 'review.prepare') return { ok: true, json: async () => server.prepare ? server.prepare(message) : ({ id: 'fixture-snapshot', preview: JSON.stringify({ scope: message.input.filters, limits: ['Session measures unavailable with a model filter.'] }), model: server.config.reviewModel || '', reasoningEffort: server.config.reviewReasoning || 'default', hasEvidence: true, scope: { range: message.input.filters.range, startDate: '2026-11-09', endDate: '2026-11-15' } }) };
       if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model', reasoningEfforts: ['medium', 'high'] }], verified: true } };
       if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
       if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
@@ -1315,7 +1315,7 @@ test('efficiency context is explicit, escaped and independent of refresh; review
   get('project').value = 'new filter not yet loaded';
   await get('efficiency-review-open').onclick();
   const frozen = get('efficiency-review-output').value;
-  assert.equal(JSON.parse(frozen).scope.project, '');
+  assert.equal(JSON.parse(frozen).scope.project, undefined);
   assert.doesNotMatch(frozen, /PRIVATE/);
   report.efficiency.summary.requests = 50;
   await get('refresh').onclick();
@@ -2485,12 +2485,12 @@ test('VS Code source settings load defaults and trigger a refresh when custom st
   assert.equal(requests.findLast(r => r.method.startsWith('usage.') && r.method !== 'usage.inventory').method, 'usage.refresh');
 });
 
-test('AI review requires a saved model and explicit send, keeps its snapshot and safely renders responses', async () => {
+test('one explicit Create action reviews the date range across all filters and safely renders a frozen result', async () => {
   const { report } = await requestPanel();
   const { get, requests, server } = await mountPanel(report);
   assert.ok(!requests.some(r => r.method.startsWith('review.')));
   await get('efficiency-review-open').onclick();
-  assert.equal(get('review-send').disabled, true);
+  assert.match(get('review-send-model').textContent, /Choose and save/);
   await get('settings-open').onclick();
   await get('review-models-refresh').onclick();
   assert.match(get('review-model').innerHTML, /Fixture model/);
@@ -2499,18 +2499,21 @@ test('AI review requires a saved model and explicit send, keeps its snapshot and
   await get('settings-save').onclick(); assert.equal(server.config.reviewModel, 'fixture-model');
   await get('review-reconnect').onclick(); assert.match(get('review-connection-status').textContent, /Connection verified/);
   get('project').value = 'Existing project'; await get('project').onchange();
-  await get('efficiency-review-open').onclick();
-  const snapshot = get('efficiency-review-output').value;
-  assert.equal(get('review-send').disabled, false);
+  get('model').value = 'Other model'; get('session').value = 'Other session'; get('environment').value = 'WSL'; get('cache').checked = false;
   server.review = () => ({ cards: [], emptyReason: '<script>untrusted</script>', model: 'fixture-model', passes: 1, samples: 0, guidanceVersion: '1.0.0' });
   const beforeSend = requests.length;
-  await get('review-send').onclick();
+  await get('efficiency-review-open').onclick();
+  assert.deepEqual(requests.findLast(r => r.method === 'review.prepare').input.filters, { range: 'mtd', includeCache: true });
   assert.ok(requests.slice(beforeSend).some(r => r.method === 'usage.report' && r.refresh === true), 'finished reviews refresh recorded usage immediately');
   assert.equal(requests.findLast(r => r.method === 'usage.report').input.project, 'Existing project', 'review refresh preserves the selected filters');
   assert.deepEqual(requests.find(r => r.method === 'review.analyze').input, { snapshotId: 'fixture-snapshot', expectedModel: 'fixture-model', expectedReasoning: 'default', allowSamples: false });
   assert.match(get('review-answer').innerHTML, /&lt;script&gt;untrusted/);
   assert.doesNotMatch(get('review-answer').innerHTML, /<script>/);
   assert.equal(get('review-result').hidden, false);
+  const snapshot = get('efficiency-review-output').value;
+  get('project').value = ''; await get('project').onchange();
+  assert.equal(get('efficiency-review-output').value, snapshot);
+  assert.doesNotMatch(get('review-result-context').textContent, /different date/i);
   await get('refresh').onclick();
   assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
   assert.match(get('review-result-context').textContent, /Later filter changes/);
@@ -2519,23 +2522,112 @@ test('AI review requires a saved model and explicit send, keeps its snapshot and
 test('AI review cancellation and errors keep the response area honest and restore controls', async () => {
   const { report } = await requestPanel();
   const { get, server, requests } = await mountPanel(report, { reviewModel: 'fixture-model', extraHomes: [], disabledHomes: [] });
-  await get('efficiency-review-open').onclick();
   let release;
   server.review = message => message.method === 'review.analyze' ? new Promise(resolve => { release = resolve; }) : { ok: true };
-  const pending = get('review-send').onclick();
+  const pending = get('efficiency-review-open').onclick();
   await new Promise(setImmediate);
-  assert.equal(get('review-cancel').hidden, false); assert.equal(get('review-send').disabled, true);
+  assert.equal(get('review-cancel').hidden, false); assert.equal(get('efficiency-review-open').disabled, true);
   await get('review-cancel').onclick();
   assert.equal(requests.at(-1).method, 'review.cancel');
   release({ cards: [], emptyReason: 'Completed before cancellation', model: 'fixture-model' }); await pending;
   assert.equal(get('review-cancel').hidden, true);
-  await get('efficiency-review-open').onclick();
+  assert.equal(get('review-result').hidden, true, 'a cancelled late response is not displayed');
   server.reviewError = 'Same-account verification failed.';
-  await get('review-send').onclick();
+  await get('efficiency-review-open').onclick();
   assert.equal(get('efficiency-review-status').textContent, server.reviewError);
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.report');
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').refresh, true, 'failed reviews may still have usage to refresh');
-  assert.equal(get('review-send').disabled, true, 'consumed snapshot cannot send again');
+  assert.equal(get('efficiency-review-open').disabled, false);
   await get('settings-open').onclick(); await get('review-models-refresh').onclick();
   assert.equal(get('review-connection-status').textContent, server.reviewError);
+});
+
+test('AI review hides unrelated filters and the development notice stays dismissed during this dashboard', async () => {
+  const { get, requests, document } = await requestPanel();
+  const choose = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(get('efficiency-development').hidden, false);
+  get('efficiency-development-dismiss').onclick();
+  choose('review');
+  assert.equal(get('filters').hidden, true); assert.equal(get('environment').hidden, true);
+  const before = requests.length;
+  choose('tokens'); choose('review');
+  assert.equal(requests.length, before);
+  await get('refresh').onclick();
+  assert.equal(get('filters').hidden, true); assert.equal(get('efficiency-development').hidden, true);
+  await get('review-settings').onclick();
+  assert.equal(get('settings-dialog').open, true); assert.equal(document.activeElement, get('review-model'));
+  get('settings-close').onclick();
+  get('view').onclick({ target: { dataset: { view: 'usage' } } });
+  assert.equal(get('filters').hidden, false); assert.equal(get('environment').hidden, false);
+});
+
+test('Create prevents duplicate requests, cancels preparation safely and cleans up progress timers', async () => {
+  const { report } = await requestPanel();
+  const { get, server, requests, timeouts } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  let release;
+  server.prepare = () => new Promise(resolve => { release = resolve; });
+  const pending = get('efficiency-review-open').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('review-progress').hidden, false);
+  assert.match(get('efficiency-review-status').textContent, /Preparing/);
+  await get('efficiency-review-open').onclick();
+  assert.equal(requests.filter(r => r.method === 'review.prepare').length, 1);
+  await get('review-cancel').onclick();
+  release({ id: 'late', model: 'fixture-model', hasEvidence: true }); await pending;
+  assert.ok(!requests.some(r => r.method === 'review.analyze'));
+  assert.equal(get('review-progress').hidden, true);
+  assert.equal(get('efficiency-review-open').disabled, false);
+  assert.match(get('efficiency-review-status').textContent, /cancelled/i);
+  assert.ok(timeouts.filter(t => t.ms === 5000).every(t => t.cleared));
+});
+
+test('review loading uses local phrases, respects reduced motion and freezes excerpt consent', async () => {
+  const { report } = await requestPanel();
+  for (const reducedMotion of [false, true]) {
+    const { get, server, requests, timeouts } = await mountPanel(report, { reviewModel: 'fixture-model', reviewReasoning: 'high' }, undefined, undefined, { reducedMotion });
+    let release;
+    server.review = () => new Promise(resolve => { release = resolve; });
+    get('review-samples').checked = true;
+    const pending = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+    assert.equal(get('review-samples').disabled, true);
+    assert.deepEqual(requests.findLast(r => r.method === 'review.analyze').input, { snapshotId: 'fixture-snapshot', expectedModel: 'fixture-model', expectedReasoning: 'high', allowSamples: true });
+    const timer = timeouts.findLast(t => t.ms === 5000 && !t.cleared);
+    assert.equal(Boolean(timer), !reducedMotion);
+    if (timer) {
+      const before = requests.length, phrase = get('review-progress-message').textContent;
+      timer.callback();
+      assert.notEqual(get('review-progress-message').textContent, phrase);
+      assert.equal(requests.length, before, 'phrase changes never poll or call the model');
+    }
+    release({ cards: [], emptyReason: 'Not enough evidence', model: 'fixture-model' }); await pending;
+    assert.equal(get('review-progress').hidden, true); assert.equal(get('review-samples').disabled, false);
+    assert.equal(get('efficiency-review-open').dataset.attention, 'false');
+  }
+});
+
+test('AI review freezes custom dates and does not mistake unrelated filter changes for a new scope', async () => {
+  const { report } = await requestPanel();
+  const { get, requests, server } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  server.review = () => ({ cards: [], emptyReason: 'Too little evidence', model: 'fixture-model' });
+  get('range').value = 'custom'; get('range').onchange();
+  get('start-date').value = '2026-11-01'; get('end-date').value = '2026-11-14';
+  await get('apply-dates').onclick();
+  await get('efficiency-review-open').onclick();
+  assert.deepEqual(requests.findLast(r => r.method === 'review.prepare').input.filters, { range: 'custom', includeCache: true, startDate: '2026-11-01', endDate: '2026-11-14' });
+  get('project').value = 'Another project'; await get('project').onchange();
+  assert.doesNotMatch(get('review-result-context').textContent, /Previous filter snapshot/);
+  get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.match(get('review-result-context').textContent, /Previous filter snapshot/);
+  assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
+});
+
+test('empty review evidence never invokes AI and restores the single Create action', async () => {
+  const { report } = await requestPanel();
+  const { get, requests, server } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  server.prepare = () => ({ id: 'empty', preview: '{}', model: 'fixture-model', reasoningEffort: 'high', hasEvidence: false });
+  await get('efficiency-review-open').onclick();
+  assert.ok(!requests.some(r => r.method === 'review.analyze'));
+  assert.match(get('efficiency-review-status').textContent, /No eligible evidence in this date range/);
+  assert.equal(get('efficiency-review-open').disabled, false); assert.equal(get('review-progress').hidden, true);
 });

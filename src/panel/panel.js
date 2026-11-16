@@ -666,11 +666,37 @@ function renderEfficiencyContext() {
   const modelOrigin = c.modelSource === 'autoResolved' ? 'Auto-resolved model' : c.modelSource === 'selected' ? 'Selected model' : 'Model used for estimate';
   $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
-let reviewRunning = false, reviewConnectionPending = false, preparedReview, reviewResult, reviewResultFormat;
+let reviewRunning = false, reviewConnectionPending = false, reviewRun, reviewResult, reviewResultFormat, reviewProgressTimer;
+function reviewQuery() {
+  const { range, startDate, endDate } = query();
+  return { range, includeCache: true, ...(range === 'custom' ? { startDate, endDate } : {}) };
+}
+function syncReviewScope() {
+  const active = state.view === 'efficiency' && !$('efficiency-review-panel').hidden;
+  $('filters').hidden = $('environment').hidden = active;
+  $('review-scope').textContent = RANGE_LABELS[state.range] + ' · all models, projects, sessions, and environments';
+}
+function reviewProgress(phase) {
+  clearTimeout(reviewProgressTimer);
+  $('review-progress').hidden = !phase;
+  $('efficiency-review-status').setAttribute('class', phase ? 'sr-only' : 'footnote');
+  if (!phase) return;
+  const phrases = phase === 'prepare' ? ['Preparing your review', 'Gathering your usage statistics'] : ['Reviewing your usage', 'Looking for supported patterns', 'Weighing the evidence'];
+  let index = 0;
+  $('review-progress-message').textContent = phrases[0];
+  $('efficiency-review-status').textContent = phase === 'prepare' ? 'Preparing your review. No prompt has been sent yet.' : 'Reviewing your usage with Copilot. You can cancel this review.';
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const tick = () => {
+    if (!reviewRun || reviewRun.cancelled) return;
+    if (!document.hidden) $('review-progress-message').textContent = phrases[++index % phrases.length];
+    reviewProgressTimer = setTimeout(tick, 5000);
+  };
+  reviewProgressTimer = setTimeout(tick, 5000);
+}
 function renderReviewResult(force = false) {
   if (!reviewResult) return;
   $('review-result').hidden = false;
-  $('review-result-context').textContent = reviewResultCaption(reviewResult, reviewResult.filterKey !== JSON.stringify(query()), { number, credits: creditNumber });
+  $('review-result-context').textContent = reviewResultCaption(reviewResult, reviewResult.filterKey !== JSON.stringify(reviewQuery()), { number, credits: creditNumber });
   if (force || reviewResultFormat !== state.simplifyNumbers) {
     const open = [...$('review-answer').querySelectorAll('details[open]')].map(node => [...node.parentElement.children].indexOf(node));
     $('review-answer').innerHTML = renderReviewCards(reviewResult, { number, credits: creditNumber });
@@ -679,63 +705,69 @@ function renderReviewResult(force = false) {
     reviewResultFormat = state.simplifyNumbers;
   }
 }
+$('efficiency-development-dismiss').onclick = () => { $('efficiency-development').hidden = true; };
 $('efficiency-review-open').onclick = async () => {
   if (!state.report || reviewRunning || reviewConnectionPending) return;
-  reviewRunning = true; preparedReview = null;
-  $('efficiency-review-output').value = '';
-  $('review-samples').checked = false; $('review-samples').disabled = false;
-  $('efficiency-review-status').textContent = 'Preparing a fixed snapshot. No prompt has been sent.';
-  $('review-send').disabled = true;
-  $('efficiency-review-open').disabled = true;
-  $('review-cancel').hidden = false;
-  $('review-send-model').textContent = 'Checking selected model and reasoning…';
-  $('efficiency-review-dialog').showModal();
-  try {
-    const filters = JSON.parse(state.filterKey || '{}');
-    const result = await request('review.prepare', { filters });
-    if (!$('efficiency-review-dialog').open) return;
-    preparedReview = { ...result, filterKey: JSON.stringify(filters) };
-    $('efficiency-review-output').value = result.preview;
-    $('review-send-model').textContent = result.model ? `${result.model} · ${result.reasoningEffort === 'default' ? 'Model default' : result.reasoningEffort} reasoning` : 'Choose and save a Copilot model in Settings first.';
-    if (result.filterLabels?.length) $('review-send-model').textContent += ' · ' + result.filterLabels.join(' · ');
-    $('efficiency-review-status').textContent = result.hasEvidence ? 'Snapshot ready. Statistics are sent only when you select Analyze.' : 'No eligible evidence in this view. Change the filters before preparing a review.';
-    $('review-send').disabled = !result.model || !result.hasEvidence;
-  } catch (error) { $('efficiency-review-status').textContent = error.message; $('review-send-model').textContent = ''; }
-  finally { reviewRunning = false; $('efficiency-review-open').disabled = false; $('review-cancel').hidden = true; }
-};
-async function cancelReview() {
-  if (!reviewRunning && !reviewConnectionPending) return;
-  try { await request('review.cancel'); }
-  catch { $('efficiency-review-status').textContent = 'Could not confirm cancellation. Closing the canvas stops its helper.'; }
-}
-$('efficiency-review-close').onclick = () => { void cancelReview(); $('efficiency-review-dialog').close(); };
-$('efficiency-review-dialog').addEventListener('cancel', () => { void cancelReview(); });
-$('review-cancel').onclick = cancelReview;
-$('review-connection-cancel').onclick = cancelReview;
-$('review-settings').onclick = () => $('settings-open').onclick();
-$('review-send').onclick = async () => {
-  if (reviewRunning || reviewConnectionPending || !preparedReview?.model) return;
-  const snapshot = preparedReview; preparedReview = null;
+  const run = reviewRun = { cancelled: false, cancellation: null, analysisStarted: false };
+  const filters = reviewQuery(), allowSamples = $('review-samples').checked === true;
   reviewRunning = true;
-  $('review-send').disabled = $('efficiency-review-open').disabled = true;
-  $('review-samples').disabled = true;
-  $('review-cancel').hidden = false;
-  $('efficiency-review-status').textContent = $('review-samples').checked ? 'Analyzing statistics and, only if useful, a bounded set of prompt excerpts…' : 'Analyzing your statistics with Copilot…';
+  $('efficiency-review-output').value = '';
+  $('review-preview').hidden = true;
+  $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = true;
+  $('review-cancel').hidden = false; $('review-cancel').disabled = false;
+  $('review-send-model').textContent = 'Checking selected model and reasoning…';
+  reviewProgress('prepare');
   try {
-    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples: $('review-samples').checked });
-    reviewResult = { ...result, scope: result.scope || snapshot.scope, filterKey: snapshot.filterKey, reasoningEffort: result.reasoningEffort || snapshot.reasoningEffort };
+    const snapshot = await request('review.prepare', { filters });
+    if (run.cancelled) return;
+    $('efficiency-review-output').value = snapshot.preview;
+    $('review-preview').hidden = false;
+    $('review-send-model').textContent = snapshot.model ? snapshot.model + ' · ' + (snapshot.reasoningEffort === 'default' ? 'Model default' : snapshot.reasoningEffort) + ' reasoning' : 'Choose and save a Copilot model in Settings first.';
+    if (!snapshot.hasEvidence || !snapshot.model) {
+      $('efficiency-review-status').textContent = !snapshot.hasEvidence ? 'No eligible evidence in this date range. Choose another date range before creating a review.' : 'Use the settings gear to choose a Copilot model, then create your review.';
+      return;
+    }
+    reviewProgress('analyze');
+    run.analysisStarted = true;
+    const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: snapshot.model, expectedReasoning: snapshot.reasoningEffort, allowSamples });
+    if (run.cancelled) return;
+    reviewResult = { ...result, scope: result.scope || snapshot.scope, filterKey: JSON.stringify(filters), reasoningEffort: result.reasoningEffort || snapshot.reasoningEffort };
     renderReviewResult(true);
-    $('efficiency-review-status').textContent = 'Review complete. Usage is recorded under Usage Insights; your current filters still apply.';
-    $('efficiency-review-dialog').close();
-    $('review-answer').focus();
-  } catch (error) { $('efficiency-review-status').textContent = error.message; }
+    $('efficiency-review-open').dataset.attention = 'false';
+    $('review-create-label').textContent = 'Create another review';
+    $('efficiency-review-status').textContent = 'Review complete. Analysis usage is recorded under Usage Insights.';
+    if (state.view === 'efficiency' && !$('efficiency-review-panel').hidden) $('review-answer').focus();
+  } catch (error) { if (!run.cancelled) $('efficiency-review-status').textContent = error.message; }
   finally {
-    reviewRunning = false;
-    $('review-send').disabled = true; $('efficiency-review-open').disabled = false;
+    // A late cancellation must finish before a new review can start.
+    await run.cancellation;
+    if (run.cancelled) $('efficiency-review-status').textContent = run.cancelFailed ? 'Could not confirm cancellation. Closing the dashboard stops its helper.' : 'Review cancelled. Any usage already incurred is still recorded.';
+    reviewProgress(null);
+    reviewRun = null; reviewRunning = false;
+    $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = false;
     $('review-cancel').hidden = true;
-    await load(false, true);
+    if (run.analysisStarted) await load(false, true);
   }
 };
+async function cancelReview() {
+  if (reviewRun) {
+    const run = reviewRun;
+    run.cancelled = true;
+    clearTimeout(reviewProgressTimer);
+    $('review-cancel').disabled = true;
+    $('review-progress-message').textContent = 'Stopping your review';
+    $('efficiency-review-status').textContent = 'Stopping your review…';
+    run.cancellation ||= request('review.cancel').catch(() => { run.cancelFailed = true; });
+    return run.cancellation;
+  }
+  if (reviewConnectionPending) {
+    try { await request('review.cancel'); }
+    catch { $('review-connection-status').textContent = 'Could not confirm cancellation. Closing the dashboard stops its helper.'; }
+  }
+}
+$('review-cancel').onclick = cancelReview;
+$('review-connection-cancel').onclick = cancelReview;
+$('review-settings').onclick = async () => { await $('settings-open').onclick(); if ($('settings-dialog').open) $('review-model').focus(); };
 $('efficiency-review-copy').onclick = async () => {
   try {
     if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
@@ -814,6 +846,7 @@ function showEfficiencySection(section) {
   selectButton('efficiency-sections', 'efficiencySection', section);
   $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
+  syncReviewScope();
 }
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
@@ -1013,6 +1046,7 @@ function renderContent() {
   renderLoadStatus();
   const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
   if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
+  syncReviewScope();
   const p = r.promptCredits, promptIncomplete = p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0;
   const warnings = [];
   if (t.missingCredits) warnings.push(`${number(t.missingCredits)} requests have unavailable AI credits`);

@@ -31,7 +31,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const evidence = [], labels = {};
   const add = (id, topic, label, value, unit, samples, total, limitation = '', localLabel = label) => {
     if (!measured(value) || !measured(samples) || samples <= 0) return;
-    evidence.push({ id, topic, label, template: 'statistic', value, unit, samples, total: measured(total) ? total : samples, limitation });
+    evidence.push({ id, topic, label, template: unit.startsWith('%') && value <= 100 ? 'share' : 'statistic', value, unit, samples, total: measured(total) ? total : samples, limitation });
     labels[id] = localLabel;
   };
   const s = e.summary;

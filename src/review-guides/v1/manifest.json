@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "evidenceSchema": "usage-insights-evidence-v1",
-  "responseSchema": "usage-insights-cards-v1",
+  "responseSchema": "usage-insights-cards-v2",
   "core": "core.md",
   "topics": {
     "context-cache": "topics/context-cache.md",

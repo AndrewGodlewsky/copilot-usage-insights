@@ -23,3 +23,21 @@ test('result caption distinguishes zero, unknown, partial cost, enrichment and c
   assert.match(reviewResultCaption({ ...r, enrichment: 'timed-out' }), /follow-up timed out; showing initial/i);
   assert.match(reviewResultCaption({ ...r, filterLabels: ['Project: Original project'] }, true), /Project: Original project/);
 });
+
+test('approved faces and three-position confidence dials have full accessible meanings', () => {
+  for (const [assessment, emoji, meaning] of [['positive', '🙂', 'Working well'], ['opportunity', '🙁', 'Worth improving'], ['neutral', '😐', 'Mixed or unclear']]) {
+    for (const confidence of ['low', 'medium', 'high']) {
+      const html = renderReviewCards({ cards: [{ ...card, assessment, confidence, evidence: { template: 'statistic', value: 12, unit: 'turns', samples: 6, total: 6 } }] });
+      assert.ok(html.includes(emoji)); assert.ok(html.includes(`aria-label="${meaning}"`));
+      assert.ok(html.includes(`data-confidence="${confidence}"`));
+      assert.match(html, /class="review-gauge"/);
+      assert.equal((html.match(/class="gauge-sector/g) || []).length, 3);
+    }
+  }
+});
+
+test('share cards visualize measured percentages without replacing detailed evidence', () => {
+  const html = renderReviewCards({ cards: [{ ...card, assessment: 'neutral', evidence: { template: 'share', label: 'Cache reuse', value: 72.5, unit: '%', samples: 8, total: 10 } }] });
+  assert.match(html, /review-share/); assert.match(html, /stroke-dasharray="72.5 100"/);
+  assert.match(html, /72.5/); assert.match(html, /8 of 10/);
+});

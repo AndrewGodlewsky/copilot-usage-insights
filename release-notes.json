@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.90",
+    "summary": "Create an AI review in one panel for the selected dates across all environments. Reviews now show emoji assessments, confidence dials and proportion graphics, with clearer progress, cancellation, a settings gear and a dismissible development notice."
+  },
+  {
     "version": "0.1.89",
     "summary": "Recognized cancellations, interrupted sessions and background plugin calls no longer trigger an orange warning; their details remain in Review coverage. Fixed prompt averages after resuming a session while preserving all recorded spending."
   },

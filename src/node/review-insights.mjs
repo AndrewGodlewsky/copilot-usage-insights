@@ -8,7 +8,7 @@ export async function loadReviewGuidance(selectedTopics) {
   if (selectedTopics.some(t => !topics.includes(t))) throw new Error('Invalid review topic');
   bundle ??= Promise.all(['manifest.json', 'core.md', ...topics.map(t => `topics/${t}.md`)].map(file => readFile(new URL(file, base), 'utf8'))).catch(error => { bundle = undefined; throw error; });
   const [json, core, ...parts] = await bundle, manifest = JSON.parse(json);
-  if (manifest.evidenceSchema !== 'usage-insights-evidence-v1' || manifest.responseSchema !== 'usage-insights-cards-v1' || !/^\d+\.\d+\.\d+$/.test(manifest.version) || manifest.core !== 'core.md' || topics.some(t => manifest.topics[t] !== `topics/${t}.md`)) throw new Error('Incompatible review guidance');
+  if (manifest.evidenceSchema !== 'usage-insights-evidence-v1' || manifest.responseSchema !== 'usage-insights-cards-v2' || !/^\d+\.\d+\.\d+$/.test(manifest.version) || manifest.core !== 'core.md' || topics.some(t => manifest.topics[t] !== `topics/${t}.md`)) throw new Error('Incompatible review guidance');
   const text = [core, ...topics.flatMap((t, n) => selectedTopics.includes(t) ? [parts[n]] : [])].join('\n\n');
   if (Buffer.byteLength(text) > 8192) throw new Error('Review guidance exceeds its size limit');
   return { text, version: manifest.version };
@@ -18,7 +18,7 @@ const fields = { evidenceId: 80, title: 48, confidenceReason: 320, observation: 
 const str = maxLength => ({ type: 'string', maxLength });
 const shape = properties => ({ type: 'object', additionalProperties: false, properties, required: Object.keys(properties) });
 export const INSIGHT_RESPONSE_SCHEMA = shape({
-  cards: { type: 'array', maxItems: 5, items: shape({ ...Object.fromEntries(Object.entries(fields).map(([k, n]) => [k, str(n)])), confidence: { type: 'string', enum: ['high', 'medium', 'low'] }, supportingEvidence: { type: 'array', maxItems: 3, items: str(80) } }) },
+  cards: { type: 'array', maxItems: 5, items: shape({ ...Object.fromEntries(Object.entries(fields).map(([k, n]) => [k, str(n)])), assessment: { type: 'string', enum: ['positive', 'opportunity', 'neutral'] }, confidence: { type: 'string', enum: ['high', 'medium', 'low'] }, supportingEvidence: { type: 'array', maxItems: 3, items: str(80) } }) },
   followUp: { anyOf: [{ type: 'null' }, shape({ category: { type: 'string', enum: ['prompts-sessions', 'skills-instructions', 'model-spend'] }, hypothesis: str(320), why: str(320), candidates: { type: 'array', maxItems: 6, minItems: 1, items: str(80) } })] },
   emptyReason: str(500),
 });
@@ -32,10 +32,10 @@ export function validateInsightResponse(content, snapshot) {
   text(result.emptyReason, 500, result.cards.length > 0);
   const known = new Map(snapshot.payload.evidence.map(e => [e.id, e])), seen = new Set();
   const cards = result.cards.map(card => {
-    keys(card, [...Object.keys(fields), 'confidence', 'supportingEvidence']);
+    keys(card, [...Object.keys(fields), 'assessment', 'confidence', 'supportingEvidence']);
     for (const [key, limit] of Object.entries(fields)) text(card[key], limit);
     const evidence = known.get(card.evidenceId);
-    if (!evidence || seen.has(card.evidenceId) || !['high', 'medium', 'low'].includes(card.confidence)) throw new Error('Invalid review evidence');
+    if (!evidence || seen.has(card.evidenceId) || !['positive', 'opportunity', 'neutral'].includes(card.assessment) || !['high', 'medium', 'low'].includes(card.confidence)) throw new Error('Invalid review evidence');
     seen.add(card.evidenceId);
     if (!Array.isArray(card.supportingEvidence) || card.supportingEvidence.length > 3 || card.supportingEvidence.some(id => !known.has(id))) throw new Error('Invalid supporting evidence');
     const cap = evidence.samples < 5 ? 'low' : evidence.total > 0 && evidence.samples / evidence.total < .8 ? 'medium' : 'high';

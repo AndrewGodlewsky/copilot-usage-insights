@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { analyzeInsights, loadReviewGuidance, validateInsightResponse } from '../src/node/review-insights.mjs';
 
 const evidence = { id: 'cache', topic: 'context-cache', template: 'statistic', label: 'Cache reuse', value: 20, unit: '%', samples: 8, total: 10 };
-const card = () => ({ evidenceId: 'cache', supportingEvidence: [], title: 'Cache reuse', confidence: 'medium', confidenceReason: 'Eight measured turns.', observation: 'Reuse was limited in this snapshot.', alternatives: 'Changing prefixes could explain this.', experiment: 'Compare a similar task in one conversation.', compare: 'Compare cache reuse and total input.', missing: 'Prefix stability is unknown.' });
+const card = () => ({ evidenceId: 'cache', supportingEvidence: [], title: 'Cache reuse', assessment: 'neutral', confidence: 'medium', confidenceReason: 'Eight measured turns.', observation: 'Reuse was limited in this snapshot.', alternatives: 'Changing prefixes could explain this.', experiment: 'Compare a similar task in one conversation.', compare: 'Compare cache reuse and total input.', missing: 'Prefix stability is unknown.' });
 const response = (followUp = null) => ({ cards: [card()], followUp, emptyReason: '' });
 const snapshot = () => ({ payload: { schema: 'usage-insights-evidence-v1', evidence: [evidence], candidates: [{ id: 'prompt-1', characters: 20 }] }, labels: { cache: 'Cache reuse' }, candidates: [{ id: 'prompt-1', promptId: 'p', sessionId: 's' }] });
 const followUp = () => ({ category: 'prompts-sessions', hypothesis: 'Related tasks may be split up.', why: 'A prompt example could disprove this.', candidates: ['prompt-1'] });
@@ -27,6 +27,17 @@ test('validated cards get numbers from local evidence, not output; malformed or 
   assert.throws(() => validateInsightResponse('x'.repeat(65537), snapshot()));
   const r = response(); r.cards[0].observation = '<img src=x onerror=alert(1)>';
   assert.equal(validateInsightResponse(JSON.stringify(r), snapshot()).cards[0].observation, r.cards[0].observation, 'untrusted prose is preserved as text for escaped rendering');
+});
+
+test('card assessment is explicit and validated rather than inferred from its number', () => {
+  for (const assessment of ['positive', 'opportunity', 'neutral']) {
+    const r = response(); r.cards[0].assessment = assessment;
+    assert.equal(validateInsightResponse(JSON.stringify(r), snapshot()).cards[0].assessment, assessment);
+  }
+  for (const assessment of ['bad-user', undefined, '<svg>']) {
+    const r = response(); r.cards[0].assessment = assessment;
+    assert.throws(() => validateInsightResponse(JSON.stringify(r), snapshot()));
+  }
 });
 
 test('statistics-only review makes one call and never reads samples even when requested', async () => {
