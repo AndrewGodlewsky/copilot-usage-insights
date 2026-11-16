@@ -66,6 +66,20 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
       const values = ['1 call/prompt', '>1–5 calls/prompt', '>5 calls/prompt'].map((label, row) => ({ label, value: c.workMatrix[row][column] }));
       comparison(`conversation-work-${column + 1}`, `${label} per session: agent activity`, values, values.reduce((n, v) => n + v.value, 0), column < 2 ? c.distribution[column].count : c.distribution[2].count + c.distribution[3].count, workNote);
     }
+    const d = c.delivery;
+    if (d) {
+      evidence.push({ id: 'conversation-delivery', topic, label: 'How prompts reach the agent', template: 'comparison', unit: 'prompts',
+        values: [['idle', 'Started while idle'], ['steering', 'Steering'], ['queued', 'Queued'], ['unknown', 'Unknown']].map(([key, label]) => ({ label, value: d[key] })),
+        samples: d.known, total: c.prompts, limitation: 'Confirmed prompts in counted sessions. Unknown includes missing/conflicting labels. Delivery is timing, not prompt quality; steering may be correction, new information or collaboration.' });
+      const steeringNote = 'Only sessions with delivery known for every confirmed prompt. Selected dates only. Repetition is a hypothesis to explore, not proof of poor prompting, failure or wasted spending.';
+      add('conversation-steering-sessions', topic, 'Sessions containing steering', d.classifiedSessions ? d.steeredSessions / d.classifiedSessions * 100 : null, '% of classified sessions', d.classifiedSessions, c.countedSessions, steeringNote);
+      add('conversation-steering-average', topic, 'Steering messages per session', d.averageSteering, 'prompts/session', d.classifiedSessions, c.countedSessions, steeringNote);
+    }
+  }
+  if (conversations?.delivery) {
+    const d = conversations.delivery;
+    add('conversation-user-stops', 'prompts-sessions', 'Recorded user stops', d.userStops, 'stop events', d.userStops, d.userStops,
+      'Explicit local-user abort events, counted on their own dates. Not necessarily caused by another prompt; not failed prompts or wasted tokens. Other abort reasons excluded. Sources without stop metadata may omit them.');
   }
   for (const row of e.byInitiator || []) if (row.id === 'sub-agent') add('delegated', 'delegation', 'Delegated model turns', row.requests, 'turns', row.requests, s.requests, 'Explicit sub-agent initiator only. Unknown initiators remain unknown.');
   // Even without delegated calls, the observed initiator coverage is useful evidence.
@@ -107,7 +121,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   chosen.forEach((c, n) => { c.id = `prompt-${n + 1}`; });
   const scope = { range: report.query.range, startDate: report.daily[0].day, endDate: report.daily.at(-1).day, modelFiltered: !!filters.models?.length, projectFiltered: !!filters.project, sessionFiltered: !!filters.session, environmentFiltered: !!filters.environment, ownReviewSessionsExcluded: excluded.size };
   const payload = { schema: 'usage-insights-evidence-v1', capturedAt: now.toISOString(), scope, evidence,
-    candidates: chosen.map(c => ({ id: c.id, characters: c.chars, model: `Model ${Math.max(0, e.models.findIndex(m => m.name === c.record.model)) + 1}` })),
+    candidates: chosen.map(c => ({ id: c.id, characters: c.chars, delivery: c.delivery, model: `Model ${Math.max(0, e.models.findIndex(m => m.name === c.record.model)) + 1}` })),
     limits: scopeLimits, omitted: { models: Math.max(0, e.models.length - 6), skills: Math.max(0, report.skills.rows.length - 6), mcp: Math.max(0, report.mcp.rows.length - 6), promptCandidates: candidates.length - chosen.length } };
   const preview = JSON.stringify(payload, null, 2);
   if (Buffer.byteLength(preview) > 38 * 1024) throw new Error('Review evidence is too large. Narrow the filters.');

@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.96** makes the Refresh button narrower by tightening its spacing and removing unused label space. Close and reopen Usage Insights once after updating to register its recoverable address. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.97** adds prompt delivery patterns and user stops to Conversation habits and AI review, with explicit coverage for missing data. Close and reopen Usage Insights once after updating to register its recoverable address. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -351,7 +351,7 @@ The approved faces describe the finding: **🙂 working well**, **🙁 worth imp
 
 ### How the reviewer works
 
-The reviewer has a **plugin-owned, versioned guidance bundle**, rather than a user-installed skill. [src/review-guides/v1/manifest.json](src/review-guides/v1/manifest.json) identifies the active revision (currently 1.1.1); [core.md](src/review-guides/v1/core.md) defines evidence standards, uncertainty, output format, and sample-handling rules. Six topic files cover context/cache, tools/MCP, skills/instructions, prompts/sessions, delegation, and model spending. Conversation evidence includes the depth distribution, median, multi-day and earlier use, and joint prompt/call counts with coverage. The guide treats workflow interpretations as hypotheses, not task classifications. The app loads only topics represented by the evidence. [examples.json](src/review-guides/v1/examples.json) contains authoring counterexamples; it is not sent to the model. Future releases can improve this bundle without giving the helper access to installed user skills or repositories.
+The reviewer has a **plugin-owned, versioned guidance bundle**, rather than a user-installed skill. [src/review-guides/v1/manifest.json](src/review-guides/v1/manifest.json) identifies the active revision (currently 1.1.2); [core.md](src/review-guides/v1/core.md) defines evidence standards, uncertainty, output format, and sample-handling rules. Six topic files cover context/cache, tools/MCP, skills/instructions, prompts/sessions, delegation, and model spending. Conversation evidence includes depth, multi-day and earlier use, joint prompt/call counts, idle/steering/queued/unknown delivery, session steering rates and recorded user stops. Session rates require complete delivery labels; unknown origins and unsupported sources stay outside the measured sample. Stops are separate from prompts. The guide explores repeated steering without assuming poor prompting, wasted spend or failure. The guide treats workflow interpretations as hypotheses, not task classifications. The app loads only topics represented by the evidence. [examples.json](src/review-guides/v1/examples.json) contains authoring counterexamples; it is not sent to the model. Future releases can improve this bundle without giving the helper access to installed user skills or repositories.
 
 ```mermaid
 flowchart TD

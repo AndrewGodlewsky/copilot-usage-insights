@@ -8,6 +8,7 @@ import { createReceiptParser } from '../src/core/copilot.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
 import { usageValue } from '../src/panel/charts.mjs';
+import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 
 const timestamp = new Date(2026, 10, 13, 10).toISOString();
 const start = { type: 'session.start', data: { sessionId: 's1', context: { cwd: '/work/project', repository: 'example/project' } } };
@@ -238,6 +239,29 @@ async function fixture(t) {
   const file = path.join(dir, 'events.jsonl');
   return { home, file };
 }
+
+test('delivery and stops survive incremental refresh and copied journals without retaining prompt text', async t => {
+  const one = await fixture(t), copy = await fixture(t);
+  const f = reviewFixture({ sessionId: 's1' });
+  f.user('first', { delivery: 'idle' }); f.call('first', 'first'); f.push('abort', { reason: 'user_initiated' });
+  const lines = events => events.map(e => JSON.stringify(e) + '\n').join('');
+  await fs.writeFile(one.file, lines(f.events)); await fs.writeFile(copy.file, lines(f.events));
+  const scanner = createScanner();
+  const read = async force => {
+    const scan = await scanner.scan([one.home, copy.home], { force });
+    assert.doesNotMatch(JSON.stringify(scan.promptEvents), /PRIVATE PROMPT/);
+    return buildReport(scan.records, { range: 'all' }, reviewNow, scan).efficiency.conversations.delivery;
+  };
+  const before = await read(false);
+  assert.equal(before.idle, 1); assert.equal(before.userStops, 1);
+  assert.deepEqual(await read(true), before);
+  const index = f.events.length;
+  f.user('second', { delivery: 'steering' }); f.call('second', 'second');
+  await fs.appendFile(one.file, lines(f.events.slice(index)));
+  const after = await read(false);
+  assert.equal(after.idle, 1); assert.equal(after.steering, 1); assert.equal(after.userStops, 1);
+  assert.deepEqual(await read(true), after);
+});
 test('scanner tails complete lines, handles truncation, deduplicates roots, and drops deleted logs', async t => {
   const { home, file } = await fixture(t);
   await fs.writeFile(file, JSON.stringify(start) + '\n' + JSON.stringify(receipt()));

@@ -48,11 +48,35 @@ test('review receives bounded conversation distribution and joint work evidence 
   assert.ok(!filtered.payload.evidence.some(e => e.id.startsWith('conversation-') || e.id === 'session-length'));
 });
 
+test('review receives delivery coverage, session steering and separate stops with bounded optional sample labels', async () => {
+  const f = reviewFixture();
+  ['idle', 'steering', 'queued'].forEach((delivery, n) => { f.user(`p${n}`, { delivery }); f.call(`p${n}`, `c${n}`); });
+  f.push('abort', { reason: 'user_initiated' });
+  const snapshot = await prepareInsightReview(f.scan(), { range: '7d' }, reviewNow);
+  const byId = new Map(snapshot.payload.evidence.map(e => [e.id, e]));
+  assert.deepEqual(byId.get('conversation-delivery').values.map(v => v.value), [1, 1, 1, 0]);
+  assert.equal(byId.get('conversation-delivery').samples, 3);
+  assert.equal(byId.get('conversation-steering-sessions').value, 100);
+  assert.equal(byId.get('conversation-steering-average').value, 1);
+  assert.equal(byId.get('conversation-user-stops').value, 1);
+  assert.match(byId.get('conversation-delivery').limitation, /not.*quality/i);
+  assert.match(byId.get('conversation-user-stops').limitation, /not.*wasted/i);
+  assert.deepEqual(snapshot.payload.candidates.map(c => c.delivery), ['idle', 'steering', 'queued']);
+  assert.doesNotMatch(snapshot.preview, /PRIVATE|session-a|messageId/);
+  const missing = reviewFixture(); missing.user('x'); missing.call('x', 'a');
+  const unknown = await prepareInsightReview(missing.scan(), { range: '7d' }, reviewNow);
+  const d = unknown.payload.evidence.find(e => e.id === 'conversation-delivery');
+  assert.equal(d.samples, 0); assert.equal(d.total, 1); assert.equal(d.values[3].value, 1);
+  assert.ok(!unknown.payload.evidence.some(e => e.id === 'conversation-steering-sessions'));
+  const filtered = await prepareInsightReview(f.scan(), { range: '7d', models: ['PRIVATE MODEL'] }, reviewNow);
+  assert.ok(!filtered.payload.evidence.some(e => e.id === 'conversation-delivery' || e.id === 'conversation-user-stops'));
+});
+
 test('conversation evidence fits the existing submission budget alongside every other topic family', async () => {
   const fixtures = Array.from({ length: 6 }, (_, n) => {
     const f = reviewFixture({ sessionId: `PRIVATE SESSION ${n}` });
     for (let p = 0; p < [1, 3, 6][n % 3]; p++) {
-      f.user(`prompt-${p}`);
+      f.user(`prompt-${p}`, { delivery: ['idle', 'steering', 'queued'][p % 3] });
       for (let c = 0; c < n + 1; c++) f.call(`prompt-${p}`, `${p}-${c}`, { model: `PRIVATE MODEL ${n}`, initiator: c ? 'agent' : 'user' });
     }
     f.push('skill.invoked', { name: `PRIVATE SKILL ${n}`, path: `PRIVATE PATH ${n}`, trigger: 'user-invoked' });

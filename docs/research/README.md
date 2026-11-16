@@ -6,6 +6,7 @@ This directory is the persistent research base for Usage Insights. The original 
 
 | Document | What it answers |
 | --- | --- |
+| [Prompt delivery modes](2026-11-15-prompt-delivery-modes.md) | Declared steering/queued delivery metadata, separate interruption events, current parser gaps, and historical coverage limits |
 | [Token-efficiency section roadmap](2026-11-14-token-sections.md) | Approved section placement, navigation and measurements in 0.1.53, and the remaining work for each dashboard |
 | [Statistics and Analyze My Usage proposal](2026-11-14-efficiency-analysis-proposal.md) | A practical tab direction: context overhead, MCP reliability, and optional bounded AI interpretation; SDK feasibility and remaining checks |
 | [Techniques by difficulty](2026-11-14-efficiency-techniques.md) | 24 simple, intermediate and advanced practices, their anti-patterns, counterexamples, evidence strength, required data and experiments |

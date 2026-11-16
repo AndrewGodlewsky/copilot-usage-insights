@@ -18,6 +18,9 @@ test('guidance is bounded, versioned and selects only relevant topic files', asy
   const all = await loadReviewGuidance(['context-cache', 'tools-mcp', 'skills-instructions', 'prompts-sessions', 'delegation', 'model-spend']);
   assert.ok(Buffer.byteLength(all.text) <= 8192, 'a review spanning every topic must fit the existing guidance budget');
   assert.match(all.text, /not task duration/);
+  assert.match(all.text, /One or two cases cannot establish a habit/);
+  assert.match(all.text, /negative assessment from frequency alone/);
+  assert.match(all.text, /Never label associated spending wasted/);
 });
 
 test('validated cards get numbers from local evidence, not output; malformed or invented references fail', () => {

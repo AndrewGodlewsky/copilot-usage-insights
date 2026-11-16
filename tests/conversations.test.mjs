@@ -109,3 +109,96 @@ test('non-Copilot messages are not counted as Copilot conversation depth', () =>
   const c = conversations([f]);
   assert.equal(c.sessions, 0); assert.equal(c.prompts, 0); assert.equal(c.medianPrompts, null);
 });
+
+function delivered(id, modes) {
+  const f = reviewFixture({ sessionId: id, project: id });
+  modes.forEach((delivery, n) => { f.user(`p${n}`, { delivery }); f.call(`p${n}`, `${id}-${n}`); });
+  return f;
+}
+
+test('delivery counts distinct human prompts and uses fully classified sessions for steering rates', () => {
+  const a = delivered('a', ['idle', 'steering', 'steering', 'queued']);
+  const b = delivered('b', ['idle', undefined, 'unsupported']);
+  const c = delivered('c', ['queued']);
+  a.events.push(...structuredClone(a.events));
+  const d = conversations([a, b, c]).delivery;
+  assert.deepEqual(d, { idle: 2, steering: 2, queued: 2, unknown: 2, known: 6,
+    classifiedSessions: 2, steeredSessions: 1, averageSteering: 1, userStops: 0, stopSessions: 0 });
+  assert.doesNotMatch(JSON.stringify(d), /PRIVATE|p0|interaction/);
+});
+
+test('delivery-only conflicts become unknown without changing prompt charges', () => {
+  const f = delivered('conflict', ['steering']);
+  const before = f.scan();
+  const copy = structuredClone(f.events.find(e => e.type === 'user.message'));
+  copy.data.delivery = 'queued'; f.events.push(copy);
+  const scan = f.scan();
+  const report = buildReport(scan.records, { range: 'all' }, reviewNow, scan);
+  assert.equal(report.efficiency.conversations.delivery.unknown, 1);
+  assert.equal(report.efficiency.conversations.delivery.classifiedSessions, 0);
+  assert.equal(report.efficiency.conversations.delivery.averageSteering, null);
+  assert.deepEqual(report.promptCredits, buildReport(before.records, { range: 'all' }, reviewNow, before).promptCredits);
+});
+
+test('replayed stops under conflicting project contexts do not invalidate recorded prompt costs', () => {
+  const f = reviewFixture({ project: 'A' });
+  f.user('p', { delivery: 'idle' }); f.call('p', 'call', { copilotUsage: { totalNanoAiu: 2500000000 } });
+  const stop = f.push('abort', { reason: 'user_initiated' });
+  const build = () => { const scan = f.scan(); return buildReport(scan.records, { range: 'all' }, reviewNow, scan); };
+  const before = build();
+  assert.equal(before.promptCredits.credits, 2.5);
+  f.push('session.context_changed', { repository: 'B' }); f.events.push(structuredClone(stop));
+  const after = build();
+  assert.equal(after.efficiency.conversations.delivery.userStops, 0, 'the stop project is ambiguous');
+  assert.deepEqual(after.promptCredits, before.promptCredits, 'stop location metadata must not change financial accounting');
+});
+
+test('steering sharing a run remains multiple submissions, and automated or ambiguous origins are excluded', () => {
+  const f = reviewFixture();
+  f.user('run', { delivery: 'idle', messageId: 'first' });
+  f.user('run', { delivery: 'steering', messageId: 'second' }); f.call('run', 'run');
+  f.user('auto', { source: 'schedule', delivery: 'steering' }); f.call('auto', 'auto', { initiator: 'agent' });
+  f.user('child', { delivery: 'queued' }, { agentId: 'child' }); f.call('child', 'child', { initiator: 'sub-agent' });
+  const d = conversations([f]).delivery;
+  assert.equal(d.idle, 1); assert.equal(d.steering, 1); assert.equal(d.queued, 0);
+  const unknown = reviewFixture({ sessionId: 'unknown' });
+  unknown.user('x', { source: undefined, delivery: 'steering' }); unknown.call('x', 'x', { initiator: 'agent' });
+  assert.equal(conversations([unknown]).delivery.known, 0);
+});
+
+test('recorded user stops are deduplicated and scoped independently from prompts and other abort reasons', () => {
+  const f = delivered('stops', ['idle']);
+  f.time(new Date(2026, 10, 14, 10)); f.push('abort', { reason: 'user_initiated' });
+  f.time(new Date(2026, 10, 15, 11));
+  const stop = f.push('abort', { reason: 'user_initiated' }); f.events.push(structuredClone(stop));
+  for (const reason of ['remote_command', 'user_abort', 'autopilot_credit_limit', 'unknown']) f.push('abort', { reason });
+  f.push('abort', { reason: 'user_initiated' }, { agentId: 'child' });
+  f.push('abort', { reason: 'user_initiated' }, { ephemeral: true });
+  const other = delivered('other', ['steering']); other.push('abort', { reason: 'user_initiated' });
+  assert.equal(conversations([f, other], { range: '1d', project: 'stops' }).delivery.userStops, 1);
+  assert.equal(conversations([f, other], { session: 'stops' }).delivery.userStops, 2);
+  assert.equal(conversations([f, other]).delivery.stopSessions, 2);
+  f.time(new Date(2026, 10, 16)); f.push('abort', { reason: 'user_initiated' });
+  assert.equal(conversations([f], { range: 'all' }).delivery.userStops, 2);
+  const byok = reviewFixture({ sessionId: 'byok' });
+  byok.user('x', { delivery: 'steering' }); byok.call('x', 'x', { provider: { kind: 'byok' } }); byok.push('abort', { reason: 'user_initiated' });
+  assert.equal(conversations([byok]).delivery.userStops, 0);
+});
+
+test('delivery respects submission dates, environment filters and refresh memoization', () => {
+  const f = delivered('native', ['idle']);
+  f.time(new Date(2026, 10, 14, 23, 59)); f.user('prior', { delivery: 'queued' });
+  f.time(new Date(2026, 10, 15, 1)); f.call('prior', 'prior');
+  const other = delivered('wsl', ['steering']);
+  const scan = combined([f, other]); scan.cache = {};
+  for (const key of ['records', 'promptEvents', 'interactions']) for (const e of scan[key]) e.environment = e.sessionId;
+  const build = filters => buildReport(scan.records, { range: '1d', ...filters }, reviewNow, scan).efficiency.conversations;
+  assert.equal(build({ environment: 'native' }).delivery.idle, 1);
+  assert.equal(build({ environment: 'native' }).delivery.queued, 0);
+  assert.equal(build({ environment: 'wsl' }).delivery.steering, 1);
+  assert.equal(build({ models: ['PRIVATE MODEL'] }).reason, 'model-filter');
+  assert.deepEqual(build({}), build({}));
+  const event = scan.promptEvents.find(e => e.kind === 'user' && e.sessionId === 'native' && e.promptId === 'p0');
+  const refreshed = { ...scan, promptEvents: scan.promptEvents.map(e => e === event ? { ...e, delivery: 'steering' } : e) };
+  assert.equal(buildReport(refreshed.records, { range: '1d', environment: 'native' }, reviewNow, refreshed).efficiency.conversations.delivery.steering, 1);
+});

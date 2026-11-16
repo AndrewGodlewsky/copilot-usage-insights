@@ -28,3 +28,26 @@ test('conversation graphics use configured formatting, escape labels, and explai
   c.workSessions = 0;
   assert.match(renderConversations(c), /Complete prompt accounting is not available/);
 });
+
+test('delivery graphics show unknowns, independent stops and the restricted session denominator', () => {
+  const c = measured();
+  c.delivery = { idle: 10, steering: 5, queued: 5, unknown: 5, known: 20, classifiedSessions: 4, steeredSessions: 2, averageSteering: .75, userStops: 3, stopSessions: 2 };
+  const html = renderConversations(c);
+  assert.match(html, /How you guide the agent/);
+  assert.match(html, /Prompt delivery distribution/);
+  assert.match(html, /Started while idle/); assert.match(html, /Steering/); assert.match(html, /Queued/); assert.match(html, /Unknown/);
+  assert.match(html, /20 of 25 prompts/); assert.match(html, /4 of 8 counted sessions/);
+  assert.match(html, /User stops/); assert.match(html, /3/); assert.match(html, /not.*wasted/i);
+  assert.doesNotMatch(html, /NaN|Infinity/);
+  c.delivery.classifiedSessions = 0; c.delivery.averageSteering = null;
+  assert.match(renderConversations(c), /Unavailable/);
+  assert.doesNotMatch(renderConversations(c), /NaN|Infinity/);
+  assert.match(renderConversations(c, { number: n => `formatted(${n})` }), /formatted\(20\)/);
+});
+
+test('stops remain visible without a usable conversation-depth sample', () => {
+  const c = { sessions: 1, countedSessions: 0, prompts: 0, delivery: { userStops: 1, stopSessions: 1, known: 0, classifiedSessions: 0 } };
+  const html = renderConversations(c);
+  assert.match(html, /User stops/); assert.match(html, /No confirmed prompt delivery sample/);
+  assert.doesNotMatch(html, /NaN|Infinity/);
+});

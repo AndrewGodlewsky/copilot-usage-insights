@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.97",
+    "summary": "Conversation habits now shows steering, queued prompts and recorded user stops, with unknown data clearly marked. AI reviews can use these patterns while distinguishing collaboration from possible corrections."
+  },
+  {
     "version": "0.1.96",
     "summary": "The Refresh button takes up less space, with a closer icon and label and tighter padding."
   },

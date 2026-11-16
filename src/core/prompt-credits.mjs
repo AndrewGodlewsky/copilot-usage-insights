@@ -30,12 +30,13 @@ export function promptEvent(e, { sessionId, project, receipt, receiptKey } = {})
   if (kind === 'receipt') return { kind, id, sessionId, ms, agent, parentTool, receiptKey, api: link(u.apiCallId), model: receipt?.model || '',
     nano: receipt?.nanoAiu ?? null, status: receipt?.creditStatus || 'unavailable', copilot: !!receipt, initiator: receipt?.initiator || '' };
   const interaction = link(d.interactionId), turn = link(d.turnId);
-  if (kind === 'abort') return { kind, id, sessionId, ms, agent, parentTool, interaction, turn, cancelled: d.reason === 'user_initiated' };
+  if (kind === 'abort') return { kind, id, sessionId, ms, agent, parentTool, project, interaction, turn, cancelled: d.reason === 'user_initiated' };
   if (kind === 'agent-start' || kind === 'agent-end' || kind === 'tool-start' || kind === 'tool-end') return { kind, id, sessionId, ms, agent, parentTool, tool: link(d.toolCallId), interaction, turn };
   if (kind === 'user') {
     const child = !!(agent || parentTool);
     const automated = d.isAutopilotContinuation || d.source && d.source !== 'user' || Array.isArray(d.causalDependencies) && d.causalDependencies.length;
-    return { kind, id, sessionId, ms, agent, parentTool, promptId: link(d.messageId) || id, project, origin: child ? 'child' : automated ? 'automated' : d.source === 'user' ? 'user' : 'unspecified', interaction, turn };
+    const delivery = ['idle', 'steering', 'queued'].includes(d.delivery) ? d.delivery : 'unknown';
+    return { kind, id, sessionId, ms, agent, parentTool, promptId: link(d.messageId) || id, project, origin: child ? 'child' : automated ? 'automated' : d.source === 'user' ? 'user' : 'unspecified', delivery, interaction, turn };
   }
   if (kind === 'message') return { kind, id, sessionId, ms, agent, parentTool, api: link(d.apiCallId), originatingPrompt: link(d.originatingMessageId),
     tools: Array.isArray(d.toolRequests) ? [...new Set(d.toolRequests.map(t => link(t?.toolCallId)).filter(Boolean))].sort() : [],
@@ -46,15 +47,17 @@ export function promptEvent(e, { sessionId, project, receipt, receiptKey } = {})
 
 // Replayed journal lines yield equal metadata and count once; conflicting copies of one event
 // must both survive so the conflict can be detected. Equivalent to comparing their JSON.
-export function samePromptEvent(a, b) {
+export function samePromptEvent(a, b, accounting = false) {
   if (a === b) return true;
+  const abortProject = accounting && a.kind === 'abort' && b.kind === 'abort';
   for (const k in a) {
-    if (k === 'environment') continue; // Source location is not part of a replayed event's identity.
+    // Delivery and stop-location disagreements affect habits, not financial accounting.
+    if (k === 'environment' || accounting && k === 'delivery' || abortProject && k === 'project') continue;
     const x = a[k], y = b[k];
     if (x === y) continue;
     if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.some((v, i) => v !== y[i])) return false;
   }
-  for (const k in b) if (k !== 'environment' && !(k in a)) return false;
+  for (const k in b) if (k !== 'environment' && !(accounting && k === 'delivery' || abortProject && k === 'project') && !(k in a)) return false;
   return true;
 }
 export function createPromptEventSet() {
@@ -178,6 +181,7 @@ function attributeSessions(all, records, recordByKey) {
   for (const s of spaces.values()) for (const [tool, work] of s.toolEvents) if (!s.owners.has(tool)) for (const e of work) uncertain.add(e.sessionId);
   for (const r of records) if (!receipts.has(r.key) && r.origin !== 'compaction') uncertain.add(r.sessionId);
   for (const s of spaces.values()) for (const variants of s.byEvent.values()) if (Array.isArray(variants)) {
+    if (variants.every(e => samePromptEvent(variants[0], e, true))) continue;
     for (const e of variants) {
       if (e.kind === 'receipt') conflictingReceipts.add(e.receiptKey);
       const node = eventNode.get(e); if (node) node.bad = true; else uncertain.add(e.sessionId);
@@ -367,13 +371,21 @@ function attributeSessions(all, records, recordByKey) {
       let identity = prompt.origin === 'user' || linksKnown && initial;
       if (identity) for (const e of origin.space.userEvents.get(prompt.promptId)) if (e.project !== prompt.project || e.origin !== prompt.origin || eventNode.get(e).scope) { identity = false; break; }
       const sampleReceipt = receiptEvents.find(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId);
-      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, limitation,
-        sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms },
+      let delivery = prompt.delivery || 'unknown';
+      for (const e of origin.space.userEvents.get(prompt.promptId)) if ((e.delivery || 'unknown') !== delivery) { delivery = 'unknown'; break; }
+      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, limitation, delivery,
+        sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms, delivery },
         provider: linksKnown && charges.length ? receiptEvents.every(r => r.copilot) : attributed(prompt.sessionId),
         state: doubtful || prompt.origin === 'unspecified' && !initial ? ATTRIBUTION : incomplete ? ACCOUNTING : unfinished ? UNFINISHED : ELIGIBLE });
     }
   }
-  return { prompts, seeds, unassigned: records.filter(r => !assigned.has(r.key)), conflictingReceipts };
+  const stops = [];
+  for (const [id, s] of spaces) if (attributed(id)) for (const variant of s.byEvent.values()) {
+    // Conflicting copies cannot establish a stop's date, project or origin.
+    if (!Array.isArray(variant) && variant.kind === 'abort' && variant.cancelled && !variant.agent && !variant.parentTool)
+      stops.push({ sessionId: id, project: variant.project, day: dayOfMs(variant.ms) });
+  }
+  return { prompts, seeds, stops, unassigned: records.filter(r => !assigned.has(r.key)), conflictingReceipts };
 }
 
 // Journals rarely change between reports, and one refresh usually changes a single session.
@@ -471,6 +483,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const modelCount = name => modelPrompts.get(name) || modelPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
   // Count submissions separately from cost eligibility; missing charges do not erase a known user action.
   for (const outcome of outcomes) {
+    for (const stop of outcome.stops || EMPTY) conversations.stop(stop);
     if (!models) for (const seed of outcome.seeds) if (!query.session || query.session === seed.sessionId) {
       projectCount(seed.project); sessionCount(seed.project, seed.sessionId);
     }
