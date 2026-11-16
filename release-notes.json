@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.103",
+    "summary": "Activity and When you work now keep your normal cursor while preserving the clickable title underline. Both enlarged charts use a Close button that matches the dashboard."
+  },
+  {
     "version": "0.1.102",
     "summary": "Click Activity or When you work to explore a larger chart with day and time-slot details. The Skills table now gives skill and project names more room and removes the source-plugin and plugin-version columns."
   },
