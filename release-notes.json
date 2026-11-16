@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.105",
+    "summary": "Efficiency now compares recorded effort levels within each model and shows real model and effort changes, separating manual selections from automatic changes. Missing effort stays unknown, and no-op changes are ignored."
+  },
+  {
     "version": "0.1.104",
     "summary": "Skills now shows its selected date range and explains gaps in recorded skill activity. Show logs includes skill counts before and after filtering to help diagnose missing history on other computers."
   },

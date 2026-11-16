@@ -26,7 +26,7 @@ export const PATTERN_TOPICS = [
   { id: 'growth', label: 'Context growth', iconPath: 'M3 3v18h18M6 16l5-5 4 2 6-8m-5 0h5v5', group: '', question: 'Why do later calls in a conversation process more input?' },
   { id: 'compaction', label: 'Context reduction', iconPath: 'M3 4h18M3 20h18M12 6v4m-3-3 3 3 3-3M12 18v-4m-3 3 3-3 3 3M7 12h10', group: '', question: 'What changes when a conversation is compacted?' },
   { id: 'recovery', label: 'Calls and recovery', iconPath: 'M3 10a9 9 0 1 1 2 8M3 4v6h6m0 3 3 3 5-6', group: '', question: 'Which operations have recorded failures that deserve attention?' },
-  { id: 'transitions', label: 'Model changes and fresh starts', iconPath: 'M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4', group: '', question: 'What happens to input and cache reuse around a model change or resumed session?' },
+  { id: 'transitions', label: 'Model and effort changes', iconPath: 'M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4', group: '', question: 'Which models and effort levels are used, and which settings change?' },
   { id: 'repetition', label: 'Repeated exploration', iconPath: 'M8 7h12v14H8ZM16 7V3H4v14h4m3-6h6m-6 4h6', group: '', question: 'Is the agent repeatedly searching or reading the same material?' },
   { id: 'models', label: 'Model comparisons', iconPath: 'M4 4v16h16M7 6h7v3H7Zm0 6h13v3H7Z', group: '', question: 'Compare recorded charges and context use across models.' },
 ];
@@ -48,7 +48,26 @@ export function renderTokenTopic(id, report, formats) {
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
   }
   if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
-  if (id === 'transitions') return unmeasured('Changes in input and cache reuse around model switches and resumed sessions are not measured here yet. Those comparisons need reliable transition events and must distinguish manual choices, automatic routing, and subagent work.');
+  if (id === 'transitions') {
+    const changes = report.efficiency?.switches, efforts = report.efficiency?.efforts || [];
+    if (!changes && !efforts.length) return '<p class="muted">No recorded model or effort measurements for these filters.</p>';
+    const n = value => esc(number(value)), credit = value => esc((formats.credits || number)(value));
+    const effortName = value => value === 'unknown' ? 'Unknown' : value;
+    const switchSummary = changes ? metrics(
+      metric('Model changes', changes.modelChanges, 'Explicit changes, excluding no-ops'),
+      metric('Effort changes', changes.effortChanges, 'Both old and new levels recorded'),
+      metric('Sessions with changes', changes.sessions, `${number(changes.events)} distinct change events`),
+      metric('Manual selections', changes.manual, `${number(changes.automatic)} automatic · ${number(changes.unknownSource)} source unknown`),
+    ) : '';
+    const rows = efforts.map(r => `<tr><td class="text-cell">${esc(r.name)}</td><td>${esc(effortName(r.effort))}</td><td>${n(r.requests)}</td><td title="${n(r.creditRequests)} of ${n(r.requests)} calls have complete charges">${credit(r.credits)}</td><td>${credit(r.averageCredits)}</td><td title="${n(r.reasoningRequests)} of ${n(r.requests)} calls have comparable reasoning and output">${r.reasoningShare == null ? 'Unavailable' : n(r.reasoningShare) + '%'}</td><td title="${n(r.durationRequests)} of ${n(r.requests)} calls have recorded duration">${r.averageDuration == null ? 'Unavailable' : n(r.averageDuration / 1000) + ' s'}</td></tr>`).join('');
+    const transitions = (changes?.transitions || []).slice(0, 10).map(r => `<tr><td class="text-cell">${esc(r.fromModel || 'Unknown')} → ${esc(r.toModel || 'Unknown')}</td><td>${esc(effortName(r.fromEffort))} → ${esc(effortName(r.toEffort))}</td><td>${esc({ model_picker: 'Manual', sdk: 'SDK', agent: 'Agent', startup: 'Startup', unknown: 'Unknown' }[r.source])}</td><td>${n(r.count)}</td></tr>`).join('');
+    return switchSummary + note('Selected dates and current filters. Model filters include changes touching that model. Manual selections and automatic changes are separate; model and effort changes can occur in the same event. Missing change events are not inferred from request order.') +
+      (changes?.omitted ? note(`${number(changes.omitted)} change events omitted because provider attribution is missing or mixed.`) : '') +
+      '<h3>Effort by model</h3>' + (rows ? `<div class="table-wrap"><table><thead><tr><th>Model</th><th>Effort</th><th>Model turns</th><th>AI credits</th><th>Credits / turn</th><th>Reasoning / output</th><th>Average duration</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No recorded model calls in these filters.</p>') +
+      note('Compare effort within the same model and similar workload. Averages use complete recorded charges, including zero; hover for coverage. Reasoning is part of output. Unknown effort is not a default level. Cost differences do not establish whether changing effort helped.') +
+      (transitions ? `<h3>Most frequent recorded changes</h3><div class="table-wrap"><table><thead><tr><th>Model</th><th>Effort</th><th>Source</th><th>Changes</th></tr></thead><tbody>${transitions}</tbody></table></div>` : '') +
+      note('Before/after cost and cache comparisons, resumed-session settings and VS Code effort are not measured here yet.');
+  }
   if (id === 'repetition') return unmeasured('Repeated searches or file reads are not identified here yet. Calling the same tool several times is not proof of repeating the same work. A useful comparison also needs evidence about what was requested and whether the underlying material changed.');
   return '';
 }

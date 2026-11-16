@@ -1,4 +1,5 @@
 import { dayOfMs } from './query.mjs';
+import { recordedEffort } from './model-settings.mjs';
 
 export function summarizeInteractions(records, activity, query, start, end, now, copilotSessions) {
   const result = { prompts: 0, promptSamples: 0, promptSessions: 0, averagePromptChars: null, averagePromptsPerSession: null,
@@ -81,6 +82,7 @@ function keep(list, sample, earliest) {
 
 export function createEfficiencyAccumulator() {
   const total = measurement(), models = new Map(), groups = [], bySession = new Map(), NONE = Symbol('none');
+  const efforts = new Map();
   let model = NONE, modelTotal, project = NONE, session = NONE, sessionGroups;
   const initiators = new Map(['user', 'agent', 'sub-agent', 'unknown'].map(id => [id, measurement()])), delegatedModels = new Map();
   return {
@@ -88,6 +90,11 @@ export function createEfficiencyAccumulator() {
       addMeasurement(total, r);
       if (r.model !== model) { model = r.model; modelTotal = models.get(model); if (!modelTotal) models.set(model, modelTotal = measurement()); }
       addMeasurement(modelTotal, r);
+      const effort = recordedEffort(r.effort), effortKey = JSON.stringify([r.model, effort]);
+      if (!efforts.has(effortKey)) efforts.set(effortKey, { name: r.model, effort, ...measurement(), durationRequests: 0, durationTotal: 0 });
+      const effortTotal = efforts.get(effortKey);
+      addMeasurement(effortTotal, r);
+      if (known(r.duration)) { effortTotal.durationRequests++; effortTotal.durationTotal += r.duration; }
       addMeasurement(initiators.get(initiators.has(r.initiator) ? r.initiator : 'unknown'), r);
       if (r.initiator === 'sub-agent') {
         if (!delegatedModels.has(r.model)) delegatedModels.set(r.model, measurement());
@@ -138,6 +145,8 @@ export function createEfficiencyAccumulator() {
         insights.push({ kind: 'spend', model: row.name, credits: row.credits, share: row.credits / summary.credits * 100, samples: summary.creditRequests, requests: summary.requests });
       }
       return { summary, models: rows, insights,
+        efforts: [...efforts.values()].map(b => ({ ...finishMeasurement(b), averageDuration: b.durationRequests ? b.durationTotal / b.durationRequests : null }))
+          .sort((a, b) => a.name.localeCompare(b.name) || a.effort.localeCompare(b.effort)),
         byInitiator: [...initiators].map(([id, b]) => ({ id, ...finishMeasurement(b) })),
         delegatedModels: [...delegatedModels].map(([name, b]) => ({ name, ...finishMeasurement(b) }))
           .sort((a, b) => b.requests - a.requests || a.name.localeCompare(b.name)) };

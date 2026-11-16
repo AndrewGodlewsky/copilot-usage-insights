@@ -20,7 +20,7 @@ export function selectEnvironment(records, activity, id) {
   if (scopes.selected.has(id)) return scopes.selected.get(id);
   const selected = records.filter(r => environmentOf(r) === id), sessions = new Set(selected.map(r => r.sessionId));
   const scoped = { ...activity, cache: { uniquePromptEvents: activity.cache?.uniquePromptEvents === true } };
-  for (const key of ['skills', 'tools', 'interactions', 'promptEvents']) scoped[key] = (activity[key] || []).filter(e => e.environment ? e.environment === id : sessions.has(e.sessionId));
+  for (const key of ['skills', 'tools', 'interactions', 'promptEvents', 'modelChanges']) scoped[key] = (activity[key] || []).filter(e => e.environment ? e.environment === id : sessions.has(e.sessionId));
   scoped.skillExcludedSessions = (activity.skillExcludedSessions || []).filter(s => sessions.has(s));
   const result = { records: selected, activity: scoped };
   if (scopes.selected.size >= 16) scopes.selected.delete(scopes.selected.keys().next().value);

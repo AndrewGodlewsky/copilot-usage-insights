@@ -4,6 +4,7 @@ import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency
 import { summarizePromptCredits } from './prompt-credits.mjs';
 import { environmentOf, environmentOptions, selectEnvironment } from './environments.mjs';
 import { summarizeCoverage } from './coverage.mjs';
+import { summarizeModelChanges } from './model-settings.mjs';
 
 const MAX = Number.MAX_SAFE_INTEGER, NONE = Symbol('none');
 const bucket = () => ({ requests: 0, total: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, completeTokens: 0, completeTokenRequests: 0, unclassifiedInput: 0, inputTotal: 0,
@@ -357,7 +358,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: { ...efficiency.finish(sessionLabels), conversations, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
+    efficiency: { ...efficiency.finish(sessionLabels), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
     options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

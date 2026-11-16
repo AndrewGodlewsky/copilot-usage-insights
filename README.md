@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.104** shows the selected range in Skills and adds filtered skill counts to Show logs to help investigate missing activity. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.105** adds effort-by-model comparisons and recorded model/effort changes in Efficiency. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -294,7 +294,7 @@ Coverage is visible under summary values and in model-value tooltips. Missing da
 
 The section order is **Overview**, then **Always-loaded context**, **Tool and MCP footprint**, **Files, searches, and tool results**, **Cache reuse**, and **Skills and instruction footprint** under Context; **Work behind each prompt**, **Delegated work**, and **Reasoning and generated output** under Agent work; and **Biggest spend drivers** under Spending. The selected section's group and position appear above its title.
 
-**Worth a closer look** uses the same compact draggable explorer, starting with **Findings**. Its eight section icons appear on both the track and the blue lens, with the full selected name below. Drag, direct clicks, keyboard controls and Previous / Next work just as in the token explorer. Choose **Conversation habits**, **Context growth**, **Context reduction**, **Calls and recovery**, **Model changes and fresh starts**, **Repeated exploration**, or **Model comparisons**. Findings retains measured observations, practical experiments, comparison guidance, and positive cache-reuse findings.
+**Worth a closer look** uses the same compact draggable explorer, starting with **Findings**. Its eight section icons appear on both the track and the blue lens, with the full selected name below. Drag, direct clicks, keyboard controls and Previous / Next work just as in the token explorer. Choose **Conversation habits**, **Context growth**, **Context reduction**, **Calls and recovery**, **Model and effort changes**, **Repeated exploration**, or **Model comparisons**. Findings retains measured observations, practical experiments, comparison guidance, and positive cache-reuse findings.
 
 Both selections survive refreshes, filter changes, settings changes, and tab changes within the open dashboard. Switching sections makes no requests, scans no logs, and invokes no AI. Reopening starts at Overview and Findings. **AI review** stays separate: neither dashboard appears inside it, and inference requires the explicit Create action.
 
@@ -550,3 +550,9 @@ The project uses the [MIT License](LICENSE), retaining the original `Copyright (
 The bundled [js-yaml](https://github.com/nodeca/js-yaml) parser retains its separate [MIT license and copyright notice](src/vendor/js-yaml/LICENSE); its [vendor README](src/vendor/js-yaml/README.md) records the package source.
 
 The AI Review SDK adapter and accounting writer are adapted from [AndrewGodlewsky/copilot-enhance-prompt](https://github.com/AndrewGodlewsky/copilot-enhance-prompt), with its [MIT notice](licenses/enhance-prompt-LICENSE) retained in marketplace and local installations.
+
+### Model and effort changes
+
+In **Efficiency ? Worth a closer look ? Model and effort changes**, the effort table uses each call's recorded `usage.reasoningEffort`, with complete recorded charges (including zero), matched reasoning/output samples and recorded duration. Effort is never filled from a session default. Unknown or unsupported levels stay unknown; compare similar work within the same model.
+
+Switch counts use deduplicated `session.model_change` events with known, unequal old/new values. One event may change both dimensions. `model_picker` is manual; SDK, agent and startup sources are automatic; absent sources stay unknown. Child and ephemeral events are ignored. Date/project/session/environment filters apply; model filters include changes touching the selected model. Mixed/unattributed provider sessions are omitted with a count. Consecutive requests do not establish a switch because subagents and automatic routing can overlap. This first view does not claim that changing a setting improved results or reduced cost.

@@ -1,6 +1,7 @@
 // Only accounting and activity metadata leaves this parser; payload text is discarded.
 import { linkId, intern, promptEvent, promptEventTypes, createPromptEventSet } from './prompt-credits.mjs';
 import { createCoverageCollector, coverageTime } from './coverage.mjs';
+import { recordedEffort, modelChange } from './model-settings.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -22,6 +23,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
     key, ts: new Date(ms).toISOString(), ms, sessionId, project: project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project', cwd, source,
     model: intern(textValue(usage.modelDisplayName) || textValue(usage.model) || 'Unknown model'),
     modelId: intern(textValue(usage.model)),
+    effort: recordedEffort(usage.reasoningEffort),
     apiCallId: intern(linkId(usage.apiCallId)),
     responseModel: intern(textValue(usage.responseModel).slice(0, 256)),
     initiator: ['user', 'agent', 'sub-agent'].includes(usage.initiator) ? intern(usage.initiator) : '',
@@ -39,7 +41,7 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
 
 // Every event type this parser reads. Lines of any other type hold nothing the dashboard uses.
 const activityTypes = new Set(['session.error', 'session.compaction_start', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...[...promptEventTypes].filter(type => type !== 'abort' && type !== 'session.resume')]);
-const usedTypes = new Set(['session.start', 'session.context_changed', ...activityTypes, ...promptEventTypes]);
+const usedTypes = new Set(['session.start', 'session.context_changed', 'session.model_change', ...activityTypes, ...promptEventTypes]);
 const checkpointTypes = new Set(['session.usage_checkpoint', 'session.shutdown']);
 function emptyCheckpoint(data) {
   if (data?.totalNanoAiu !== 0) return false;
@@ -86,6 +88,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
   const sessions = new Set([initialSession]);
   // `tools` holds each call as it will be reported: its start plus the latest outcome seen so far.
   const tools = new Map(), toolOutcomes = new Map(), interactions = new Map();
+  const modelChanges = new Map();
   const promptEvents = createPromptEventSet();
   const relabel = () => { label = project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project'; };
   const note = (set, value) => { if (!set.has(value)) { set.add(value); revision++; } };
@@ -129,6 +132,9 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         cwd = textValue(e.data?.cwd) || cwd;
         project = textValue(e.data?.repository) || cwd.split(/[\\/]/).filter(Boolean).at(-1) || project;
         relabel();
+      } else if (e?.type === 'session.model_change') {
+        const change = modelChange(e, sessionId, label);
+        if (change && !modelChanges.has(change.key)) { modelChanges.set(change.key, change); revision++; }
       } else if (['user.message', 'assistant.turn_start', 'session.error'].includes(e?.type)) {
         if (e.ephemeral || e.checkpoint || e.agentId || e.data?.parentToolCallId) return;
         const kind = e.type === 'user.message' ? 'prompt' : e.type === 'assistant.turn_start' ? 'turn' : 'error';
@@ -228,7 +234,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       coverageEntries: [...coverage.snapshot(), ...(hasCheckpoint && summaryNeedsCoverage && !receiptSessions.size ? [summaryEntry()] : [])],
       // Another partial copy can contain the activity missing from an otherwise empty summary.
       emptySummary: hasCheckpoint && !summaryNeedsCoverage ? summaryEntry() : null, summaryActivitySession: summaryNeedsCoverage ? sessionId : '',
-      tools: [...tools.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
+      tools: [...tools.values()], modelChanges: [...modelChanges.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && summaryNeedsCoverage && receiptSessions.size === 0 }),
   };
 }
