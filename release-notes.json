@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.104",
+    "summary": "Skills now shows its selected date range and explains gaps in recorded skill activity. Show logs includes skill counts before and after filtering to help diagnose missing history on other computers."
+  },
+  {
     "version": "0.1.103",
     "summary": "Activity and When you work now keep your normal cursor while preserving the clickable title underline. Both enlarged charts use a Close button that matches the dashboard."
   },

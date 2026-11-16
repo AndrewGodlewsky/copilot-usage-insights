@@ -689,9 +689,10 @@ function renderBreakdownContent() {
   }
   const skills = report.skills;
   const focusedSkill = document.activeElement?.dataset.skillId, focusedAction = document.activeElement?.dataset.skillAction;
-  $('skills-summary').textContent = `${number(skills.invocations)} use${skills.invocations === 1 ? '' : 's'} · ${number(skills.failures ?? 0)} failure${skills.failures === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'}`;
+  $('skills-summary').textContent = `${number(skills.invocations)} use${skills.invocations === 1 ? '' : 's'} · ${number(skills.failures ?? 0)} failure${skills.failures === 1 ? '' : 's'} · ${number(skills.sessions)} session${skills.sessions === 1 ? '' : 's'} · ${RANGE_LABELS[report.query.range]}`;
+  $('skills-summary').title = 'Recorded skill loads in the selected dates, project, session and environment. Model filters do not apply. Reusing an already loaded skill may not create another activation. Older logs, database-only history and VS Code usage may lack skill-load events.';
   if (state.skillView && !skills.rows.some(skill => skill.id === state.skillView)) state.skillView = null;
-  $('skills').innerHTML = skills.rows.length ? skillTable(skills.rows) : '<p class="muted">No recorded skill uses or failed loads match these filters. Use a skill in Copilot, then refresh. Older sessions may not have saved skill events.</p>';
+  $('skills').innerHTML = skills.rows.length ? skillTable(skills.rows) : '<p class="muted">No recorded skill uses or failed loads match these filters. Older logs, database-only history and VS Code usage may lack skill-load events.</p>';
   if (focusedSkill) ([...$('skills').querySelectorAll('[data-skill-id]')].find(button => button.dataset.skillId === focusedSkill && button.dataset.skillAction === focusedAction) || $('skills-sort')).focus({ preventScroll: true });
   const coverage = [];
   if (skills.omitted) coverage.push(`${number(skills.omitted)} skill uses omitted because their sessions have missing or mixed provider attribution.`);

@@ -234,6 +234,10 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         }
         const at = now(), buildFields = { records: scan.records.length, range: input.range, promptEvents: scan.promptEvents?.length ?? 0, tools: scan.tools?.length ?? 0, skills: scan.skills?.length ?? 0 };
         const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cacheHit = found.cached; return found; });
+        const skills = entry.report.skills;
+        diagnostics.record('info', 'skills.report', { range: entry.report.query.range, historyPhase: loading ? 'recent' : 'complete', scanId: currentScan,
+          skills: scan.skills?.length ?? 0, rows: skills.rows.length, skillUses: skills.invocations, skillFailures: skills.failures,
+          omittedSkillUses: skills.omitted, omittedSkillFailures: skills.omittedFailures });
         // Installed versions are read from disk each time, onto copies, so the kept report stays as built.
         const rows = entry.report.skills.rows.map(row => ({ ...row }));
         if (!loading) await diagnostics.measure('skills.versions', { rows: rows.length }, () => addInstalledSkillVersions(rows));

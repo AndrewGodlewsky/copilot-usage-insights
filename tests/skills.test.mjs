@@ -8,6 +8,7 @@ import { createReceiptParser } from '../src/core/copilot.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
+import { parseRuntimeDiagnostics } from '../src/core/diagnostics.mjs';
 
 const now = new Date(2026, 10, 13, 12);
 const timestamp = new Date(2026, 10, 13, 10).toISOString();
@@ -33,6 +34,83 @@ const loadStart = (id, name = 'code-review', extra = {}) => ({ id: id + '-start'
   data: { toolCallId: id, toolName: 'skill', arguments: { skill: name, prompt: 'PRIVATE ARGUMENT' }, ...extra } });
 const loadEnd = (id, success = false) => ({ id: id + '-end', type: 'tool.execution_complete', timestamp,
   data: { toolCallId: id, success, result: { content: 'PRIVATE RESULT' }, error: { message: 'PRIVATE ERROR' } } });
+
+test('every date option filters skill activations and failed attempts by local event day', () => {
+  const offsets = [0, 6, 7, 12, 13, 29, 30, 89, 90, 400];
+  const events = offsets.flatMap((days, i) => {
+    const at = new Date(2026, 10, 13 - days, 0).toISOString();
+    return [(i % 2 ? skillRef : skill)(`use-${days}`, { name: `skill-${days}` }),
+      loadStart(`fail-${days}`, `skill-${days}`), loadEnd(`fail-${days}`)].map(e => ({ ...e, timestamp: at }));
+  });
+  const snapshot = parse([usage(), ...events, ...events,
+    { ...skill('future'), timestamp: new Date(2026, 10, 13, 13).toISOString() }]);
+  for (const [input, expected] of [
+    [{ range: '1d' }, [0]], [{ range: '7d' }, [0, 6]], [{ range: 'mtd' }, [0, 6, 7, 12]],
+    [{ range: '30d' }, [0, 6, 7, 12, 13, 29]], [{ range: '90d' }, offsets.slice(0, 8)],
+    [{ range: 'all' }, offsets], [{ range: 'custom', startDate: '2026-11-06', endDate: '2026-11-07' }, [6, 7]],
+  ]) {
+    const result = report(snapshot, input).skills;
+    assert.deepEqual(result.rows.map(r => r.name).sort(), expected.map(d => `skill-${d}`).sort(), input.range);
+    assert.equal(result.invocations, expected.length, input.range);
+    assert.equal(result.failures, expected.length, input.range);
+    assert.ok(result.rows.every(r => r.invocations === 1 && r.failures === 1 && r.projectRows[0].invocations === 1));
+  }
+});
+
+test('older skills arrive after background scanning and date changes reuse the complete snapshot', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'copilot-skill-ranges-'));
+  t.after(() => { assert.equal(path.dirname(path.resolve(root)), path.resolve(os.tmpdir())); return fs.rm(root, { recursive: true, force: true }); });
+  for (const [id, days] of [['recent', 0], ['older', 60], ['unattributed', 60]]) {
+    const at = new Date(2026, 10, 13 - days, 10), dir = path.join(root, 'session-state', id);
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'events.jsonl');
+    const events = [{ ...start, data: { ...start.data, sessionId: id } },
+      ...(id === 'unattributed' ? [] : [usage({}, id)]), skill(id, { name: id, path: '' })];
+    await fs.writeFile(file, events.map(e => JSON.stringify({ ...e, timestamp: at.toISOString() }) + '\n').join(''));
+    await fs.utimes(file, at, at);
+  }
+  let resume, scans = 0, scanning;
+  const gate = new Promise(resolve => { resume = resolve; });
+  const scanner = createScanner({ skipUnused: true });
+  const server = await startServer({ html: '', now: () => now, defaultHome: root,
+    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
+    scanner: { scan(roots, options) {
+      scans++;
+      return scanning = scanner.scan(roots, { ...options, onRecent: async (...args) => { options.onRecent(...args); await gate; } });
+    } },
+  });
+  t.after(() => { resume(); return server.close(); });
+  const call = async (input, known) => {
+    const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method: 'usage.report', input, known }) });
+    assert.equal(response.status, 200); return response.json();
+  };
+  const early = await call({ range: '7d' });
+  assert.equal(early.loading.phase, 'recent');
+  assert.deepEqual(early.skills.rows.map(r => r.name), ['recent']);
+  const pending = await call({ range: '90d' });
+  assert.equal(pending.loading.phase, 'history');
+  assert.equal(pending.skills, undefined, 'a wider range cannot present provisional skills as complete');
+  resume(); await scanning;
+  let revision = early.revision;
+  for (const range of ['90d', '7d', '90d', '7d']) {
+    const result = await call({ range }, revision);
+    assert.equal(result.loading, undefined);
+    assert.equal(result.unchanged, undefined, 'changing range returns its own skill results');
+    assert.deepEqual(result.skills.rows.map(r => r.name).sort(), range === '7d' ? ['recent'] : ['older', 'recent']);
+    revision = result.revision;
+  }
+  assert.equal((await call({ range: '7d' }, revision)).unchanged, true);
+  assert.equal(scans, 1, 'range changes require no extra log scans');
+  const logs = await (await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'diagnostics.get' }) })).json();
+  const entries = logs.entries.filter(e => e.event === 'skills.report');
+  const full = entries.filter(e => e.historyPhase === 'complete');
+  assert.equal(full.find(e => e.range === '90d').skillUses, 2);
+  assert.equal(full.find(e => e.range === '7d').skillUses, 1);
+  assert.ok(full.every(e => e.skills === 3 && e.omittedSkillUses === (e.range === '90d' ? 1 : 0) && e.omittedSkillFailures === 0));
+  assert.deepEqual(parseRuntimeDiagnostics(entries.map(e => JSON.stringify(e)).join('\n')), entries, 'saved and downloaded logs retain safe skill counts');
+  assert.ok(!JSON.stringify(entries).includes(root));
+});
 
 test('skill load failures count explicit paired outcomes once without changing uses or retaining payloads', () => {
   const events = [usage(), skill('manual', { trigger: 'user-invoked' }), loadStart('failed'), loadEnd('failed'),

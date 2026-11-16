@@ -9,6 +9,8 @@ const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', '
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills', 'filesDeferred', 'databasesDeferred', 'scanId']) numericFields.add(field);
 for (const event of ['history.recent', 'history.background']) RUNTIME_EVENTS.add(event);
+RUNTIME_EVENTS.add('skills.report');
+for (const field of ['skillUses', 'skillFailures', 'omittedSkillUses', 'omittedSkillFailures']) numericFields.add(field);
 booleanFields.add('unchanged');
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode', 'pass', 'inputChars', 'cards', 'samples']) numericFields.add(field);

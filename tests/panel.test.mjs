@@ -129,6 +129,29 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context, objectUrls, revoked };
 }
 
+test('Skills rerenders dated rows when switching between 7 and 90 days', async () => {
+  const now = new Date(2026, 10, 13, 12);
+  const parser = createReceiptParser({ sessionId: 'dated-skills', source: 'fixture' });
+  parser.push(JSON.stringify({ id: 'usage', type: 'session.usage_record', timestamp: now.toISOString(),
+    data: { usage: { provider: { kind: 'copilot' }, model: 'fixture-model', inputTokens: 10, outputTokens: 2 } } }));
+  for (const [name, days] of [['recent-skill', 0], ['older-skill', 60]]) parser.push(JSON.stringify({
+    id: name, type: 'skill.invoked', timestamp: new Date(2026, 10, 13 - days, 10).toISOString(), data: { name },
+  }));
+  const snapshot = parser.snapshot();
+  const report = input => ({ ...buildReport(snapshot.records, input, now, snapshot), sources: [], coverage: {} });
+  const { get, server, requests } = await mountPanel(report({ range: 'mtd' }));
+  server.report = report;
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  for (const range of ['7d', '90d', '7d']) {
+    get('range').value = range; get('range').onchange(); await new Promise(setImmediate);
+    assert.match(get('skills').innerHTML, /recent-skill/);
+    assert.equal(get('skills').innerHTML.includes('older-skill'), range === '90d');
+    assert.match(get('skills-summary').textContent, range === '90d' ? /2 uses.*Last 90 days/ : /1 use.*Last 7 days/);
+    assert.equal(requests.filter(r => r.method === 'usage.report').at(-1).input.range, range);
+  }
+  assert.match(get('skills-summary').title, /Model filters do not apply/);
+});
+
 test('diagnostic Markdown download uses the displayed snapshot offline and releases its blob', async () => {
   const { get, server, requests, document, timeouts, objectUrls, revoked } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
   await get('logs-open').onclick();
@@ -2000,7 +2023,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   assert.equal(cells.length, headers.length);
   assert.deepEqual(cells.slice(1, 7), ['5', '2', '1', '1', '0', '1.0.1']);
   assert.equal(cells.at(-1), '11/13/26, 10:49 PM');
-  assert.equal(get('skills-summary').textContent, '5 uses · 0 failures · 1 session');
+  assert.equal(get('skills-summary').textContent, '5 uses · 0 failures · 1 session · Today');
   assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
   assert.match(get('skills').innerHTML, /title="By user: 2; By agent: 1; Preloaded: 1; Unknown: 1"/);
   assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|<th[^>]*>Projects<|<hello-test>/);
