@@ -65,6 +65,19 @@ test('summary sessions use observed start and summary dates, preserve fast parsi
   assert.equal(report({ coverageEntries: copies }).counts.aggregateOnly, 1, 'a later summary in a copy extends the observed span');
 });
 
+test('source failures remain distinct from absent sources and known availability limitations', () => {
+  const snapshot = { sources: [
+    { path: 'absent', state: 'missing', diagnostic: { errorCode: 'ENOENT' } },
+    { path: 'absent-vscode', state: 'warning', diagnostic: { errorCode: 'ENOENT' } },
+    { path: 'stopped', state: 'warning' },
+    { path: 'unreadable', state: 'error', diagnostic: { code: 'EACCES' } },
+    { path: 'db-error', state: 'warning', diagnostic: { code: 'SQLITE_CORRUPT' } },
+  ] };
+  assert.deepEqual(report(snapshot).unreadable.map(s => [s.file, s.failed]), [
+    ['absent', false], ['absent-vscode', false], ['stopped', false], ['unreadable', true], ['db-error', true],
+  ]);
+});
+
 test('empty zero-credit checkpoints do not imply missing usage, while uncertain or active summaries still do', () => {
   const empty = { totalNanoAiu: 0, totalPremiumRequests: 0, totalApiDurationMs: 0, conversationTokens: 0, modelMetrics: {} };
   const cases = [

@@ -38,8 +38,8 @@ export function normalizeUsage(usage, { key, timestamp, sessionId, project = '',
 }
 
 // Every event type this parser reads. Lines of any other type hold nothing the dashboard uses.
-const activityTypes = new Set(['session.error', 'session.compaction_start', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...promptEventTypes]);
-const usedTypes = new Set(['session.start', 'session.context_changed', ...activityTypes]);
+const activityTypes = new Set(['session.error', 'session.compaction_start', 'session.compaction_complete', 'skill.invoked', 'skill.invoked_ref', ...[...promptEventTypes].filter(type => type !== 'abort' && type !== 'session.resume')]);
+const usedTypes = new Set(['session.start', 'session.context_changed', ...activityTypes, ...promptEventTypes]);
 const checkpointTypes = new Set(['session.usage_checkpoint', 'session.shutdown']);
 function emptyCheckpoint(data) {
   if (data?.totalNanoAiu !== 0) return false;
@@ -60,7 +60,7 @@ function leadingType(line) {
   return /^[a-z0-9_.]+$/.test(name) ? name : '';
 }
 
-export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false }) {
+export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false, backgroundActivity = false }) {
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   let summaryNeedsCoverage = false, reviewOrigin = false;
@@ -208,7 +208,12 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (key && (records.has(key) || rejected.has(key))) return;
         revision++;
         if (!result.record) for (const id of [sessionId, initialSession, sourceSession]) skillExcludedSessions.add(id);
-        if (result.record) { result.record.logFile = logFile; if (reviewOrigin) result.record.reviewOrigin = true; records.set(key, result.record); }
+        if (result.record) {
+          result.record.logFile = logFile;
+          if (reviewOrigin) result.record.reviewOrigin = true;
+          if (backgroundActivity || reviewOrigin) result.record.backgroundActivity = true;
+          records.set(key, result.record);
+        }
         else if (key) rejected.add(key);
         if (result.record) return;
         rejectedEvent(result.reason || 'invalid', e, key, u, sourceSession);

@@ -15,7 +15,8 @@ export function intern(value) {
 }
 const link = value => intern(linkId(value));
 const kinds = { 'user.message': 'user', 'assistant.message': 'message', 'assistant.turn_start': 'turn-start', 'assistant.turn_end': 'turn-end',
-  'tool.execution_start': 'tool-start', 'tool.execution_complete': 'tool-end', 'subagent.started': 'agent-start', 'subagent.completed': 'agent-end', 'subagent.failed': 'agent-end', 'session.usage_record': 'receipt' };
+  'tool.execution_start': 'tool-start', 'tool.execution_complete': 'tool-end', 'subagent.started': 'agent-start', 'subagent.completed': 'agent-end', 'subagent.failed': 'agent-end', 'session.usage_record': 'receipt',
+  abort: 'abort', 'session.resume': 'resume' };
 export const promptEventTypes = new Set(Object.keys(kinds));
 
 // An allowlist of identifiers and accounting/completion evidence, never message or tool payloads.
@@ -28,6 +29,7 @@ export function promptEvent(e, { sessionId, project, receipt, receiptKey } = {})
   if (kind === 'receipt') return { kind, id, sessionId, ms, agent, parentTool, receiptKey, api: link(u.apiCallId), model: receipt?.model || '',
     nano: receipt?.nanoAiu ?? null, status: receipt?.creditStatus || 'unavailable', copilot: !!receipt, initiator: receipt?.initiator || '' };
   const interaction = link(d.interactionId), turn = link(d.turnId);
+  if (kind === 'abort') return { kind, id, sessionId, ms, agent, parentTool, interaction, turn, cancelled: d.reason === 'user_initiated' };
   if (kind === 'agent-start' || kind === 'agent-end' || kind === 'tool-start' || kind === 'tool-end') return { kind, id, sessionId, ms, agent, parentTool, tool: link(d.toolCallId), interaction, turn };
   if (kind === 'user') {
     const child = !!(agent || parentTool);
@@ -80,7 +82,7 @@ export function exactTotal() {
   };
 }
 
-const order = { user: 0, 'turn-start': 1, receipt: 2, message: 3, 'tool-start': 4, 'agent-start': 5, 'agent-end': 6, 'tool-end': 7, 'turn-end': 8 };
+const order = { user: 0, 'turn-start': 1, receipt: 2, message: 3, 'tool-start': 4, 'agent-start': 5, 'agent-end': 6, 'tool-end': 7, 'turn-end': 8, abort: 9, resume: 10 };
 const byTime = (a, b) => a.ms - b.ms || order[a.kind] - order[b.kind] || a.id.localeCompare(b.id);
 const addTo = (map, id, value) => { let set = map.get(id); if (!set) map.set(id, set = new Set()); set.add(value); };
 const sub = (map, id) => { let inner = map.get(id); if (!inner) map.set(id, inner = new Map()); return inner; };
@@ -91,14 +93,14 @@ const ELIGIBLE = 0, ATTRIBUTION = 1, ACCOUNTING = 2, UNFINISHED = 3;
 // Links every model call to the prompt that caused it. `all` is one closed set of sessions in
 // time order: nothing outside it shares a receipt with it, so sets can be solved independently.
 function attributeSessions(all, records, recordByKey) {
-  const spaces = new Map(), nodes = [], eventNode = new Map(), receipts = new Map(), uncertain = new Set();
+  const spaces = new Map(), nodes = [], eventNode = new Map(), receipts = new Map(), uncertain = new Set(), conflictingReceipts = new Set();
   let spaceId, spaceRef;
   // Identifiers are scoped by session. Nested maps avoid building a composite key per lookup.
   const space = id => {
     if (spaceRef && id === spaceId) return spaceRef;
     let s = spaces.get(id);
     if (!s) spaces.set(id, s = { byEvent: new Map(), calls: new Map(), receiptCalls: new Map(), receiptLinks: new Map(), owners: new Map(), requestedAt: new Map(), agents: new Map(),
-      toolEvents: new Map(), children: new Map(), userNodes: new Map(), userEvents: new Map(), prompts: new Map(), nodes: new Map(), missing: new Map(), open: new Map() });
+      toolEvents: new Map(), children: new Map(), userNodes: new Map(), userEvents: new Map(), prompts: new Map(), nodes: new Map(), missing: new Map(), open: new Map(), latest: new Map(), retired: new Map(), resumed: false });
     spaceId = id;
     return spaceRef = s;
   };
@@ -119,6 +121,8 @@ function attributeSessions(all, records, recordByKey) {
     if (seen === undefined) s.byEvent.set(e.id, e);
     else if (Array.isArray(seen)) seen.push(e);
     else s.byEvent.set(e.id, [seen, e]);
+    if (e.kind === 'resume') { s.resumed = true; continue; }
+    if (e.kind === 'abort') continue;
     if (e.kind === 'receipt') {
       let variants = receipts.get(e.receiptKey);
       if (!variants) receipts.set(e.receiptKey, variants = []);
@@ -126,7 +130,11 @@ function attributeSessions(all, records, recordByKey) {
       continue;
     }
     let node = null;
-    if (e.interaction || e.kind === 'user') {
+    // Copilot closes interrupted tools under a synthetic interaction after resuming.
+    // Only an explicit boundary and one recorded owner justify using that owner.
+    const resumedTool = e.kind === 'tool-end' && e.interaction === 'resume' && s.resumed && s.owners.get(e.tool)?.size === 1;
+    if (resumedTool) { node = s.owners.get(e.tool).values().next().value; node.events.push(e); eventNode.set(e, node); }
+    else if (e.interaction || e.kind === 'user') {
       // Events without an interaction can only be user messages; they are keyed by prompt instead.
       const table = sub(e.interaction ? s.nodes : s.missing, e.agent || e.parentTool), id = e.interaction || e.promptId;
       node = table.get(id);
@@ -156,6 +164,7 @@ function attributeSessions(all, records, recordByKey) {
     }
   }
   for (const s of spaces.values()) {
+    for (const [api, keys] of s.receiptCalls) if (api && keys.size > 1) for (const key of keys) conflictingReceipts.add(key);
     for (const candidates of s.calls.values()) if (candidates.size > 1) connect(candidates, true);
     for (const candidates of s.owners.values()) if (candidates.size > 1) connect(candidates, true);
   }
@@ -168,7 +177,10 @@ function attributeSessions(all, records, recordByKey) {
   for (const s of spaces.values()) for (const [tool, work] of s.toolEvents) if (!s.owners.has(tool)) for (const e of work) uncertain.add(e.sessionId);
   for (const r of records) if (!receipts.has(r.key) && r.origin !== 'compaction') uncertain.add(r.sessionId);
   for (const s of spaces.values()) for (const variants of s.byEvent.values()) if (Array.isArray(variants)) {
-    for (const e of variants) { const node = eventNode.get(e); if (node) node.bad = true; else uncertain.add(e.sessionId); }
+    for (const e of variants) {
+      if (e.kind === 'receipt') conflictingReceipts.add(e.receiptKey);
+      const node = eventNode.get(e); if (node) node.bad = true; else uncertain.add(e.sessionId);
+    }
   }
   for (const node of nodes) {
     const s = node.space, session = node.events[0].sessionId, parentTools = new Set(), agents = new Set();
@@ -211,6 +223,7 @@ function attributeSessions(all, records, recordByKey) {
       else uncertain.add(e.sessionId);
       if (e.api !== first.api || e.nano !== first.nano || e.status !== first.status || e.copilot !== first.copilot || e.model !== first.model || e.initiator !== first.initiator) conflicting = true;
     }
+    if (conflicting || linked.size > 1) conflictingReceipts.add(id);
     if (!linked.size) continue;
     connect(linked, linked.size > 1 || conflicting);
     for (const node of linked) {
@@ -227,12 +240,29 @@ function attributeSessions(all, records, recordByKey) {
     else if (matches.size > 1) node.bad = true;
   }
   // turnId repeats between prompts. Pair only a unique open turn in the same agent scope.
-  for (const e of all) if (e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'message') {
-    const open = sub(space(e.sessionId).open, e.agent || e.parentTool);
+  for (const e of all) if (e.kind === 'user' || e.kind === 'abort' || e.kind === 'resume' || e.kind === 'turn-start' || e.kind === 'turn-end' || e.kind === 'message') {
+    const s = space(e.sessionId), scope = e.agent || e.parentTool, open = sub(s.open, scope), retired = sub(s.retired, scope);
+    if (e.kind === 'user') { s.latest.set(scope, eventNode.get(e)); continue; }
+    if (e.kind === 'resume' || e.kind === 'abort') {
+      const candidates = new Set([...open.values()].flatMap(turns => [...turns].map(t => t.node)));
+      const latest = s.latest.get(scope);
+      if (latest) candidates.add(latest);
+      if (candidates.size === 1 && !scope && (e.kind === 'resume' || e.cancelled)) {
+        const node = candidates.values().next().value;
+        if (!e.interaction || node.events.some(item => item.interaction === e.interaction)) {
+          const cancelled = node.interruption?.kind === 'abort' && !node.turns.some(t => t.start.ms > node.interruption.ms && t.start.ms < e.ms);
+          node.interruption = { ms: e.ms, kind: cancelled ? 'abort' : e.kind };
+        }
+      }
+      for (const [id, turns] of open) { retired.set(id, turns); }
+      open.clear();
+      continue;
+    }
     if (e.kind === 'turn-start') {
       const node = eventNode.get(e);
       if (!node || !e.turn) { uncertain.add(e.sessionId); continue; }
       const turn = { start: e, end: null, node, messages: [] };
+      s.latest.set(scope, node); retired.delete(e.turn);
       node.turns.push(turn); addTo(open, e.turn, turn);
     } else if (e.kind === 'message') {
       const candidates = open.get(e.turn), node = eventNode.get(e), only = candidates?.size === 1 ? candidates.values().next().value : null;
@@ -245,7 +275,7 @@ function attributeSessions(all, records, recordByKey) {
         if (e.interaction && eventNode.get(e) !== turn.node) turn.node.bad = true;
       }
       else if (candidates?.size) for (const turn of candidates) turn.node.bad = true;
-      else uncertain.add(e.sessionId);
+      else if (!retired.has(e.turn)) uncertain.add(e.sessionId);
       open.delete(e.turn);
     }
   }
@@ -300,7 +330,8 @@ function attributeSessions(all, records, recordByKey) {
   // A linked receipt is still unowned work if its root interaction has no initiating message.
   for (const group of groups.values()) if (!group.prompts.length && !group.nodes.some(n => n.events.some(e => e.kind === 'user' && e.origin === 'automated'))) {
     for (const node of group.nodes) for (const e of node.events) uncertain.add(e.sessionId);
-    for (const id of group.receipts.keys()) assigned.delete(id);
+    const invalid = group.nodes.some(n => n.bad || n.accounting);
+    for (const id of group.receipts.keys()) { assigned.delete(id); if (invalid) conflictingReceipts.add(id); }
   }
   // Everything below is independent of the dashboard's filters, so it is computed once and kept.
   const copilotSessions = new Set(), otherSessions = new Set(), seeds = [], seeded = new Map();
@@ -323,6 +354,10 @@ function attributeSessions(all, records, recordByKey) {
     const linksKnown = group.prompts.length === 1 && !group.nodes.some(n => n.bad);
     const doubtful = group.prompts.length !== 1 || group.nodes.some(n => n.bad || n.events.some(e => uncertain.has(e.sessionId)));
     const incomplete = !charges.length || group.nodes.some(n => n.accounting), unfinished = group.nodes.some(n => n.unfinished);
+    // Interruptions explain unfinished work, never missing/conflicting bills or child work.
+    const interrupted = !doubtful && unfinished && !group.nodes.some(n => n.accounting || n.scope || n.unfinished &&
+      (!n.interruption || n.messages.some(m => m.ms > n.interruption.ms) || n.turns.some(t => t.start.ms > n.interruption.ms)));
+    const limitation = interrupted ? group.nodes.some(n => n.interruption?.kind === 'abort') ? 'cancelledPrompts' : 'interruptedPrompts' : '';
     for (const prompt of group.prompts) {
       const origin = eventNode.get(prompt);
       let firstCall;
@@ -331,13 +366,13 @@ function attributeSessions(all, records, recordByKey) {
       let identity = prompt.origin === 'user' || linksKnown && initial;
       if (identity) for (const e of origin.space.userEvents.get(prompt.promptId)) if (e.project !== prompt.project || e.origin !== prompt.origin || eventNode.get(e).scope) { identity = false; break; }
       const sampleReceipt = receiptEvents.find(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId);
-      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity,
+      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, limitation,
         sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms },
         provider: linksKnown && charges.length ? receiptEvents.every(r => r.copilot) : attributed(prompt.sessionId),
         state: doubtful || prompt.origin === 'unspecified' && !initial ? ATTRIBUTION : incomplete ? ACCOUNTING : unfinished ? UNFINISHED : ELIGIBLE });
     }
   }
-  return { prompts, seeds, unassigned: records.filter(r => !assigned.has(r.key)) };
+  return { prompts, seeds, unassigned: records.filter(r => !assigned.has(r.key)), conflictingReceipts };
 }
 
 // Journals rarely change between reports, and one refresh usually changes a single session.
@@ -422,6 +457,7 @@ export function reviewPromptCandidates(events, records, query, start, end, now, 
 export function summarizePromptCredits(events = [], records = [], query, start, end, now, options) {
   const result = { prompts: 0, eligiblePrompts: 0, credits: null, averageCredits: null, modelFiltered: !!query.models,
     excluded: { attribution: 0, accounting: 0, unfinished: 0 }, unlinkedRequests: 0,
+    coverage: { cancelledPrompts: 0, interruptedPrompts: 0, pluginCalls: 0, compactionCalls: 0, unexpectedPrompts: 0, unexpectedCalls: 0 },
     work: { requests: 0, averageRequests: null, maxRequests: null, tokenPrompts: 0, tokens: null, averageTokens: null } };
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
   const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
@@ -454,6 +490,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
       }
       if (!dated || query.project && query.project !== prompt.project || models && !selected.length) continue;
       result.prompts++;
+      if (prompt.state !== ELIGIBLE) result.coverage[prompt.limitation || 'unexpectedPrompts']++;
       if (prompt.state === ATTRIBUTION) result.excluded.attribution++;
       else if (prompt.state === ACCOUNTING) result.excluded.accounting++;
       else if (prompt.state === UNFINISHED) result.excluded.unfinished++;
@@ -469,7 +506,11 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     for (const r of outcome.unassigned) {
       if (query.session && query.session !== r.sessionId || query.project && query.project !== r.project || models && !models.includes(r.model)) continue;
       const day = dayOfMs(r.ms);
-      if (day >= start && day <= end) result.unlinkedRequests++;
+      if (day >= start && day <= end) {
+        result.unlinkedRequests++;
+        const conflict = outcome.conflictingReceipts?.has(r.key);
+        result.coverage[conflict ? 'unexpectedCalls' : r.reviewOrigin || r.backgroundActivity ? 'pluginCalls' : r.origin === 'compaction' ? 'compactionCalls' : 'unexpectedCalls']++;
+      }
     }
   }
   result.projectPrompts = [...projectPrompts.values()];

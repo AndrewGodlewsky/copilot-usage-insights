@@ -72,6 +72,8 @@ test('automatic Enhance Prompt source groups helpers separately with exact token
   assert.equal(report.projects[0].userPrompts, null, 'accounting-only exports do not invent human submissions');
   assert.equal(report.promptCredits.averageCredits, null);
   assert.equal(report.promptCredits.eligiblePrompts, 0);
+  assert.equal(report.promptCredits.coverage.pluginCalls, 2);
+  assert.equal(report.promptCredits.coverage.unexpectedCalls, 0);
   assert.deepEqual(new Set(report.sessions.map(session => session.id)), new Set([firstId, secondId]));
   assert.ok(report.sessions.every(session => session.name.startsWith('Enhanced Prompt · ')));
   assert.equal(report.coverage.excluded, 1);
@@ -117,6 +119,7 @@ test('manual copies and repeated atomic rewrites do not double-count retained ac
     const report = await request(method, { range: 'all' }, refresh);
     assert.equal(report.totals.requests, 1);
     assert.equal(report.totals.credits, 0.25);
+    assert.equal(report.promptCredits.coverage.pluginCalls, 1);
     assert.equal(report.sources.filter(source => source.path === home).length, 1);
   }
   await writeSession(home, firstId, [receipt(firstId, 'first'), receipt(firstId, 'first'), receipt(firstId, 'next')]);
@@ -124,6 +127,27 @@ test('manual copies and repeated atomic rewrites do not double-count retained ac
   assert.equal(changed.totals.requests, 2);
   assert.equal(changed.totals.total, 240);
   assert.equal(changed.totals.credits, 0.5);
+});
+
+test('a project name alone cannot classify unknown calls as plugin activity', async t => {
+  const { defaultHome, request } = await fixture(t);
+  await writeSession(defaultHome, firstId, [receipt(firstId, 'ordinary')]);
+  const report = await request();
+  assert.equal(report.projects[0].name, 'Enhanced Prompt');
+  assert.equal(report.promptCredits.coverage.pluginCalls, 0);
+  assert.equal(report.promptCredits.coverage.unexpectedCalls, 1);
+});
+
+test('known helper provenance survives a copied log encountered first', async t => {
+  const { home, defaultHome, request } = await fixture(t);
+  await writeSession(home, firstId, [receipt(firstId, 'first')]);
+  await fs.cp(home, defaultHome, { recursive: true });
+  for (const refresh of [false, true]) {
+    const report = await request('usage.report', { range: 'all' }, refresh);
+    assert.equal(report.promptCredits.unlinkedRequests, 1);
+    assert.equal(report.promptCredits.coverage.pluginCalls, 1);
+    assert.equal(report.totals.credits, 0.25);
+  }
 });
 
 test('automatic source respects disabledHomes and resumes after re-enabling', async t => {

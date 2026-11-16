@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.89",
+    "summary": "Recognized cancellations, interrupted sessions and background plugin calls no longer trigger an orange warning; their details remain in Review coverage. Fixed prompt averages after resuming a session while preserving all recorded spending."
+  },
+  {
     "version": "0.1.88",
     "summary": "AI review now creates expandable insight cards with evidence and confidence. Choose model reasoning and optionally allow one bounded prompt review for more specific findings; each analysis shows its recorded usage."
   },

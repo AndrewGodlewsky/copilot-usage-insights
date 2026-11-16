@@ -32,7 +32,6 @@
       <article class="card"><header><div><h2>Models</h2><span class="muted" id="models-selection">Top 8 · bars show tokens</span></div><label class="detail-sort">Sort by <select id="models-sort" aria-label="Sort models by"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="requests">Model turns</option><option value="name">Name (A–Z)</option></select></label></header><div id="models-summary"></div></article>
       <article class="card"><header><div><h2>Projects</h2><span class="muted" id="projects-selection"></span></div><label class="detail-sort">Sort by <select id="projects-sort" aria-label="Sort projects by"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="userPrompts">User prompts</option><option value="requests">Model turns</option><option value="name">Name (A–Z)</option></select></label></header><div id="projects-summary" class="table-wrap"></div></article>
       <p class="footnote">Select a model or project to filter the dashboard; select it again to clear. Gray choices show alternatives within the other filters.</p>
-      <p id="prompt-coverage-note" class="footnote" hidden></p>
     </section>
     <section id="breakdown-view" hidden>
       <article class="card"><header><h2>Usage breakdown</h2><label>Group by <select id="group"><option value="models">Model</option><option value="projects">Project</option></select></label><label>Sort by <select id="sort"><option value="total">Tokens</option><option value="credits">AI credits</option><option value="userPrompts">User prompts</option></select></label></header><div id="breakdown" class="table-wrap"></div></article>
@@ -86,6 +85,8 @@
   <dialog id="coverage-dialog" aria-labelledby="coverage-title">
     <header><h2 id="coverage-title">Review data coverage</h2><button id="coverage-close" type="button">Close</button></header>
     <h3>Current view</h3><p id="coverage-current"></p>
+    <p id="prompt-coverage-note" class="footnote" hidden></p>
+    <div id="coverage-limitations"></div>
     <h3>Excluded records and summary-only sessions</h3>
     <p class="footnote">Known dates follow your date filter in local time. Known environment, model, project and session mismatches are excluded from this list. Unknown dates or missing filter metadata stay under Cannot place in current view, without activating the banner. Summary-only rows use the session start and latest summary dates; these are not dates of itemized usage.</p>
     <label>Show<select id="coverage-scope"><option value="current">In selected dates</option><option value="outside">Outside selected dates</option><option value="unknown">Cannot place in current view</option></select></label>

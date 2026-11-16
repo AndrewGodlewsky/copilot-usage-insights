@@ -324,17 +324,52 @@ test('coverage dismissal hides only relevant markers across cards, charts, and e
   assert.equal(get('hero-credits').textContent, '0.25 *', 'new warnings restore relevant markers');
 });
 
-test('partial prompt lengths and unknown tool outcomes activate their own coverage notice', async () => {
+test('known exclusions stay inspectable, while unexpected prompt and source problems still warn', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  Object.assign(report.promptCredits, { prompts: 3, eligiblePrompts: 1, averageCredits: 2, unlinkedRequests: 4,
+    coverage: { cancelledPrompts: 1, interruptedPrompts: 1, pluginCalls: 3, compactionCalls: 1 },
+    excluded: { attribution: 1, accounting: 0, unfinished: 1 } });
+  const { get, requests } = await mountPanel(report);
+  assert.equal(get('coverage').hidden, true);
+  assert.doesNotMatch(get('tiles').innerHTML, />2 \*</);
+  const before = requests.length;
+  get('coverage-open').onclick();
+  assert.equal(requests.length, before, 'coverage uses the existing report');
+  assert.match(get('coverage-limitations').innerHTML, /1 user-cancelled/);
+  assert.match(get('coverage-limitations').innerHTML, /1 interrupted/);
+  assert.match(get('coverage-limitations').innerHTML, /3 background plugin/);
+  assert.match(get('coverage-limitations').innerHTML, /1 conversation-compaction/);
+  report.promptCredits.prompts++;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /1 prompts have unresolved cost coverage/);
+  get('coverage-dismiss').onclick();
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, true, 'dismissal survives an unchanged refresh');
+  report.promptCredits.unlinkedRequests++;
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /1 model calls could not be linked/);
+  Object.assign(report, buildReport([], {}));
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, true);
+  assert.doesNotMatch(get('coverage-limitations').innerHTML, /background plugin/);
+  report.coverageDetails.unreadable = [{ file: 'fixture', state: 'error', failed: true }];
+  await get('refresh').onclick();
+  assert.equal(get('coverage').hidden, false);
+  assert.match(get('coverage-message').textContent, /could not be fully read/);
+});
+
+test('optional prompt lengths and tool outcomes stay in coverage details without a warning', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, requests } = await mountPanel(report);
   assert.equal(get('coverage').hidden, true);
   report.efficiency.interactions = { prompts: 2, promptSamples: 1, averagePromptChars: 14, observedSessions: 1 };
   await get('refresh').onclick();
-  assert.equal(get('coverage').hidden, false);
-  assert.match(get('coverage-message').textContent, /Some prompt lengths are not recorded/);
-  assert.match(get('efficiency-habits').innerHTML, />14 \*</);
+  assert.equal(get('coverage').hidden, true);
   const before = requests.length;
-  get('coverage-dismiss').onclick();
+  get('coverage-open').onclick();
+  assert.match(get('coverage-limitations').innerHTML, /Some prompt lengths are not recorded/);
   assert.equal(requests.length, before);
   assert.match(get('efficiency-habits').innerHTML, />14</);
   assert.match(get('efficiency-habits').innerHTML, /1 messages with text lengths/);
@@ -344,11 +379,9 @@ test('partial prompt lengths and unknown tool outcomes activate their own covera
   report.tools.rows = [row];
   report.mcp.rows = [{ ...row, name: 'server' }];
   await get('refresh').onclick();
-  assert.equal(get('coverage').hidden, false);
-  assert.match(get('coverage-message').textContent, /Some tool calls have no recorded outcome/);
-  assert.doesNotMatch(get('coverage-message').textContent, /prompt lengths/);
-  for (const id of ['mcp', 'efficiency-reliability']) assert.match(get(id).innerHTML, /100% \*/);
-  get('coverage-dismiss').onclick();
+  assert.equal(get('coverage').hidden, true);
+  assert.match(get('coverage-limitations').innerHTML, /Some tool calls have no recorded outcome/);
+  assert.doesNotMatch(get('coverage-limitations').innerHTML, /prompt lengths/);
   for (const id of ['mcp', 'efficiency-reliability']) {
     assert.match(get(id).innerHTML, /100%/);
     assert.doesNotMatch(get(id).innerHTML, /100% \*/);
@@ -356,7 +389,7 @@ test('partial prompt lengths and unknown tool outcomes activate their own covera
   assert.match(get('efficiency-reliability').innerHTML, /Success rate uses only known outcomes/);
 });
 
-test('paired reasoning and whole-prompt token coverage can warn despite complete receipt totals', async () => {
+test('optional reasoning stays informational while missing primary prompt tokens still warn', async () => {
   const { get, report, records, now } = await requestPanel();
   const history = [records[0], { ...records[1], reasoning: 30 }];
   Object.assign(report, buildReport(history, {}, now));
@@ -364,11 +397,10 @@ test('paired reasoning and whole-prompt token coverage can warn despite complete
   await get('refresh').onclick();
   assert.equal(report.totals.missing.reasoning, 0);
   assert.equal(report.efficiency.summary.reasoningRequests, 1);
-  assert.equal(get('coverage').hidden, false);
-  assert.match(get('coverage-message').textContent, /Reasoning counts are only partly measured/);
+  assert.equal(get('coverage').hidden, true);
+  get('coverage-open').onclick();
+  assert.match(get('coverage-limitations').innerHTML, /Reasoning counts are only partly measured/);
   jumpTokenTopic(get, 'output');
-  assert.match(get('token-topic-body').innerHTML, />5 \*</);
-  get('coverage-dismiss').onclick();
   assert.match(get('token-topic-body').innerHTML, />5</);
 
   Object.assign(report, buildReport(records, {}, now));

@@ -36,6 +36,112 @@ function snapshot(events) {
 const report = (events, query = {}) => { const s = snapshot(events); return buildReport(s.records, { range: 'all', ...query }, now, s); };
 const metrics = (events, query) => report(events, query).promptCredits;
 
+function interrupted() {
+  const f = fixture(); f.user('before', { source: undefined });
+  f.call('before', 'first', 1e9, { complete: false, terminal: false, tools: ['ask'] });
+  f.push('tool.execution_start', { toolCallId: 'ask', turnId: '0', toolName: 'ask_user' });
+  f.push('session.resume', {});
+  f.push('tool.execution_complete', { toolCallId: 'ask', interactionId: 'resume', success: false });
+  f.user('after', { source: undefined }); f.call('after', 'second', 2e9, { terminal: false });
+  f.call('after', 'third', 3e9, { turn: '1', initiator: 'agent' });
+  return f;
+}
+
+test('an explicit resume separates repeated turn IDs and preserves interrupted spending', () => {
+  const f = interrupted(), r = report([...f.events, ...f.events]);
+  assert.equal(r.totals.credits, 6);
+  assert.equal(r.promptCredits.prompts, 2);
+  assert.equal(r.promptCredits.eligiblePrompts, 1);
+  assert.equal(r.promptCredits.averageCredits, 5);
+  assert.equal(r.promptCredits.coverage.interruptedPrompts, 1);
+  assert.equal(r.promptCredits.coverage.unexpectedPrompts, 0);
+  assert.equal(r.promptCredits.coverage.unexpectedCalls, 0);
+  const unknown = metrics(f.events.filter(e => e.type !== 'session.resume'));
+  assert.equal(unknown.eligiblePrompts, 0, 'missing resume evidence cannot disambiguate reused turns');
+  assert.equal(unknown.coverage.unexpectedPrompts, 2);
+});
+
+test('explicit user cancellation is informational without inventing a zero charge', () => {
+  const f = fixture(); f.user('cancelled', { source: undefined });
+  f.push('assistant.turn_start', { interactionId: 'cancelled', turnId: '0' });
+  f.push('abort', { reason: 'user_initiated' }); f.push('assistant.turn_end', { turnId: '0' });
+  f.push('session.resume', {});
+  f.user('done'); f.call('done', 'done', 2e9);
+  const r = report(f.events), p = r.promptCredits;
+  assert.equal(r.totals.credits, 2);
+  assert.equal(p.prompts, 2); assert.equal(p.eligiblePrompts, 1); assert.equal(p.averageCredits, 2);
+  assert.equal(p.coverage.cancelledPrompts, 1); assert.equal(p.coverage.unexpectedPrompts, 0);
+  const unknown = structuredClone(f.events.filter(e => e.type !== 'session.resume')); unknown.find(e => e.type === 'abort').data.reason = 'unknown';
+  assert.equal(metrics(unknown).coverage.cancelledPrompts, 0);
+  assert.ok(metrics(unknown).coverage.unexpectedPrompts > 0);
+  const serialized = JSON.stringify(snapshot(f.events).promptEvents);
+  assert.ok(!serialized.includes('PRIVATE'));
+  assert.ok(!serialized.includes('user_initiated'), 'retain a recognized boolean, not raw reasons');
+});
+
+test('recognized interruptions do not silence missing or conflicting charges or unknown links', () => {
+  const f = interrupted();
+  const missing = f.events.filter(e => e.data?.usage?.apiCallId !== 'first');
+  assert.ok(metrics(missing).coverage.unexpectedPrompts > 0);
+  const conflict = structuredClone(f.events.find(e => e.data?.usage?.apiCallId === 'first'));
+  conflict.data.usage.copilotUsage.totalNanoAiu++;
+  assert.ok(metrics([...f.events, conflict]).coverage.unexpectedPrompts > 0);
+  const unowned = structuredClone(f.events.find(e => e.data?.usage?.apiCallId === 'first'));
+  unowned.id = 'unowned'; unowned.data.usage.apiCallId = 'unowned'; unowned.data.usage.accounting.usageId = 'unowned';
+  assert.ok(metrics([...f.events, unowned]).coverage.unexpectedCalls > 0);
+  assert.ok(metrics([...f.events, unowned]).coverage.unexpectedPrompts > 0);
+  const partial = structuredClone(f.events);
+  partial.find(e => e.data?.usage?.apiCallId === 'first').data.usage.aiCreditsStatus = 'partial';
+  assert.ok(metrics(partial).coverage.unexpectedPrompts > 0);
+  const child = delegated();
+  child.events = child.events.filter(e => e.type !== 'subagent.completed');
+  child.push('session.resume', {});
+  assert.ok(metrics(child.events).coverage.unexpectedPrompts > 0, 'resume cannot certify unfinished child work');
+});
+
+test('recovered tool completions must retain conflicting child scope evidence', () => {
+  for (const scope of ['agent', 'parent']) {
+    const f = fixture(); f.user('a'); f.call('a', 'first', 1e9, { terminal: false, tools: ['tool'] });
+    f.push('session.resume', {});
+    f.push('tool.execution_complete', { toolCallId: 'tool', interactionId: 'resume', ...(scope === 'parent' ? { parentToolCallId: 'unknown-parent' } : {}) },
+      scope === 'agent' ? { agentId: 'unknown-child' } : {});
+    f.call('a', 'last', 2e9, { turn: '1', initiator: 'agent' });
+    const p = metrics(f.events);
+    assert.equal(p.eligiblePrompts, 0);
+    assert.equal(p.coverage.unexpectedPrompts, 1);
+  }
+});
+
+test('copied Usage Insights markers identify helper calls without relying on their location', () => {
+  const f = fixture('helper', 'Usage Insights');
+  f.events[0].data.usageInsightsReview = 1;
+  f.push('session.usage_record', { usage: { apiCallId: 'helper', provider: { kind: 'copilot' }, model: 'Model A',
+    accounting: { sourceSessionId: 'helper', usageId: 'helper-call' }, inputTokens: 100, outputTokens: 20, copilotUsage: { totalNanoAiu: 1e9 } } });
+  const r = report([...f.events, ...f.events]);
+  assert.equal(r.totals.credits, 1);
+  assert.equal(r.promptCredits.coverage.pluginCalls, 1);
+  assert.equal(r.promptCredits.coverage.unexpectedCalls, 0);
+  assert.equal(r.promptCredits.eligiblePrompts, 0);
+  const conflicting = structuredClone(f.events.at(-1));
+  conflicting.data.usage.copilotUsage.totalNanoAiu = 2e9;
+  for (const eventId of [conflicting.id, 'copy-with-new-envelope']) {
+    conflicting.id = eventId;
+    const conflict = metrics([...f.events, conflicting]);
+    assert.equal(conflict.coverage.pluginCalls, 0, 'provenance does not excuse conflicting charges');
+    assert.equal(conflict.coverage.unexpectedCalls, 1);
+  }
+});
+
+test('expected coverage counts follow prompt dates and all existing filters', () => {
+  const f = interrupted();
+  for (const e of f.events) if (e.data?.interactionId === 'before') e.timestamp = new Date(2026, 10, 13, 23, 59).toISOString();
+  assert.equal(metrics(f.events, { range: '1d' }).coverage.interruptedPrompts, 0);
+  assert.equal(metrics(f.events, { project: 'Other' }).coverage.interruptedPrompts, 0);
+  assert.equal(metrics(f.events, { session: 'other' }).coverage.interruptedPrompts, 0);
+  assert.equal(metrics(f.events, { models: ['Other'] }).coverage.interruptedPrompts, 0);
+  assert.equal(metrics(f.events, { models: ['Model A'] }).coverage.interruptedPrompts, 1);
+});
+
 test('unlinked compaction accounting does not invalidate otherwise complete prompt costs', () => {
   const f = fixture(); f.user('a'); f.call('a', 'call', 1e9);
   const s = snapshot(f.events), ordinary = s.records[0];
@@ -45,6 +151,8 @@ test('unlinked compaction accounting does not invalidate otherwise complete prom
   assert.equal(r.promptCredits.eligiblePrompts, 1);
   assert.equal(r.promptCredits.averageCredits, 1, 'unattributed compaction is not guessed onto a prompt');
   assert.equal(r.promptCredits.unlinkedRequests, 1, 'coverage still discloses the unlinked charge');
+  assert.equal(r.promptCredits.coverage.compactionCalls, 1);
+  assert.equal(r.promptCredits.coverage.unexpectedCalls, 0);
 });
 
 test('prompt work counts linked calls once and only averages fully measured prompt tokens', () => {

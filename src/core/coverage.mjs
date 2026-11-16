@@ -66,6 +66,6 @@ export function summarizeCoverage(entries = [], sources = [], query, start, end,
   }
   const rows = [...groups.values()].sort((a, b) => a.scope.localeCompare(b.scope) || b.from.localeCompare(a.from) || a.file.localeCompare(b.file));
   const unreadable = sources.filter(s => ['error', 'warning', 'missing'].includes(s.state) && (!query.environment || s.environment === query.environment))
-    .map(s => ({ file: s.path, state: s.state }));
+    .map(s => ({ file: s.path, state: s.state, failed: (s.state === 'error' || s.state === 'warning' && !!s.diagnostic) && !['ENOENT', 'ENOTDIR'].includes(s.diagnostic?.errorCode) }));
   return { counts, rows, unreadable };
 }

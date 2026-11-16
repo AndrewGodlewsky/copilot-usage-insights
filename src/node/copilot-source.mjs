@@ -10,6 +10,7 @@ import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 import { sourceIdentity, sourceEnvironment } from './source-paths.mjs';
 import { createVSCodeParser } from '../core/vscode.mjs';
 import { mergeCoverage } from '../core/coverage.mjs';
+import { enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // File system calls wait on the operating system, so several session folders are read at once.
@@ -58,7 +59,7 @@ function mergeJournals(snapshots) {
     if (first === undefined) owner.set(id, i);
     else if (first !== i) { overlapping.add(first); overlapping.add(i); }
   }
-  const seenRecords = new Set(), seenInteractions = new Set(), seenSkills = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
+  const seenRecords = new Map(), seenInteractions = new Set(), seenSkills = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
   let home, homeSessions, session;
   const keep = r => {
     records.push(r);
@@ -81,7 +82,11 @@ function mergeJournals(snapshots) {
       for (const tool of s.tools) tools.push(tool);
       continue;
     }
-    for (const r of s.records) if (!seenRecords.has(r.key)) { seenRecords.add(r.key); keep(r); added[i]++; }
+    for (const r of s.records) {
+      const at = seenRecords.get(r.key);
+      if (at === undefined) { seenRecords.set(r.key, records.length); keep(r); added[i]++; }
+      else if (r.backgroundActivity && !records[at].backgroundActivity) records[at] = { ...records[at], backgroundActivity: true };
+    }
     for (const event of s.interactions) if (!seenInteractions.has(event.key)) { seenInteractions.add(event.key); interactions.push(event); }
     for (const event of s.promptEvents) if (seenEvents.add(event) === event) promptEvents.push(event);
     for (const skill of s.skills) if (!seenSkills.has(skill.key)) { seenSkills.add(skill.key); skills.push(skill); }
@@ -160,7 +165,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (!prefixMatches) {
         const growing = Date.now() - stat.mtimeMs < RECENT || !!entry && (!force || entry.digest !== null);
         hash = growing ? createHash('sha256') : null;
-        const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused });
+        const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused, backgroundActivity: context.backgroundActivity });
         entry = { parser, contextKey, environment: context.environment || sourceEnvironment(real).environment, offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
       }
       const parser = entry.parser;
@@ -200,7 +205,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     } finally { chunks.push(chunk); await handle.close(); }
   }
 
-  async function readSession(stateDir, real, sessionId, force) {
+  async function readSession(stateDir, real, sessionId, force, context) {
     // A folder name has nothing to normalise, so its paths are put together directly.
     const dir = stateDir + path.sep + sessionId;
     const found = { id: sessionId, name: '', nameFile: dir + path.sep + 'workspace.yaml', file: '', snapshot: null, error: null };
@@ -209,7 +214,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       const file = dir + path.sep + 'events.jsonl', stat = await fs.stat(file);
       if (!stat.isFile()) return found;
       found.file = file;
-      found.snapshot = await readJournal(file, stat, real, sessionId, force);
+      found.snapshot = await readJournal(file, stat, real, sessionId, force, context);
     } catch (e) { found.error = e; }
     return found;
   }
@@ -218,6 +223,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
     const discovered = includeWsl && discoverWsl ? await discoverWsl({ disabled }) : { homes: [], sources: [] };
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
+    const helperHomes = new Set([enhancePromptUsageHome(), reviewUsageHome()].map(p => sourceIdentity(p)));
     const nameIn = (home, id) => sessionNames.get(home)?.get(id);
     const setName = (home, id, name) => { let map = sessionNames.get(home); if (!map) sessionNames.set(home, map = new Map()); map.set(id, name); };
     for (const root of new Set([...roots, ...optionalHomes, ...discovered.homes])) {
@@ -246,7 +252,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       catch (e) { if (!absent(e)) { source.state = 'error'; source.message = e.message; source.diagnostic = diagnosticError(e); } }
       const sessions = dirs.filter(dir => dir.isDirectory() && !dir.name.startsWith('.'));
       // Outcomes are applied in folder order, so the result does not depend on which read finished first.
-      for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force))) {
+      const context = { backgroundActivity: helperHomes.has(rootIdentity) || helperHomes.has(identity) };
+      for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force, context))) {
         seenNames.add(found.nameFile);
         if (found.name) setName(real, found.id, found.name);
         if (found.file) { seenFiles.add(found.file); source.files++; }
