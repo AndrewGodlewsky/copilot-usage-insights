@@ -4,7 +4,7 @@
   "plugins": [{
     "name": "copilot-usage-insights",
     "description": "A local GitHub Copilot usage dashboard and canvas.",
-      "version": "0.1.100",
+      "version": "0.1.101",
     "source": "./"
   }]
 }

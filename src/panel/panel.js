@@ -69,6 +69,17 @@ $('coverage-scope').onchange = () => { coveragePage = 0; renderCoverageReview();
 $('coverage-prev').onclick = () => { coveragePage--; renderCoverageReview(); };
 $('coverage-next').onclick = () => { coveragePage++; renderCoverageReview(); };
 let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanAt;
+let historyLoading, historyPoll, historyStarted, displayedHistoryPhase;
+function scheduleHistoryPoll() {
+  clearTimeout(historyPoll); historyPoll = null;
+  if (!historyLoading || loadError || document.hidden) return;
+  historyPoll = setTimeout(() => {
+    historyPoll = null;
+    if (document.hidden) return;
+    if (state.pending) { scheduleHistoryPoll(); return; }
+    return load(false, false, true);
+  }, 2000);
+}
 try { cachedServerDiagnostics = JSON.parse($('initial-diagnostics').textContent || 'null') || undefined; }
 catch { clientDiagnostics.record('warn', 'diagnostics.initial'); }
 let importedRuntimeLogs;
@@ -264,12 +275,14 @@ function setRefreshFeedback(status) {
   }
   if (status === 'done') refreshFeedbackTimer = setTimeout(() => setRefreshFeedback('idle'), 1400);
 }
-async function load(force = false, refresh = false) {
+async function load(force = false, refresh = false, background = false) {
+  clearTimeout(historyPoll); historyPoll = null;
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
   state.pending = true;
   const loadStarted = globalThis.performance?.now() ?? Date.now();
-  const loadFields = { loadKind: !state.report ? 'initial' : force ? 'manual' : refresh ? 'automatic' : 'filter', range: state.range };
+  const loadFields = { loadKind: background ? 'background' : !state.report ? 'initial' : force ? 'manual' : refresh ? 'automatic' : 'filter', range: state.range };
+  if (!background && (!state.report || force || refresh) && (!historyLoading || loadError)) { historyStarted = loadStarted; displayedHistoryPhase = undefined; }
   clientDiagnostics.record('info', 'ui.load', { ...loadFields, phase: 'started' });
   setRefreshFeedback('busy');
   let successful = false, manual = false;
@@ -302,16 +315,33 @@ async function load(force = false, refresh = false) {
             if (version !== state.version) throw error;
           }
         }
-        if (rescan || method === 'usage.refresh') lastSuccessfulScanAt = Date.now();
+        if (!report.loading && (rescan || method === 'usage.refresh' || historyLoading)) lastSuccessfulScanAt = Date.now();
         if (version !== state.version) continue;
         loadError = '';
+        historyLoading = report.loading;
+        const historyPhase = report.loading?.phase || 'complete', historyKey = `${report.scanId || report.loading?.scanId}:${historyPhase}`;
+        if (historyKey !== displayedHistoryPhase) {
+          clientDiagnostics.record('info', 'ui.history', { historyPhase, scanId: report.scanId || report.loading?.scanId, phase: 'finished',
+            durationMs: (globalThis.performance?.now() ?? Date.now()) - historyStarted });
+          displayedHistoryPhase = historyKey;
+        }
+        if (report.loading?.phase === 'history') {
+          state.report = null; state.creditsUnavailable = true; state.filterKey = filterKey;
+          state.requestView = state.modelView = state.projectView = state.skillView = null;
+          $('coverage').hidden = true;
+          renderHeaderCredits(); renderLoadStatus();
+          $('status').before($('filters'));
+          $('live').textContent = 'History for this date range is still loading';
+          successful = true;
+          continue;
+        }
         if (report.unchanged) {
           const sky = skyFor(new Date(state.report.generatedAt).getHours());
-          state.report.generatedAt = report.generatedAt; state.report.scannedAt = report.scannedAt;
+          state.report.generatedAt = report.generatedAt; state.report.scannedAt = report.scannedAt; state.report.loading = report.loading;
           renderClock(sky);
           renderLoadStatus();
           if (!inventorySnapshot || rescan) void loadInventory(rescan);
-          $('live').textContent = 'Usage updated';
+          $('live').textContent = historyLoading ? 'Recent usage so far; history is still loading' : 'Usage updated';
           successful = true;
           continue;
         }
@@ -325,7 +355,7 @@ async function load(force = false, refresh = false) {
         if (!inventorySnapshot || method === 'usage.refresh' || rescan) void loadInventory(method === 'usage.refresh' || rescan);
         if (state.modelView) loadModelProjectPage(state.modelView.offset);
         if (state.projectView?.models) loadSessionModels();
-        $('live').textContent = 'Usage updated';
+        $('live').textContent = historyLoading ? 'Recent usage so far; history is still loading' : 'Usage updated';
         successful = true;
       } catch (e) {
         if (version !== state.version) continue;
@@ -340,12 +370,20 @@ async function load(force = false, refresh = false) {
   } finally {
     state.pending = false; setRefreshFeedback(manual && successful ? 'done' : 'idle');
     clientDiagnostics.record(successful ? 'info' : 'error', 'ui.load', { ...loadFields, phase: successful ? 'finished' : 'failed', durationMs: (globalThis.performance?.now() ?? Date.now()) - loadStarted });
+    scheduleHistoryPoll();
   }
 }
 function renderLoadStatus() {
   const matching = state.report && state.filterKey === JSON.stringify(query());
   if (!matching) rememberReviewAnimation();
   $('content').hidden = !matching;
+  if (historyLoading) {
+    $('status').hidden = false;
+    $('status').textContent = loadError ? 'History loading stopped. Any recent results shown are incomplete. Use Refresh to retry. ' + loadError
+      : historyLoading.phase === 'history' ? `Loading history for ${RANGE_LABELS[state.range] || 'the selected dates'}… Recent ranges are available while the remaining history is checked.`
+      : 'Recent usage so far. Checking older files and databases in the background; totals may change. Prompt-cost averages will appear after verification.';
+    return;
+  }
   $('status').hidden = !loadError && !!state.report?.totals.requests;
   $('status').textContent = loadError ? loadError + (matching ? ' Showing the last successful data; it may be out of date.' : ' Data for these filters could not be loaded.') : 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
 }
@@ -369,7 +407,7 @@ function creditLabel(row) {
 }
 function renderHeaderCredits() {
   const totals = !state.creditsUnavailable && state.filterKey === JSON.stringify(query()) ? state.report?.totals : null;
-  $('hero-credits').textContent = totals ? creditLabel(totals) : 'Unavailable';
+  $('hero-credits').textContent = totals ? creditLabel(totals) : historyLoading && !loadError ? 'Loading…' : 'Unavailable';
   $('hero-credits').title = totals ? 'Recorded Copilot credits for the current filters.' + (totals.missingCredits || totals.partialCredits ? ' Credit coverage is incomplete.' : '') : 'Credits could not be loaded for the current filters.';
 }
 function textCell(value, title = value) {
@@ -585,6 +623,7 @@ function skillTriggerSummary(skill) {
   return `By user: ${number(triggers.manual)}; By agent: ${number(triggers.agent)}; Preloaded: ${number(triggers.preloaded)}; Unknown: ${number(triggers.unknown)}`;
 }
 function renderIntegrations(report) {
+  if (!report) return;
   const focusedServer = document.activeElement?.closest?.('details[data-server]')?.dataset.server;
   const mcp = report.mcp || { rows: [], calls: 0, available: false };
   const statusLabels = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
@@ -796,7 +835,7 @@ function renderReviewResult(force = false) {
 }
 $('efficiency-development-dismiss').onclick = () => { $('efficiency-development').hidden = true; };
 $('efficiency-review-open').onclick = async () => {
-  if (!state.report || reviewRunning || reviewConnectionPending) return;
+  if (!state.report || historyLoading || reviewRunning || reviewConnectionPending) return;
   const run = reviewRun = { cancelled: false, cancellation: null, analysisStarted: false };
   const filters = reviewQuery();
   reviewRunning = true;
@@ -1141,7 +1180,7 @@ function renderBanner(r) {
   banner.innerHTML = pixelBanner(r, { patterns: state.buildingPatterns, h: Math.max(34, Math.ceil(120 * banner.clientHeight / Math.max(1, banner.clientWidth))) });
 }
 function renderUpdated(r) {
-  $('updated').textContent = `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 15 minutes while visible.`;
+  $('updated').textContent = r.loading ? 'Recent usage so far. Older history is loading in the background.' : `Updated ${new Date(r.scannedAt || r.generatedAt).toLocaleTimeString()}. Refreshes every 15 minutes while visible.`;
 }
 // The data is the same as before; only what follows the clock is redrawn.
 function renderClock(previousSky) {
@@ -1193,20 +1232,20 @@ function renderContent() {
   if (r.coverageDetails?.unreadable.some(source => source.failed)) warnings.push('Some enabled data sources could not be fully read; their affected dates are unknown');
   const coverageMessage = warnings.join('. ') + (warnings.length ? '. Totals include known amounts only; * marks incomplete coverage.' : '');
   $('coverage-message').textContent = coverageMessage;
-  $('coverage').hidden = !warnings.length || coverageMessage === dismissedCoverage;
+  $('coverage').hidden = !!r.loading || !warnings.length || coverageMessage === dismissedCoverage;
   if ($('coverage-dialog').open) renderCoverageReview();
   renderHeaderCredits();
   const rateValue = (value, samples, total = t.requests) => markedValue(value, samples < total, creditNumber);
   const creditSamples = count => `${number(count)} of ${number(t.requests)} requests`;
   const cacheContext = r.query.includeCache ? 'including cache' : 'excluding cache';
   const promptCoverage = `${number(p.eligiblePrompts)} of ${number(p.prompts)} prompts`;
-  $('prompt-coverage-note').hidden = p.eligiblePrompts === p.prompts && !p.unlinkedRequests;
+  $('prompt-coverage-note').hidden = !!r.loading || p.eligiblePrompts === p.prompts && !p.unlinkedRequests;
   $('prompt-coverage-note').textContent = `${!$('coverage').hidden ? '* ' : ''}AI credits / prompt: ${promptCoverage} have complete, attributable costs. Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} model calls could not be linked to prompts. Local logs cannot establish work they never recorded.`;
   const promptHint = `Complete recorded AI credits for initial calls, agent continuations and reliably linked subagents, divided by eligible user prompts. ${promptCoverage} eligible. Prompts are dated by submission; all linked work is grouped before filters. ${p.modelFiltered ? 'Selected-model contribution only, per eligible prompt using the selected models; whole-prompt accounting must still be complete. ' : ''}Excluded: ${number(p.excluded.attribution)} uncertain attribution, ${number(p.excluded.accounting)} incomplete charges, ${number(p.excluded.unfinished)} unfinished work. ${number(p.unlinkedRequests)} requests could not be linked to prompts. Unlinked ordinary calls make prompt attribution uncertain for their journal session. Conversation-compaction costs count in totals but are not assigned to individual prompts. Local logs cannot establish work they never recorded.`;
   const tiles = [
     ['AI credits', creditLabel(t), 'Recorded Copilot charges', 'credits'],
     ['Tokens', recordedValue(t, 'total', number), RANGE_LABELS[r.query.range], 'tokens'],
-    ['AI credits / prompt', markedValue(p.averageCredits, promptIncomplete, creditNumber), `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', promptHint],
+    ['AI credits / prompt', p.pending ? 'Loading…' : markedValue(p.averageCredits, promptIncomplete, creditNumber), p.pending ? 'Verifying linked calls' : `${number(p.eligiblePrompts)} prompts${p.modelFiltered ? ' · selected-model contribution' : ''}`, 'credits', p.pending ? 'Waiting for complete history to reconcile prompt costs.' : promptHint],
     ['AI credit / 1M tokens', rateValue(t.creditsPerMillionTokens, t.creditTokenRequests), 'input + output + cache', 'credits',
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
@@ -1229,7 +1268,7 @@ function renderContent() {
   $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale, showCoverage: !$('coverage').hidden });
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
-  $('calendar').innerHTML = calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
+  $('calendar').innerHTML = r.loading ? '<p class="muted">Activity history is loading…</p>' : calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
   $('rhythm').innerHTML = punchCard(r.rhythm);
   const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
   const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
@@ -1244,6 +1283,7 @@ function renderContent() {
   renderUpdated(r);
   renderBreakdown();
   renderEfficiency();
+  $('efficiency-review-open').disabled = !!r.loading || reviewRunning || reviewConnectionPending;
   if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
   for (const type of ['model', 'project']) {
     const key = type === 'model' ? 'usageModel' : 'usageProject';
@@ -1497,9 +1537,13 @@ window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer
 document.addEventListener('visibilitychange', () => {
   syncReviewAnimation();
   clientDiagnostics.record('info', 'ui.visibility', connectionState());
-  if (!document.hidden && !state.pending && (lastSuccessfulScanAt === undefined || Date.now() - lastSuccessfulScanAt >= AUTO_REFRESH_MS)) load(false, true);
+  clearTimeout(historyPoll); historyPoll = null;
+  if (!document.hidden && !state.pending) {
+    if (historyLoading && !loadError) load(false, false, true);
+    else if (lastSuccessfulScanAt === undefined || Date.now() - lastSuccessfulScanAt >= AUTO_REFRESH_MS) load(false, true);
+  }
 });
-setInterval(() => { if (!document.hidden && !state.pending) load(false, true); }, AUTO_REFRESH_MS);
+setInterval(() => { if (!document.hidden && !state.pending && !historyLoading) load(false, true); }, AUTO_REFRESH_MS);
 $('start-date').value = dayKey(localDay() - 6); $('end-date').value = dayKey(localDay());
 $('end-date').max = $('start-date').max = dayKey(localDay());
 load(false, true);

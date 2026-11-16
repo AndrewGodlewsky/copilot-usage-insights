@@ -159,6 +159,83 @@ async function finishReconnect(timeouts, pending) {
   await pending;
 }
 
+test('recent loading keeps filters usable, holds wider views, and polls without refreshing or losing focus', async () => {
+  const { get, server, requests, document, timeouts, listeners, report } = await requestPanel();
+  let complete = false;
+  server.report = input => {
+    const loading = { phase: ['all', '90d'].includes(input.range) ? 'history' : 'recent', scanId: 1, since: '2026-10-17', filesDeferred: 5, databasesDeferred: 1 };
+    if (!complete && loading.phase === 'history') return { loading };
+    return { ...report, query: { ...report.query, ...input }, ...(complete ? {} : { loading, promptCredits: { ...report.promptCredits, pending: true, averageCredits: null } }) };
+  };
+  await get('refresh').onclick();
+  assert.match(get('status').textContent, /Recent usage so far/);
+  assert.equal(get('status').hidden, false);
+  assert.equal(get('content').hidden, false);
+  assert.match(get('tiles').innerHTML, /Verifying linked calls/);
+  assert.equal(get('efficiency-review-open').disabled, true);
+  assert.equal(get('coverage').hidden, true, 'unresolved background attribution is not an error notice');
+  assert.match(get('calendar').innerHTML, /loading/);
+  const count = requests.length;
+  await get('efficiency-review-open').onclick();
+  assert.equal(requests.length, count, 'AI analysis cannot use incomplete history');
+  get('range').value = '90d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.match(get('status').textContent, /Loading history for Last 90 days/);
+  assert.equal(get('content').hidden, true);
+  assert.equal(get('hero-credits').textContent, 'Loading…');
+  get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(get('content').hidden, false);
+  document.hidden = true; listeners.get('visibilitychange')();
+  assert.ok(timeouts.filter(timer => timer.ms === 2000).every(timer => timer.cleared));
+  const beforeVisible = requests.length;
+  document.hidden = false; listeners.get('visibilitychange')(); await new Promise(setImmediate);
+  assert.equal(requests[beforeVisible].method, 'usage.report');
+  assert.equal(requests[beforeVisible].refresh, undefined, 'visibility joins existing background work');
+  get('range').focus();
+  complete = true;
+  const poll = timeouts.findLast(timer => timer.ms === 2000 && !timer.cleared);
+  assert.ok(poll);
+  await poll.callback();
+  assert.equal(get('status').hidden, true);
+  assert.equal(get('efficiency-review-open').disabled, false);
+  assert.equal(document.activeElement, get('range'));
+  assert.equal(get('range').value, '7d');
+  assert.equal(requests.filter(r => r.method === 'usage.refresh').length, 1);
+  assert.equal(timeouts.filter(timer => timer.ms === 2000 && !timer.cleared && timer !== poll).length, 0);
+});
+
+test('background loading stops polling on failure and manual Refresh recovers', async () => {
+  const { get, server, timeouts, report } = await requestPanel();
+  server.report = () => ({ ...report, loading: { phase: 'recent', scanId: 1 } });
+  await get('refresh').onclick();
+  const poll = timeouts.findLast(timer => timer.ms === 2000 && !timer.cleared);
+  server.transportError = true;
+  await poll.callback();
+  assert.match(get('status').textContent, /History loading stopped/);
+  assert.equal(get('efficiency-review-open').disabled, true);
+  assert.equal(timeouts.filter(timer => timer.ms === 2000 && !timer.cleared && timer !== poll).length, 0);
+  server.transportError = false; server.report = () => ({ ...report, scanId: 2 });
+  await get('refresh').onclick();
+  assert.equal(get('status').hidden, true);
+  assert.equal(get('efficiency-review-open').disabled, false);
+});
+
+test('late inventory completion survives switching from recent results to a wider loading view', async () => {
+  const { get, server, report } = await requestPanel();
+  let finish;
+  server.inventory = () => new Promise(resolve => { finish = resolve; });
+  server.report = input => input.range === '90d' ? { loading: { phase: 'history' } } : { ...report, loading: { phase: 'recent' } };
+  await get('refresh').onclick();
+  await new Promise(setImmediate);
+  assert.equal(typeof finish, 'function');
+  get('range').value = '90d'; get('range').onchange(); await new Promise(setImmediate);
+  finish({ mcp: { available: true, rows: [] }, plugins: { available: true, rows: [] } });
+  await new Promise(setImmediate);
+  assert.equal(get('content').hidden, true);
+  assert.match(get('status').textContent, /Loading history/);
+  get('range').value = '7d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(get('content').hidden, false);
+});
+
 test('manual Refresh reconnects during an extension restart without repeating AI work', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, server, requests, timeouts } = await mountPanel(report);

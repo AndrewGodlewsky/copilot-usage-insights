@@ -197,7 +197,15 @@ test('request API reuses history, reads prompts only for details, and rechecks e
   let clock = now;
   const server = await startServer({ settings, scanner, defaultHome: home, now: () => clock, html: 'test' });
   t.after(() => server.close());
-  const call = input => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  const call = async input => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+      if (!['usage.report', 'usage.refresh'].includes(input.method) || !(await response.clone().json()).loading) return response;
+      input = { method: 'usage.report', input: input.input };
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.fail('Synthetic history did not finish loading');
+  };
   const report = await (await call({ method: 'usage.report' })).json();
   assert.doesNotMatch(JSON.stringify(report), /Selected prompt|Unselected secret/);
   await fs.rename(file, file + '.moved');
@@ -262,7 +270,7 @@ test('history shares pending scans, retries errors, and cannot reuse a supersede
   const scanner = { scan(roots) { return new Promise((resolve, reject) => pending.push({ roots, resolve, reject })); } };
   const server = await startServer({ settings: { get: async () => ({ ...config }) }, scanner, defaultHome: 'fixture', html: 'test', now: () => now });
   t.after(() => server.close());
-  const call = () => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.requests', input: { model: 'Sonnet' } }) });
+  const call = (method = 'usage.requests') => fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input: { model: 'Sonnet' } }) });
   const first = call(), second = call();
   while (!pending.length) await new Promise(setImmediate);
   pending[0].resolve({ records: parse([receipt('old')]) });
@@ -274,7 +282,8 @@ test('history shares pending scans, retries errors, and cannot reuse a supersede
   while (pending.length < 2) await new Promise(setImmediate);
   pending[1].reject(new Error('Temporary scan error'));
   assert.equal((await failed).status, 500);
-  const retry = call();
+  assert.equal((await call()).status, 500, 'polls do not restart failed scans');
+  const retry = call('usage.refresh');
   while (pending.length < 3) await new Promise(setImmediate);
   config.extraHomes = ['source-three'];
   const newer = call();

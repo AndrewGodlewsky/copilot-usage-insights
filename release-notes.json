@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.101",
+    "summary": "Recent usage now appears while older history loads in the background, without restoring old dashboard data. Wider ranges show a loading message, and Show logs includes separate timings for recent results and complete history."
+  },
+  {
     "version": "0.1.100",
     "summary": "Large VS Code histories load faster, and WSL database reads spend less time waiting. Show logs now lets you download the displayed diagnostics as a Markdown file, including cached logs when the server is unavailable."
   },

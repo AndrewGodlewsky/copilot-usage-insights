@@ -25,7 +25,7 @@ async function reportTimes(snapshot) {
 }
 
 // Heavy-user simulation: writes a synthetic Copilot home, then times every stage a dashboard
-// open, a filter change and the 60-second refresh go through, as the panel drives them.
+// open, a filter change and a refresh go through, as the panel drives them.
 //   node --expose-gc scripts/benchmark-performance.mjs --scale --records=50000
 // Options: --days=180 --empty=2000 --payload=compact|realistic --seed=1 --skip-unused --keep
 // --repo=<checkout> measures another checkout on the same generated history.
@@ -92,15 +92,24 @@ async function scale() {
       const shown = new Map();
       const call = async (input, refresh = false) => {
         const key = JSON.stringify(input), known = refresh ? shown.get(key) : undefined;
+        let recentReadyMs;
         const run = await elapsed(async () => {
-          const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.report', input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }) });
-          const text = await response.text();
-          if (!response.ok) throw new Error(text.slice(0, 200));
-          return text;
+          const started = performance.now();
+          for (;;) {
+            const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.report', input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }) });
+            const text = await response.text();
+            if (!response.ok) throw new Error(text.slice(0, 200));
+            const loading = JSON.parse(text).loading;
+            if (!loading) return text;
+            if (loading.phase === 'recent') recentReadyMs ??= round(performance.now() - started);
+            refresh = false;
+            if (performance.now() - started > 120000) throw new Error('Synthetic history did not finish');
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
         });
         const revision = /"revision":"([^"]+)"/.exec(run.value.slice(0, 400))?.[1];
         if (revision) shown.set(key, revision);
-        return { ms: round(run.ms), kb: Math.round(run.value.length / 1024) };
+        return { ms: round(run.ms), kb: Math.round(run.value.length / 1024), ...(recentReadyMs !== undefined ? { recentReadyMs } : {}) };
       };
       const all = { range: 'all' }, week = { range: '7d' };
       out.server = { firstOpen7d: await call(week), filterToAll: await call(all), filterBackTo7d: await call(week) };
@@ -121,7 +130,13 @@ async function scale() {
     } finally { await server.close(); }
     out.serverHeapMB = round(heap() - idle);
     console.log(JSON.stringify(out));
-  } finally { if (!process.argv.includes('--keep')) await fs.rm(root, { recursive: true, force: true }); else console.error(`Kept ${root}`); }
+  } finally {
+    if (!process.argv.includes('--keep')) {
+      const resolved = path.resolve(root);
+      if (path.dirname(resolved) !== path.resolve(os.tmpdir()) || !path.basename(resolved).startsWith('usage-scale-') || (await fs.lstat(resolved)).isSymbolicLink()) throw new Error('Unexpected synthetic fixture path');
+      await fs.rm(resolved, { recursive: true, force: true });
+    } else console.error(`Kept ${root}`);
+  }
 }
 
 if (process.argv.includes('--scale')) await scale();

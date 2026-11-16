@@ -7,7 +7,8 @@ for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', '
 const sourceFiles = 'canvas-server|canvas-endpoint|copilot-source|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
-for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills']) numericFields.add(field);
+for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills', 'filesDeferred', 'databasesDeferred', 'scanId']) numericFields.add(field);
+for (const event of ['history.recent', 'history.background']) RUNTIME_EVENTS.add(event);
 booleanFields.add('unchanged');
 for (const field of ['executableAllowed', 'bootstrapPresent', 'sdkPathPresent', 'parentMatches']) booleanFields.add(field);
 for (const field of ['received', 'eligible', 'distributions', 'running', 'homes', 'vscodeHomes', 'environments', 'compactions', 'wslDatabases', 'fallbackRequests', 'sqliteCode', 'pass', 'inputChars', 'cards', 'samples']) numericFields.add(field);
@@ -18,7 +19,8 @@ const enumFields = {
   sourceKind: new Set(['copilot', 'vscode']),
   environmentType: new Set(['local', 'wsl', 'remote']),
   databaseReader: new Set(['local', 'wsl']),
-  loadKind: new Set(['initial', 'manual', 'automatic', 'filter']),
+  loadKind: new Set(['initial', 'manual', 'automatic', 'filter', 'background']),
+  historyPhase: new Set(['recent', 'history', 'complete']),
   action: new Set(['copy', 'open']),
   kind: new Set(['mcp', 'plugins']),
   reason: new Set(['unsupported', 'invalid-response', 'failed']),
@@ -98,6 +100,7 @@ export function parseRuntimeDiagnostics(text) {
 export function loadTimingSummary(entries) {
   const labels = {
     'ui.load': 'Usage load', 'history.scan': 'All history', 'history.discovery': 'WSL source discovery',
+    'history.recent': 'Recent journals ready', 'history.background': 'Remaining history verification', 'ui.history': 'History displayed',
     'history.copilot': 'Copilot source probing and journals', 'history.journals': 'Copilot journals',
     'history.vscode': 'VS Code discovery and journals', 'history.merge': 'Journal deduplication',
     'history.database': 'Usage database', 'history.names': 'Session names', 'history.finalize': 'History reconciliation',
@@ -107,7 +110,7 @@ export function loadTimingSummary(entries) {
   };
   const latest = new Map();
   for (const entry of entries) if (Object.hasOwn(labels, entry.event) && ['started', 'finished', 'failed'].includes(entry.phase)) {
-    const key = JSON.stringify([entry.source, entry.event, entry.sourceIndex, entry.loadKind]);
+    const key = JSON.stringify([entry.source, entry.event, entry.sourceIndex, entry.loadKind, entry.historyPhase]);
     const previous = latest.get(key);
     if (!previous || entry.at >= previous.at) latest.set(key, entry);
   }
@@ -115,9 +118,9 @@ export function loadTimingSummary(entries) {
   if (!latest.size) lines.push('No load timings retained yet.');
   for (const entry of latest.values()) {
     const name = entry.event === 'ui.load' && entry.loadKind === 'initial' ? 'Initial usage load' : labels[entry.event];
-    const context = [entry.source, entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType].filter(Boolean).join(', ');
+    const context = [entry.source, entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType, entry.historyPhase].filter(Boolean).join(', ');
     const timing = Number.isFinite(entry.durationMs) ? `${entry.durationMs} ms` : 'no completion retained';
-    const counts = ['records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'bytesRead', 'bytesHashed', 'responseBytes', 'cacheHit', 'unchanged']
+    const counts = ['scanId', 'records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'filesDeferred', 'databasesDeferred', 'bytesRead', 'bytesHashed', 'responseBytes', 'cacheHit', 'unchanged']
       .filter(key => typeof entry[key] === 'boolean' || Number.isFinite(entry[key])).map(key => `${key}=${entry[key]}`).join(', ');
     lines.push(`${entry.at} ${name}${context ? ` (${context})` : ''}: ${entry.phase}, ${timing}${counts ? '; ' + counts : ''}`);
   }

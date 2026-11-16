@@ -9,6 +9,9 @@ import { createDiagnostics } from '../src/core/diagnostics.mjs';
 
 const option = (name, value) => Number(process.argv.find(a => a.startsWith(`--${name}=`))?.split('=')[1] ?? value);
 const files = option('files', 240), kib = option('kib', 256);
+const recentPercent = option('recent-percent', 100), progressive = process.argv.some(a => a.startsWith('--recent-percent='));
+assert.ok(Number.isFinite(recentPercent) && recentPercent >= 0 && recentPercent <= 100);
+const recentFiles = Math.ceil(files * recentPercent / 100), now = new Date(), since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29).getTime();
 assert.ok(Number.isInteger(files) && files > 0 && files <= 2000 && Number.isInteger(kib) && kib > 0 && kib <= 4096);
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-vscode-bench-'));
 try {
@@ -19,11 +22,13 @@ try {
     const folder = path.join(workspace, 'github.copilot-chat', 'debug-logs', `session-${i}`);
     await fs.mkdir(folder, { recursive: true });
     await fs.writeFile(path.join(workspace, 'workspace.json'), JSON.stringify({ folder: 'file:///C:/synthetic/project' }));
-    const line = JSON.stringify({ v: 1, type: 'llm_request', sid: `session-${i}`, spanId: 'call', ts: Date.now(), attrs: {
+    const modified = i < recentFiles ? now : new Date(since - 30 * 86400000);
+    const line = JSON.stringify({ v: 1, type: 'llm_request', sid: `session-${i}`, spanId: 'call', ts: modified.getTime(), attrs: {
       model: 'synthetic', inputTokens: 100, outputTokens: 20, copilotUsageNanoAiu: 125000000, inputMessages: 'x'.repeat(kib * 1024),
     } }) + '\n';
     bytes += Buffer.byteLength(line);
     await fs.writeFile(path.join(folder, 'main.jsonl'), line);
+    if (progressive) await fs.utimes(path.join(folder, 'main.jsonl'), modified, modified);
   }
   const samples = [];
   for (let i = 0; i < 3; i++) {
@@ -34,9 +39,21 @@ try {
     assert.equal(first.records.reduce((n, r) => n + r.nanoAiu, 0), files * 125000000);
     const warmStart = performance.now();
     assert.equal(await scanner.scan([]), first);
-    samples.push({ coldMs: Math.round(coldMs), warmMs: Math.round(performance.now() - warmStart) });
+    const sample = { coldMs: Math.round(coldMs), warmMs: Math.round(performance.now() - warmStart) };
+    if (progressive) {
+      const fresh = createScanner({ discoverVSCode: createVSCodeSources({ defaultHomes: [home] }) });
+      const began = performance.now();
+      const full = await fresh.scan([], { recentSince: since, onRecent(partial, progress) {
+        assert.equal(partial.records.length, recentFiles);
+        sample.recentReadyMs = Math.round(performance.now() - began);
+        sample.filesDeferred = progress.filesDeferred;
+      } });
+      sample.historyReadyMs = Math.round(performance.now() - began);
+      assert.deepEqual(full, first, 'progressive loading must not change final accounting');
+    }
+    samples.push(sample);
   }
-  console.log(JSON.stringify({ files, bytes, samples }));
+  console.log(JSON.stringify({ files, bytes, ...(progressive ? { recentFiles } : {}), samples }));
 } finally {
   const target = path.resolve(temp);
   assert.equal(path.dirname(target), path.resolve(os.tmpdir()));

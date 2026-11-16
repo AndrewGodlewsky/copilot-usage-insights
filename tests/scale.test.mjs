@@ -147,9 +147,15 @@ test('the dashboard is told when nothing changed instead of being sent the repor
   try {
     const call = async body => {
       const started = performance.now();
-      const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), text = await response.text();
-      assert.equal(response.status, 200, text.slice(0, 200));
-      return { ms: performance.now() - started, bytes: text.length, body: JSON.parse(text) };
+      for (let attempt = 0; attempt < 1000; attempt++) {
+        const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), text = await response.text();
+        assert.equal(response.status, 200, text.slice(0, 200));
+        const result = JSON.parse(text);
+        if (!result.loading) return { ms: performance.now() - started, bytes: text.length, body: result };
+        body = { ...body, method: 'usage.report', refresh: false };
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      assert.fail('Synthetic history did not finish loading');
     };
     const input = { range: 'all' };
     const opened = await call({ method: 'usage.report', input });
@@ -157,7 +163,7 @@ test('the dashboard is told when nothing changed instead of being sent the repor
     assert.equal(typeof opened.body.revision, 'string');
     clock = new Date(now.getTime() + 60_000);
     const quiet = await call({ method: 'usage.report', input, refresh: true, known: opened.body.revision });
-    assert.deepEqual(Object.keys(quiet.body).sort(), ['generatedAt', 'revision', 'scannedAt', 'unchanged']);
+    assert.deepEqual(Object.keys(quiet.body).sort(), ['generatedAt', 'revision', 'scanId', 'scannedAt', 'unchanged']);
     assert.equal(quiet.body.unchanged, true);
     assert.equal(quiet.body.generatedAt, clock.toISOString());
     assert.ok(quiet.bytes < 400, `an unchanged refresh sent ${quiet.bytes} bytes`);
@@ -165,7 +171,7 @@ test('the dashboard is told when nothing changed instead of being sent the repor
     // The same request without a fingerprint, or with a stale one, still gets the whole report.
     const whole = await call({ method: 'usage.report', input, refresh: true });
     assert.equal(whole.body.revision, opened.body.revision);
-    const { generatedAt: a, scannedAt: b, ...shown } = opened.body, { generatedAt: c, scannedAt: d, ...sent } = whole.body;
+    const { generatedAt: a, scannedAt: b, scanId: e, ...shown } = opened.body, { generatedAt: c, scannedAt: d, scanId: f, ...sent } = whole.body;
     assert.deepEqual(sent, shown);
     assert.equal((await call({ method: 'usage.report', input, refresh: true, known: 'stale' })).body.totals.requests, truth.records);
     // A different filter never matches the fingerprint of another.

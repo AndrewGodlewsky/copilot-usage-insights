@@ -8,7 +8,7 @@ import { readRequestPrompts } from './request-prompts.mjs';
 import { addInstalledSkillVersions } from './skill-version.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
-import { localDay } from '../core/query.mjs';
+import { localDay, dayKey, parseDateDay, RANGE_DAYS } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
 import { prepareInsightReview } from './review-evidence.mjs';
@@ -39,6 +39,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
   let origin;
   const pending = new Set();
   let history, reviewRequest, preparedReview, contextSnapshot;
+  let scanId = 0;
   // Reports already built from the current scan, by filter. A scan is never altered once it is
   // returned, so a report stays right until the scan is replaced, the local day changes, or
   // something dated later than the report's own moment comes due.
@@ -56,12 +57,21 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     }
     return { entry, cached };
   }
-  function readHistory(config, { refresh = false, force = false } = {}) {
+  async function readHistory(config, { refresh = false, force = false, recent = false } = {}) {
     const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes]);
-    if (!history || history.key !== key || refresh || force) {
-      const fields = { force };
-      const entry = { key, promise: diagnostics.measure('history.scan', fields, async () => {
-        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, readWslDatabases: config.readWslDatabases !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [] });
+    if (!history || history.key !== key || (refresh || force) && (history.complete || history.error)) {
+      const progressive = !history || history.key !== key || !!history.error;
+      const at = now(), since = new Date(at.getFullYear(), at.getMonth(), at.getDate() - 29);
+      const fields = { force, scanId: ++scanId };
+      let ready;
+      const entry = { key, complete: false, ready: new Promise(resolve => { ready = resolve; }) };
+      entry.promise = diagnostics.measure('history.scan', fields, async () => {
+        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, readWslDatabases: config.readWslDatabases !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [],
+          ...(progressive ? { recentSince: since.getTime(), scanId: fields.scanId,
+          onRecent: (scan, progress) => {
+            ready({ scan, scanId: fields.scanId, loading: { phase: 'recent', scanId: fields.scanId, since: dayKey(localDay(since)), ...progress } });
+          } } : {}),
+        });
         Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
           compactions: scan.records.filter(r => r.origin === 'compaction').length,
           environments: new Set((scan.sources || []).map(s => s.environment).filter(Boolean)).size,
@@ -69,12 +79,23 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         for (const [index, source] of (scan.sources || []).entries()) if (['error', 'warning', 'missing'].includes(source.state)) {
           diagnostics.record('warn', 'history.source', { sourceIndex: index + 1, sourceState: source.state, sourceKind: source.kind === 'vscode' ? 'vscode' : 'copilot', ...source.diagnostic });
         }
-        return { scan, scannedAt: now().toISOString() };
-      }) };
+        return { scan, scannedAt: now().toISOString(), scanId: fields.scanId };
+      });
       history = entry;
-      entry.promise.catch(() => { if (history === entry) history = undefined; });
+      entry.promise.then(result => { entry.complete = true; ready(result); entry.ready = null; }, error => { entry.error = error; ready(null); entry.ready = null; });
     } else diagnostics.record('info', 'history.cache', { cacheHit: true });
-    return history.promise;
+    const entry = history;
+    if (recent && !entry.complete && !entry.error) {
+      const result = await entry.ready;
+      if (!entry.error && !entry.complete && result) return result;
+    }
+    return entry.promise;
+  }
+  function withinRecentRange(input, loading) {
+    const at = now(), range = input.range || 'mtd';
+    const start = range === 'custom' ? parseDateDay(input.startDate) : range === 'mtd' ? localDay(new Date(at.getFullYear(), at.getMonth(), 1))
+      : RANGE_DAYS.has(range) ? localDay(at) - RANGE_DAYS.get(range) + 1 : -Infinity;
+    return start >= parseDateDay(loading.since);
   }
   const server = createServer({ maxHeaderSize: 8192 }, (req, res) => {
     const task = handle(req, res).catch(e => {
@@ -153,6 +174,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
             if (message.method === 'review.run' && (!input.expectedModel || input.expectedModel !== config.reviewModel)) throw new ReviewError('model');
             if (message.method === 'review.prepare') {
               if (!history) throw new ReviewError('snapshot');
+              if (!history.complete || history.error) throw new ReviewError('snapshot');
               const { scan } = await Promise.race([history.promise, aborted]);
               const snapshot = await prepareInsightReview(scan, input.filters, now(), contextSnapshot);
               snapshot.guide = await loadReviewGuidance([...new Set(snapshot.payload.evidence.map(e => e.topic))]);
@@ -203,29 +225,36 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         // Validate before opening any files.
         buildReport([], input, now());
         const config = await settings.get();
-        const { scan, scannedAt } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh' });
+        const { scan, scannedAt, loading, scanId: currentScan } = await readHistory(config, { refresh: message.refresh === true, force: message.method === 'usage.refresh', recent: true });
+        Object.assign(fields, { historyPhase: loading ? 'recent' : 'complete', scanId: currentScan });
+        if (loading && !withinRecentRange(input, loading)) {
+          json(res, 200, { loading: { ...loading, phase: 'history' } });
+          diagnostics.record('info', 'api.request', { ...fields, historyPhase: 'history', phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
+          return;
+        }
         const at = now(), buildFields = { records: scan.records.length, range: input.range, promptEvents: scan.promptEvents?.length ?? 0, tools: scan.tools?.length ?? 0, skills: scan.skills?.length ?? 0 };
         const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cacheHit = found.cached; return found; });
         // Installed versions are read from disk each time, onto copies, so the kept report stays as built.
         const rows = entry.report.skills.rows.map(row => ({ ...row }));
-        await diagnostics.measure('skills.versions', { rows: rows.length }, () => addInstalledSkillVersions(rows));
+        if (!loading) await diagnostics.measure('skills.versions', { rows: rows.length }, () => addInstalledSkillVersions(rows));
         const serializationFields = { range: input.range };
         const payload = diagnostics.measure('report.serialize', serializationFields, () => {
           const preferences = { textSize: config.textSize ?? 'small', simplifyNumbers: config.simplifyNumbers ?? true };
           const { generatedAt, ...report } = entry.report;
-          const extras = JSON.stringify([rows.map(row => row.installedVersion), preferences]);
+          if (loading) report.promptCredits = { ...report.promptCredits, pending: true, averageCredits: null, credits: null };
+          const extras = JSON.stringify([rows.map(row => row.installedVersion), preferences, loading]);
           let content;
           // Everything the dashboard shows except the two timestamps. Its fingerprint lets a
           // dashboard that already holds this exact content skip the download and the redraw.
           if (entry.sent?.extras !== extras) {
-            content = JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+            content = JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences, loading });
             entry.sent = { extras, revision: createHash('sha256').update(content).digest('base64url') };
           }
-          const head = `{"generatedAt":${JSON.stringify(at.toISOString())},"scannedAt":${JSON.stringify(scannedAt)},"revision":${JSON.stringify(entry.sent.revision)}`;
+          const head = `{"generatedAt":${JSON.stringify(at.toISOString())},"scannedAt":${JSON.stringify(scannedAt || null)},"scanId":${currentScan},"revision":${JSON.stringify(entry.sent.revision)}`;
           fields.unchanged = message.known === entry.sent.revision;
-          if (fields.unchanged) return finishPayload(head + ',"unchanged":true}');
+          if (fields.unchanged) return finishPayload(head + (loading ? ',"loading":' + JSON.stringify(loading) : '') + ',"unchanged":true}');
           else {
-            content ??= JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences });
+            content ??= JSON.stringify({ ...report, skills: { ...report.skills, rows }, sources: scan.sources, coverage: scan.coverage, preferences, loading });
             return finishPayload(head + ',' + content.slice(1));
           }
           function finishPayload(value) {
@@ -240,7 +269,8 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.modelProjects' ? buildModelProjectPage : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
         buildPage([], input, now());
         const config = await settings.get();
-        const { scan } = await readHistory(config);
+        const { scan, loading } = await readHistory(config, { recent: true });
+        if (loading && !withinRecentRange(input, loading)) throw new Error('History for this date range is still loading.');
         result = buildPage(scan.records, input, now(), scan);
         if (input.id !== undefined) {
           const ids = new Set(result.rows.map(row => row.id));
@@ -278,7 +308,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         preparedReview = contextSnapshot = undefined;
         await reviewService.close();
         server.closeIdleConnections();
-        await Promise.allSettled([...pending]);
+        await Promise.allSettled([...pending, history?.promise]);
         server.closeAllConnections();
         await closed;
       })();

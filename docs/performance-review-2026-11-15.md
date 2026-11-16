@@ -1,5 +1,23 @@
 # Dashboard opening performance review
 
+## v0.1.101: fresh recent usage before full history
+
+First loading now reads journals modified during the last 30 local calendar days before older journals, database fallback, and desktop title lookup. It emits an immutable provisional snapshot, then reuses the same scanner and freshly validated parser results to finish the remaining history. WSL discovery is reused within the operation; inexpensive directory/stat checks repeat so existing source ordering and CLI/database precedence remain intact. Completed ordinary refreshes keep the existing single-pass incremental behavior.
+
+File modification dates only determine priority. They never exclude records from final totals. A copied or older-dated file may contain recent events, and a recently active session may have a large full journal. The UI says **Recent usage so far** until reconciliation completes. Wider ranges, prompt-cost averages, AI review, and the full activity calendar wait. No previous-opening dashboard is restored, and no persistent date index is created.
+
+Synthetic Windows measurement, three fresh scanner instances per mode, 1,395 VS Code journals totaling 1,668,745,320 bytes; 140 journals recently modified and 1,255 deferred:
+
+| Measurement | Samples (ms) | Median (ms) |
+|---|---|---|
+| Ordinary full scan | 3,342 / 2,981 / 2,930 | 2,981 |
+| Recent snapshot ready | 519 / 477 / 498 | 498 |
+| Background history complete | 3,087 / 3,065 / 3,080 | 3,080 |
+
+The recent snapshot became available about 83% sooner; full completion cost about 3% more in this fixture. Final snapshots matched ordinary scans exactly. This measures scanner readiness, not report computation, host startup, browser paint, or remote WSL performance. Filesystem cache and workload affect results. If most files were modified recently, the first phase still has to read most bytes and gains will be smaller.
+
+Reproduce with `node scripts/benchmark-vscode.mjs --files=1395 --kib=1168 --recent-percent=10`. Only synthetic temporary files are used. Diagnostics now record `history.recent`, `history.background`, and `ui.history` with scan identifiers, phase timings, and deferred counts. Visible panels poll the current operation every two seconds without rescanning. Failed background work stops polling until a retry; source changes cannot reuse a superseded history. Tests cover old file dates containing current events, duplicate ownership, deferred databases, date boundaries, filter changes, failures, and late inventory completion.
+
 ## v0.1.100: measured VS Code and WSL delays
 
 The supplied v0.1.99 diagnostics identify a 30,005 ms initial usage load on the other Windows computer. History scanning took 28,689 ms: VS Code discovery/journals consumed 19,265 ms for 1,395 files (1,669,940,283 bytes); Copilot roots/journals took 3,078 ms; two WSL databases then took 2,192 and 3,615 ms sequentially. Report calculation took 1,193 ms, response decoding 5 ms, and DOM work 50 ms. Inventory was separate. These measurements identify source reading as the primary delay; they do not identify antivirus, drive speed or an individual file as the cause.

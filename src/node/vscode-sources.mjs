@@ -116,7 +116,9 @@ export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), plat
       for (let i = 0; i < journals.length; i++) {
         const { file, source } = journals[i], { snapshot, error } = results[i];
         if (error) { source.state = 'warning'; source.message = 'A VS Code debug log could not be read.'; source.diagnostic = diagnosticError(error); continue; }
-        files.push(file); snapshots.push(snapshot); owners.push(source); source.files++;
+        files.push(file); source.files++;
+        if (!snapshot) continue; // The recent-first pass deliberately defers older journals.
+        snapshots.push(snapshot); owners.push(source);
         if (snapshot.unclassified || snapshot.invalid) { source.state = 'warning'; source.message = 'Some VS Code calls lack valid recorded Copilot charges or have conflicting data and were excluded.'; }
       }
       if (limitedSource) { limitedSource.state = 'warning'; limitedSource.message = 'VS Code log discovery reached its limit.'; }

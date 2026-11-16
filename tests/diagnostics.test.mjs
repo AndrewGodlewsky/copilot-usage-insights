@@ -76,16 +76,25 @@ test('load timing summary distinguishes initial loads, partial stages and cached
   logs.record('info', 'history.journals', { sourceIndex: 2, sourceKind: 'copilot', environmentType: 'wsl', phase: 'finished', durationMs: 1000, bytesRead: 2048, filesRead: 3, path: 'PRIVATE' });
   logs.record('info', 'history.journals', { sourceIndex: 2, sourceKind: 'copilot', environmentType: 'wsl', phase: 'started', filesReused: 3 });
   logs.record('info', 'report.build', { phase: 'finished', durationMs: 10, cacheHit: true });
+  logs.record('info', 'history.recent', { phase: 'finished', durationMs: 40, scanId: 7, filesDeferred: 90, databasesDeferred: 2, sinceMs: 123, discovery: { path: 'SECRET' } });
+  logs.record('info', 'history.background', { phase: 'finished', durationMs: 100, scanId: 7 });
+  logs.record('info', 'ui.history', { phase: 'finished', historyPhase: 'recent', durationMs: 60, scanId: 7 });
+  logs.record('info', 'ui.history', { phase: 'finished', historyPhase: 'complete', durationMs: 180, scanId: 7 });
   const summary = loadTimingSummary(logs.snapshot().entries);
   assert.match(summary, /Initial usage load.*1234 ms/);
   assert.match(summary, /Copilot journals.*source 2.*wsl.*no completion retained/);
   assert.match(summary, /Report calculations.*10 ms.*cacheHit=true/);
   assert.match(summary, /overlap/);
+  assert.match(summary, /Recent journals ready.*40 ms.*scanId=7.*filesDeferred=90.*databasesDeferred=2/);
+  assert.match(summary, /History displayed \(recent\).*60 ms/);
+  assert.match(summary, /History displayed \(complete\).*180 ms/);
+  assert.doesNotMatch(summary, /SECRET|sinceMs|discovery/);
   assert.doesNotMatch(summary, /PRIVATE|1000 ms/);
   assert.match(loadTimingSummary([]), /No load timings retained/);
   const persisted = parseRuntimeDiagnostics(logs.snapshot().entries.map(e => JSON.stringify(e)).join('\n'));
   assert.ok(persisted.some(e => e.event === 'report.build' && e.cacheHit));
   assert.ok(persisted.some(e => e.event === 'history.journals' && e.environmentType === 'wsl'));
+  assert.ok(persisted.some(e => e.event === 'history.background' && e.scanId === 7));
 });
 
 test('diagnostic sinks receive only approved metadata and cannot break logging', () => {

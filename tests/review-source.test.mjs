@@ -68,10 +68,16 @@ async function fixture(t, location = 'override', reviewService) {
   const server = await startServer({ settings, defaultHome, html: '<title>Fixture</title>', now: () => now, reviewService });
   t.after(() => server.close());
   const request = async (method = 'usage.report', input = { range: 'all' }, refresh = false, status = 200) => {
-    const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method, input, refresh }) });
-    assert.equal(response.status, status);
-    return response.json();
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method, input, refresh }) });
+      assert.equal(response.status, status);
+      const report = await response.json();
+      if (!report.loading) return report;
+      method = 'usage.report'; refresh = false;
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.fail('Synthetic history did not finish loading');
   };
   return { dir, home, defaultHome, settings, request };
 }
