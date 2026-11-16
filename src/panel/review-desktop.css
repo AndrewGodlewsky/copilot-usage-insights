@@ -1,0 +1,54 @@
+/* The four decorative scenes share one clock and switch only with the record closed. */
+.review-progress{display:flex;flex-direction:column;align-items:center;padding:10px 0 14px;min-height:260px}
+#review-progress-message{font-size:calc(13px * var(--text-scale));font-weight:500;text-align:center;margin:3px 0 7px}
+#review-animation-toggle{font-size:calc(10px * var(--text-scale));color:var(--muted-fg);background:transparent;border:0;padding:4px 8px}
+#review-animation-toggle:hover{color:var(--fg);text-decoration:underline;text-underline-offset:3px}
+.review-desktop{--rd-paper:#27313d;--rd-paper-back:#202a36;--rd-bezel:#353b43;--rd-bezel-edge:#4c5663;--rd-screen:#111a26;--rd-ink:#7c8b9e;--rd-faint:#424f60;--rd-blue:#74b5ed;--rd-loop:9s;display:block;width:min(100%,310px);height:auto;overflow:visible}
+.light .review-desktop{--rd-paper:#f7fafc;--rd-paper-back:#e8edf2;--rd-bezel:#c1cbd5;--rd-bezel-edge:#8193a3;--rd-screen:#e4ecf2;--rd-ink:#657987;--rd-faint:#b6c4cf;--rd-blue:#00686b}
+.review-desktop .rd-ink{fill:var(--rd-ink)}.review-desktop .rd-faint{fill:var(--rd-faint)}.review-desktop .rd-blue{fill:var(--rd-blue)}.review-desktop .rd-crisp{shape-rendering:crispEdges}
+.review-desktop .rd-folder-base{fill:var(--rd-paper);stroke:var(--rd-ink);stroke-width:1.5}
+.review-desktop .rd-folder-front{fill:var(--rd-faint);stroke:var(--rd-ink);stroke-width:1.5;transform-origin:108px 112px;animation:review-desktop-folder var(--rd-loop) ease-in-out infinite}
+.review-desktop .rd-folder-click{stroke:var(--rd-blue);stroke-width:1.5;fill:none;opacity:0;animation:review-desktop-click var(--rd-loop) ease-out infinite}
+.review-desktop .rd-folder-label{fill:var(--rd-ink);font:9px system-ui,sans-serif}
+.review-desktop .rd-record{opacity:0;transform-origin:108px 91px;animation:review-desktop-cycle var(--rd-loop) cubic-bezier(.2,.65,.35,1) infinite}
+.review-desktop .rd-record-back{opacity:0;animation:review-desktop-back var(--rd-loop) ease-in-out infinite}
+.review-desktop .rd-read-line{fill:var(--rd-blue);opacity:0;animation:review-desktop-highlight var(--rd-loop) ease-in-out infinite}
+.review-desktop .rd-read-mark{fill:var(--rd-blue);opacity:0;animation:review-desktop-mark var(--rd-loop) ease-in-out infinite}
+.review-desktop .rd-chart-line{fill:none;stroke:var(--rd-blue);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:120;stroke-dashoffset:120;animation:review-desktop-trend var(--rd-loop) ease-in-out infinite}
+.review-desktop .rd-chart-point{fill:var(--rd-blue);opacity:0;animation:review-desktop-point var(--rd-loop) ease infinite}
+.review-desktop .rd-pointer{transform:translate(252px,145px);animation:review-desktop-reading-pointer var(--rd-loop) cubic-bezier(.4,0,.25,1) infinite}
+.review-desktop .rd-pointer-body{fill:var(--rd-blue);stroke:var(--rd-screen);stroke-width:1.5;stroke-linejoin:round;animation:review-desktop-press var(--rd-loop) ease infinite;transform-origin:2px 2px}
+.review-desktop .rd-bar{fill:var(--rd-blue);opacity:.4}.review-desktop .rd-bar-one{animation:review-desktop-bar-one var(--rd-loop) ease infinite}.review-desktop .rd-bar-two{animation:review-desktop-bar-two var(--rd-loop) ease infinite}.review-desktop .rd-bar-three,.review-desktop .rd-bar-four{animation:review-desktop-bar-rest var(--rd-loop) ease infinite}
+.review-desktop .rd-compare-first,.review-desktop .rd-compare-second{stroke:var(--rd-blue);opacity:.25}.review-desktop .rd-compare-first{animation:review-desktop-compare-first var(--rd-loop) ease infinite}.review-desktop .rd-compare-second{animation:review-desktop-compare-second var(--rd-loop) ease infinite}
+.review-desktop .rd-reading,.review-desktop .rd-bars,.review-desktop .rd-trend,.review-desktop .rd-compare{visibility:hidden}
+.review-progress[data-scene="0"] .rd-reading,.review-progress[data-scene="1"] .rd-bars,.review-progress[data-scene="2"] .rd-trend,.review-progress[data-scene="3"] .rd-compare{visibility:visible}
+.review-progress[data-scene="1"] .rd-pointer{animation-name:review-desktop-bars-pointer}.review-progress[data-scene="2"] .rd-pointer{animation-name:review-desktop-trend-pointer}.review-progress[data-scene="3"] .rd-pointer{animation-name:review-desktop-compare-pointer}
+
+@keyframes review-desktop-cycle{0%,23%,93%,100%{opacity:0;transform:translate(-18px,14px) scale(.8)}30%,83%{opacity:1;transform:translate(0,0) scale(1)}89%{opacity:0;transform:translate(10px,-4px) scale(.98)}}
+@keyframes review-desktop-folder{0%,19%,91%,100%{transform:skewX(0deg) scaleY(1)}25%,84%{transform:skewX(-12deg) scaleY(.72)}}
+@keyframes review-desktop-click{0%,15%,25%,100%{opacity:0}18%,21%{opacity:.8}}
+@keyframes review-desktop-back{0%,24%,89%,100%{opacity:0;transform:translate(-7px,5px)}31%,81%{opacity:.65;transform:translate(0,0)}}
+@keyframes review-desktop-reading-pointer{0%,5%{transform:translate(252px,145px)}15%,23%{transform:translate(106px,91px)}35%,48%{transform:translate(191px,97px)}58%,70%{transform:translate(207px,110px)}80%,85%{transform:translate(260px,72px)}95%,100%{transform:translate(252px,145px)}}
+@keyframes review-desktop-bars-pointer{0%,5%{transform:translate(252px,145px)}15%,23%{transform:translate(106px,91px)}35%,44%{transform:translate(172px,108px)}52%,60%{transform:translate(195px,94px)}68%,76%{transform:translate(240px,104px)}85%{transform:translate(260px,72px)}95%,100%{transform:translate(252px,145px)}}
+@keyframes review-desktop-trend-pointer{0%,5%{transform:translate(252px,145px)}15%,23%{transform:translate(106px,91px)}35%,43%{transform:translate(163px,127px)}53%{transform:translate(200px,112px)}63%,76%{transform:translate(231px,101px)}85%{transform:translate(260px,72px)}95%,100%{transform:translate(252px,145px)}}
+@keyframes review-desktop-compare-pointer{0%,5%{transform:translate(252px,145px)}15%,23%{transform:translate(106px,91px)}35%,47%{transform:translate(173px,113px)}58%,70%{transform:translate(232px,113px)}77%{transform:translate(201px,138px)}85%{transform:translate(260px,72px)}95%,100%{transform:translate(252px,145px)}}
+@keyframes review-desktop-press{0%,15%,23%,100%{transform:scale(1)}18%,20%{transform:scale(.88)}}
+@keyframes review-desktop-highlight{0%,36%,82%,100%{opacity:0;transform:translateY(0)}40%,49%{opacity:.17;transform:translateY(0)}58%,72%{opacity:.17;transform:translateY(10px)}}
+@keyframes review-desktop-mark{0%,39%,82%,100%{opacity:0;transform:translateY(0)}43%,49%{opacity:.9;transform:translateY(0)}58%,72%{opacity:.9;transform:translateY(10px)}}
+@keyframes review-desktop-trend{0%,36%,93%,100%{stroke-dashoffset:120}64%,84%{stroke-dashoffset:0}}
+@keyframes review-desktop-point{0%,64%,90%,100%{opacity:0}68%,82%{opacity:1}}
+@keyframes review-desktop-bar-one{0%,30%,52%,100%{opacity:.4}36%,45%{opacity:1}}
+@keyframes review-desktop-bar-two{0%,45%,68%,100%{opacity:.4}53%,61%{opacity:1}}
+@keyframes review-desktop-bar-rest{0%,60%,87%,100%{opacity:.4}69%,77%{opacity:1}}
+@keyframes review-desktop-compare-first{0%,30%,59%,100%{opacity:.25}36%,48%{opacity:1}}
+@keyframes review-desktop-compare-second{0%,50%,87%,100%{opacity:.25}59%,74%{opacity:1}}
+
+.review-progress[data-paused="true"] .review-desktop *{animation-play-state:paused!important}
+.review-progress[data-still="true"] .review-desktop *{animation:none!important}
+.review-progress[data-still="true"] .rd-record{opacity:1;transform:none}
+.review-progress[data-still="true"] .rd-chart-line{stroke-dashoffset:0}
+.review-progress[data-still="true"] .rd-chart-point,.review-progress[data-still="true"] .rd-read-mark{opacity:1}
+.review-progress[data-still="true"] .rd-read-line{opacity:.17}
+.review-progress[data-still="true"] .rd-pointer{transform:translate(239px,128px)}
+.review-progress[data-still="true"] .rd-folder-front{transform:skewX(-12deg) scaleY(.72)}
+@media(prefers-reduced-motion:reduce){.review-desktop *{animation:none!important}}

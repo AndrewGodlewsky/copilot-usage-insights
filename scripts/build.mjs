@@ -13,7 +13,7 @@ const flatten = src => src.replace(/^import [^\n]*\n/gm, '').replace(/^export \{
 const modules = ['src/core/query.mjs', 'src/core/format.mjs', 'src/core/provider-names.mjs', 'src/core/diagnostics.mjs', 'src/core/integrations.mjs', 'src/panel/charts.mjs', 'src/panel/art.mjs', 'src/panel/efficiency.mjs', 'src/panel/review-cards.mjs', 'src/panel/token-insights.mjs', 'src/panel/token-topics.mjs', 'src/panel/panel.js'];
 const script = modules.map(p => `// ${p}\n${flatten(read(p))}`).join('\n');
 const notice = `<!--\nDerived from Orca Usage Insights by Etherll:\nhttps://github.com/Etherll/orca-usage-insights\n\n${read('LICENSE').trim()}\n-->`;
-const html = read('src/panel/panel.html').replace('<!doctype html>', () => `<!doctype html>\n${notice}`).replaceAll('{{PLUGIN_VERSION}}', version).replace('/* PANEL_STYLES */', () => read('src/panel/panel.css')).replace('/* PANEL_SCRIPT */', () => `;(() => {\n'use strict'\nconst BUILD_VERSION = ${JSON.stringify(version)};\nconst RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};\n${script}\n})()`);
+const html = read('src/panel/panel.html').replace('<!doctype html>', () => `<!doctype html>\n${notice}`).replaceAll('{{PLUGIN_VERSION}}', version).replace('/* PANEL_STYLES */', () => read('src/panel/panel.css') + '\n' + read('src/panel/review-desktop.css')).replace('/* PANEL_SCRIPT */', () => `;(() => {\n'use strict'\nconst BUILD_VERSION = ${JSON.stringify(version)};\nconst RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};\n${script}\n})()`);
 const out = process.argv[2] ? pathToFileURL(path.resolve(process.argv[2])) : new URL('panel/index.html', root);
 mkdirSync(new URL('.', out), { recursive: true });
 writeFileSync(out, html);

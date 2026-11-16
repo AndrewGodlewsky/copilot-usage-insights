@@ -81,7 +81,32 @@
           <p class="footnote">Statistics are sent first. If enabled and useful, up to six prompt excerpts (12,000 characters total) can be sent in one follow-up. Excerpts may contain private text. At most two passes; this is not a guaranteed token or credit ceiling.</p>
           <div class="controls review-actions"><button id="efficiency-review-open" class="review-create" type="button" data-attention="true"><span id="review-create-label">Create AI review</span></button><button id="review-cancel" hidden>Cancel review</button></div>
           <p id="review-send-model" class="footnote">Uses the model and reasoning saved in Settings.</p>
-          <div id="review-progress" class="review-progress" hidden aria-hidden="true"><span class="review-dots"><i></i><i></i><i></i></span><span id="review-progress-message">Preparing your review</span></div>
+          <div id="review-progress" class="review-progress" data-scene="0" data-paused="true" hidden>
+<svg class="review-desktop" id="review-desktop" viewBox="0 0 360 246" aria-hidden="true" focusable="false">
+<defs><clipPath id="review-desktop-screen"><rect x="75" y="43" width="210" height="129"/></clipPath></defs>
+<g class="rd-crisp"><path d="M27 225H335" stroke="var(--border)" stroke-width="2"/><path d="M60 27H300V33H306V187H300V193H60V187H54V33H60Z" fill="var(--rd-bezel-edge)"/><path d="M62 31H298V37H302V183H296V188H64V183H58V37H62Z" fill="var(--rd-bezel)"/><path d="M71 39H289V176H71Z" fill="var(--rd-bezel-edge)"/><rect x="75" y="43" width="210" height="129" fill="var(--rd-screen)"/><path d="M166 193H194V212H209V217H151V212H166Z" fill="var(--rd-bezel-edge)"/><path d="M171 193H189V211H171Z" fill="var(--rd-bezel)"/><rect x="274" y="182" width="5" height="3" class="rd-blue"/>
+<path d="M117 221H241L249 231H109Z" fill="var(--rd-bezel-edge)"/><path d="M121 222H237L240 226H118Z" fill="var(--rd-bezel)"/><path d="M125 224H131M137 224H143M149 224H155M161 224H167M173 224H179M185 224H191M197 224H203M209 224H215M221 224H227" stroke="var(--rd-ink)" stroke-width="1"/>
+<path d="M312 204H328V220H312Z" fill="var(--rd-paper)" stroke="var(--rd-ink)"/><path d="M329 207H334V215H329" fill="none" stroke="var(--rd-ink)" stroke-width="2"/><path d="M315 206H325" stroke="var(--rd-blue)" stroke-width="2"/>
+<path d="M37 218H70L78 223H45Z" fill="var(--rd-paper-back)"/><path d="M40 215H67L75 220H48Z" fill="var(--rd-paper)" stroke="var(--rd-faint)"/>
+</g>
+<g clip-path="url(#review-desktop-screen)">
+<path d="M75 155H285V172H75Z" fill="var(--rd-paper-back)"/><g class="rd-crisp rd-faint"><rect x="83" y="160" width="7" height="7"/><rect x="96" y="160" width="7" height="7"/><rect x="109" y="160" width="7" height="7"/><path d="M261 163H277V165H261Z"/></g>
+<path class="rd-folder-base" d="M88 78H104L109 83H130V112H88Z"/>
+<path class="rd-folder-front" d="M86 88H132V113H86Z"/>
+<text class="rd-folder-label" x="109" y="126" text-anchor="middle">Usage</text>
+<path class="rd-folder-click" d="M80 84V79H85M133 79H138V84M138 115V120H133M85 120H80V115"/>
+<g class="rd-record-back"><path d="M151 54H273V146H151Z" fill="var(--rd-paper-back)" stroke="var(--rd-faint)"/></g>
+<g class="rd-record" id="review-desktop-record"><path d="M144 59H265V152H144Z" fill="var(--rd-paper)" stroke="var(--rd-ink)" stroke-width="1.5"/><path d="M144 59H265V76H144Z" fill="var(--rd-paper-back)"/><path d="M144 76H265" stroke="var(--rd-faint)"/><path d="M153 67H181" stroke="var(--rd-ink)" stroke-width="2"/><rect x="255" y="65" width="4" height="4" class="rd-faint"/>
+<g class="rd-reading"><g class="rd-ink"><rect x="155" y="87" width="79" height="3"/><rect x="155" y="97" width="93" height="3"/><rect x="155" y="107" width="61" height="3"/></g><g class="rd-faint"><rect x="155" y="125" width="25" height="14"/><rect x="186" y="125" width="25" height="14"/><rect x="217" y="125" width="25" height="14"/></g><rect class="rd-read-line" x="152" y="94" width="100" height="10"/><rect class="rd-read-mark" x="148" y="94" width="2" height="10"/></g>
+<g class="rd-bars"><path d="M156 84V139H251" fill="none" stroke="var(--rd-faint)"/><rect x="165" y="105" width="14" height="32" class="rd-bar rd-bar-one"/><rect x="188" y="91" width="14" height="46" class="rd-bar rd-bar-two"/><rect x="211" y="114" width="14" height="23" class="rd-bar rd-bar-three"/><rect x="234" y="100" width="14" height="37" class="rd-bar rd-bar-four"/></g>
+<g class="rd-compare"><path d="M154 84H194V140H154ZM214 84H254V140H214Z" fill="var(--rd-paper-back)" stroke="var(--rd-faint)"/><path d="M161 94H187M161 103H180M161 112H185M221 94H247M221 103H240M221 112H245" stroke="var(--rd-ink)" stroke-width="2"/><path class="rd-compare-first" d="M161 125H186" stroke-width="3"/><path class="rd-compare-second" d="M221 125H246" stroke-width="3"/></g>
+<g class="rd-trend"><path d="M157 92V136H249" fill="none" stroke="var(--rd-faint)"/><path d="M158 108H249M158 122H249" fill="none" stroke="var(--rd-faint)" stroke-dasharray="2 5" opacity=".5"/><path class="rd-chart-line" d="M160 126L173 121L186 125L200 112L214 115L229 99L243 104"/><circle class="rd-chart-point" cx="229" cy="99" r="3.5"/><rect x="156" y="84" width="42" height="2" class="rd-ink"/></g>
+</g>
+<g class="rd-pointer"><path class="rd-pointer-body" d="M0 0V23L6 17L12 28L17 25L11 15H21Z"/></g>
+</g>
+</svg>
+            <p id="review-progress-message" aria-hidden="true">Preparing your review</p><button id="review-animation-toggle" type="button">Pause animation</button>
+          </div>
           <p id="efficiency-review-status" class="footnote" role="status"></p>
           <div id="review-result" hidden><p id="review-result-context" class="footnote"></p><div id="review-answer" tabindex="-1" aria-label="AI review insights"></div><p class="footnote">🙂 Working well · 🙁 Worth improving · 😐 Mixed or unclear. Confidence describes the evidence for a pattern, not a probability that advice will help. These findings do not measure the value of your work.</p></div>
           <details id="review-preview" class="review-preview" hidden><summary>Latest statistics snapshot</summary><p class="footnote">Prepared for your most recent Create action. Names are aliased; paths, session titles, raw logs and prompt text are excluded from these statistics. Previously inspected current context is separate. Optional excerpts are selected only during analysis.</p><label for="efficiency-review-output">Statistics snapshot</label><textarea id="efficiency-review-output" rows="8" readonly spellcheck="false"></textarea><button id="efficiency-review-copy">Copy statistics</button></details>

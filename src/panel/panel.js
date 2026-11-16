@@ -300,6 +300,7 @@ async function load(force = false, refresh = false) {
 }
 function renderLoadStatus() {
   const matching = state.report && state.filterKey === JSON.stringify(query());
+  if (!matching) rememberReviewAnimation();
   $('content').hidden = !matching;
   $('status').hidden = !loadError && !!state.report?.totals.requests;
   $('status').textContent = loadError ? loadError + (matching ? ' Showing the last successful data; it may be out of date.' : ' Data for these filters could not be loaded.') : 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
@@ -667,6 +668,44 @@ function renderEfficiencyContext() {
   $('efficiency-context-result').innerHTML = `<div class="efficiency-context-total"><strong>${number(c.totalTokens)}</strong> tokens in current context${c.limit > 0 ? ` · ${number(c.totalTokens / c.limit * 100)}% of the ${number(c.limit)} allowance` : ''}</div><p class="footnote">Snapshot at ${esc(new Date(c.checkedAt).toLocaleString())}. ${c.modelId ? esc(modelOrigin + ': ' + c.modelId) + '. ' : ''}This stays fixed until you inspect again. Copilot's estimate may differ from billed tokens.</p><dl class="efficiency-context-categories">${Object.entries(categories).map(([key, label]) => `<div><dt>${label}</dt><dd>${c.categories[key] == null ? 'Unavailable' : number(c.categories[key])}</dd></div>`).join('')}</dl><details><summary>Largest attributed sources${c.omitted ? ` · showing ${number(c.entries.length)} of ${number(c.entries.length + c.omitted)}` : ''}</summary><p class="footnote integration-note">Parent and child sources can overlap. These rows are not added together. A loaded skill may still be useful even without a recent invocation.</p>${c.entries.length ? `<div class="table-wrap"><table class="context-sources"><thead><tr><th>Source</th><th>Type</th><th>Tokens</th><th>Of context</th><th>Included in</th></tr></thead><tbody>${c.entries.map(e => `<tr>${textCell(e.label || 'Unnamed source')}${textCell(e.kind || 'Other')}<td>${number(e.tokens)}</td><td>${c.totalTokens > 0 ? number(e.tokens / c.totalTokens * 100) + '%' : '—'}</td>${textCell(e.parentId ? parentLabels.get(e.parentId) || 'Parent source' : '—')}</tr>`).join('')}</tbody></table></div>` : '<p class="muted">Copilot did not return individual sources.</p>'}</details>${renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: c })}`;
 }
 let reviewRunning = false, reviewConnectionPending = false, reviewRun, reviewResult, reviewResultFormat, reviewProgressTimer;
+const reviewMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let reviewAnimationPaused = false, reviewAnimationTimes;
+function reviewAnimationVisible() {
+  return !$('review-progress').hidden && !$('content').hidden && state.view === 'efficiency' && !$('efficiency-review-panel').hidden;
+}
+function rememberReviewAnimation() {
+  if (!reviewRunning || reviewMotion.matches || !reviewAnimationVisible()) return;
+  // display:none destroys CSS clocks. Keep their positions before hiding an ancestor.
+  reviewAnimationTimes = ($('review-desktop').getAnimations?.({ subtree: true }) || []).map(animation => {
+    const duration = animation.effect?.getTiming().duration;
+    const time = Number.isFinite(animation.currentTime) && duration > 0 ? animation.currentTime % duration : animation.currentTime;
+    return { target: animation.effect?.target, name: animation.animationName, time };
+  });
+}
+function syncReviewAnimation() {
+  const progress = $('review-progress'), still = reviewMotion.matches;
+  const visible = reviewAnimationVisible();
+  progress.dataset.still = String(still);
+  progress.dataset.paused = String(still || reviewAnimationPaused || !reviewRunning || reviewRun?.cancelled === true || document.hidden || !visible);
+  if (still || !reviewRunning || progress.hidden) reviewAnimationTimes = null;
+  else if (visible && reviewAnimationTimes) {
+    for (const animation of $('review-desktop').getAnimations?.({ subtree: true }) || []) {
+      const saved = reviewAnimationTimes.find(clock => clock.target === animation.effect?.target && clock.name === animation.animationName);
+      if (Number.isFinite(saved?.time)) animation.currentTime = saved.time;
+    }
+    reviewAnimationTimes = null;
+  }
+  $('review-animation-toggle').hidden = still;
+  $('review-animation-toggle').disabled = !reviewRunning || reviewRun?.cancelled === true;
+  $('review-animation-toggle').textContent = reviewAnimationPaused ? 'Resume animation' : 'Pause animation';
+}
+reviewMotion.addEventListener?.('change', syncReviewAnimation);
+$('review-animation-toggle').onclick = () => { reviewAnimationPaused = !reviewAnimationPaused; syncReviewAnimation(); };
+$('review-desktop-record').addEventListener('animationiteration', event => {
+  const progress = $('review-progress');
+  if (event.animationName !== 'review-desktop-cycle' || progress.dataset.paused !== 'false') return;
+  progress.dataset.scene = String((Number(progress.dataset.scene) + 1) % 4);
+});
 function reviewQuery() {
   const { range, startDate, endDate } = query();
   return { range, includeCache: true, ...(range === 'custom' ? { startDate, endDate } : {}) };
@@ -675,19 +714,21 @@ function syncReviewScope() {
   const active = state.view === 'efficiency' && !$('efficiency-review-panel').hidden;
   $('filters').hidden = $('environment').hidden = active;
   $('review-scope').textContent = RANGE_LABELS[state.range] + ' · all models, projects, sessions, and environments';
+  syncReviewAnimation();
 }
 function reviewProgress(phase) {
   clearTimeout(reviewProgressTimer);
   $('review-progress').hidden = !phase;
+  syncReviewAnimation();
   $('efficiency-review-status').setAttribute('class', phase ? 'sr-only' : 'footnote');
   if (!phase) return;
   const phrases = phase === 'prepare' ? ['Preparing your review', 'Gathering your usage statistics'] : ['Reviewing your usage', 'Looking for supported patterns', 'Weighing the evidence'];
   let index = 0;
   $('review-progress-message').textContent = phrases[0];
   $('efficiency-review-status').textContent = phase === 'prepare' ? 'Preparing your review. No prompt has been sent yet.' : 'Reviewing your usage with Copilot. You can cancel this review.';
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (reviewMotion.matches) return;
   const tick = () => {
-    if (!reviewRun || reviewRun.cancelled) return;
+    if (!reviewRun || reviewRun.cancelled || reviewMotion.matches) return;
     if (!document.hidden) $('review-progress-message').textContent = phrases[++index % phrases.length];
     reviewProgressTimer = setTimeout(tick, 5000);
   };
@@ -711,6 +752,9 @@ $('efficiency-review-open').onclick = async () => {
   const run = reviewRun = { cancelled: false, cancellation: null, analysisStarted: false };
   const filters = reviewQuery(), allowSamples = $('review-samples').checked === true;
   reviewRunning = true;
+  reviewAnimationTimes = null;
+  reviewAnimationPaused = false;
+  $('review-progress').dataset.scene = '0';
   $('efficiency-review-output').value = '';
   $('review-preview').hidden = true;
   $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = true;
@@ -742,10 +786,12 @@ $('efficiency-review-open').onclick = async () => {
     // A late cancellation must finish before a new review can start.
     await run.cancellation;
     if (run.cancelled) $('efficiency-review-status').textContent = run.cancelFailed ? 'Could not confirm cancellation. Closing the dashboard stops its helper.' : 'Review cancelled. Any usage already incurred is still recorded.';
+    const restoreAnimationFocus = $('review-progress').contains(document.activeElement);
     reviewProgress(null);
     reviewRun = null; reviewRunning = false;
     $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = false;
     $('review-cancel').hidden = true;
+    if (restoreAnimationFocus) $('efficiency-review-open').focus({ preventScroll: true });
     if (run.analysisStarted) await load(false, true);
   }
 };
@@ -753,6 +799,7 @@ async function cancelReview() {
   if (reviewRun) {
     const run = reviewRun;
     run.cancelled = true;
+    syncReviewAnimation();
     clearTimeout(reviewProgressTimer);
     $('review-cancel').disabled = true;
     $('review-progress-message').textContent = 'Stopping your review';
@@ -843,6 +890,7 @@ function renderEfficiencyReliability() {
 }
 function showEfficiencySection(section) {
   if (!['tokens', 'patterns', 'review'].includes(section)) return;
+  if (section !== 'review') rememberReviewAnimation();
   selectButton('efficiency-sections', 'efficiencySection', section);
   $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
@@ -1151,6 +1199,7 @@ function selectButton(container, name, value) {
 }
 function showView(view) {
   if (!['usage', 'breakdown', 'efficiency'].includes(view)) return;
+  if (view !== 'efficiency') rememberReviewAnimation();
   state.view = view;
   selectButton('view', 'view', view);
   for (const name of ['usage', 'breakdown', 'efficiency']) $(`${name}-view`).hidden = name !== view;
@@ -1366,6 +1415,7 @@ document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
 document.addEventListener('visibilitychange', () => {
+  syncReviewAnimation();
   clientDiagnostics.record('info', 'ui.visibility', connectionState());
   if (!document.hidden && !state.pending && (lastSuccessfulScanAt === undefined || Date.now() - lastSuccessfulScanAt >= AUTO_REFRESH_MS)) load(false, true);
 });

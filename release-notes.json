@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.91",
+    "summary": "AI reviews now show a miniature desktop exploring records, charts and comparisons while they run. Four animation variations create a longer cycle, with pause controls and reduced-motion support."
+  },
+  {
     "version": "0.1.90",
     "summary": "Create an AI review in one panel for the selected dates across all environments. Reviews now show emoji assessments, confidence dials and proportion graphics, with clearer progress, cancellation, a settings gear and a dismissible development notice."
   },

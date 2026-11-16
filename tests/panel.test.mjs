@@ -52,11 +52,12 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
+  const motion = { matches: initial.reducedMotion === true, addEventListener(type, callback) { this.changed = callback; } };
   const context = createContext({
     Date: class extends Date { static now() { return server.now; } },
     innerWidth: 1200, innerHeight: 800,
     document,
-    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: () => ({ matches: initial.reducedMotion === true }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
+    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: query => query.includes('prefers-reduced-motion') ? motion : ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
     fetch: async (url, options) => {
@@ -101,7 +102,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, viewport: context };
+  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context };
 }
 
 test('failed automatic refresh preserves the last matching report and marks it stale', async () => {
@@ -2630,4 +2631,107 @@ test('empty review evidence never invokes AI and restores the single Create acti
   assert.ok(!requests.some(r => r.method === 'review.analyze'));
   assert.match(get('efficiency-review-status').textContent, /No eligible evidence in this date range/);
   assert.equal(get('efficiency-review-open').disabled, false); assert.equal(get('review-progress').hidden, true);
+});
+
+test('desktop review cycles four scenes without requests and preserves its place through phases and refresh', async () => {
+  const { report } = await requestPanel();
+  const { get, requests, server } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'review' } } });
+  let prepare, analyze;
+  server.prepare = () => new Promise(resolve => { prepare = resolve; });
+  server.review = () => new Promise(resolve => { analyze = resolve; });
+  const pending = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+  const progress = get('review-progress'), cycle = () => get('review-desktop-record').onanimationiteration({ animationName: 'review-desktop-cycle' });
+  assert.equal(progress.dataset.scene, '0'); assert.equal(progress.dataset.paused, 'false');
+  const before = requests.length;
+  get('review-desktop-record').onanimationiteration({ animationName: 'review-desktop-trend' });
+  assert.equal(progress.dataset.scene, '0', 'child animation events do not advance the scene');
+  for (const scene of ['1', '2', '3', '0', '1']) { cycle(); assert.equal(progress.dataset.scene, scene); }
+  assert.equal(requests.length, before, 'illustration never scans or calls AI');
+  prepare({ id: 'prepared', model: 'fixture-model', preview: '{}', reasoningEffort: 'default', hasEvidence: true });
+  await new Promise(setImmediate);
+  assert.equal(progress.dataset.scene, '1', 'analysis does not restart the illustration');
+  await get('refresh').onclick(); assert.equal(progress.dataset.scene, '1');
+  analyze({ cards: [], emptyReason: 'No defensible finding', model: 'fixture-model' }); await pending;
+  assert.equal(progress.hidden, true); assert.equal(progress.dataset.paused, 'true');
+  assert.equal(get('review-result').hidden, false, 'only the real result is displayed');
+  cycle(); assert.equal(progress.dataset.scene, '1', 'late animation events are ignored');
+  const next = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+  assert.equal(progress.dataset.scene, '0', 'a new review starts at the first scene');
+  prepare({ id: 'empty', model: 'fixture-model', preview: '{}', hasEvidence: false }); await next;
+});
+
+test('desktop review pauses offscreen or on request, stays stopped on cancel, and restores controls', async () => {
+  const { report } = await requestPanel();
+  const { get, server, document, listeners, requests } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  const choose = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
+  choose('review');
+  let release;
+  server.review = message => message.method === 'review.analyze' ? new Promise(resolve => { release = resolve; }) : { ok: true };
+  const pending = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+  const progress = get('review-progress'), before = requests.length;
+  const clocks = ['review-desktop-record', 'review-desktop'].map(id => ({ effect: { target: get(id), getTiming: () => ({ duration: 9000 }) }, animationName: id, currentTime: 22300 }));
+  // display:none cancels CSS animations. Returning creates new clocks at zero.
+  for (const id of ['efficiency-review-panel', 'efficiency-view', 'content']) {
+    const element = get(id); let hidden = element.hidden;
+    Object.defineProperty(element, 'hidden', { get: () => hidden, set(value) { hidden = value; if (value) clocks.forEach(clock => { clock.currentTime = 0; }); } });
+  }
+  get('review-desktop').getAnimations = () => ['efficiency-review-panel', 'efficiency-view', 'content'].some(id => get(id).hidden) ? [] : clocks;
+  get('review-animation-toggle').onclick(); assert.equal(progress.dataset.paused, 'true');
+  assert.equal(get('review-animation-toggle').textContent, 'Resume animation');
+  choose('tokens'); choose('review'); assert.equal(progress.dataset.paused, 'true', 'user pause survives navigation');
+  assert.ok(clocks.every(clock => clock.currentTime === 4300), 'returning to a paused scene restores every CSS clock');
+  get('review-animation-toggle').onclick(); assert.equal(progress.dataset.paused, 'false');
+  choose('patterns'); assert.equal(progress.dataset.paused, 'true'); choose('review'); assert.equal(progress.dataset.paused, 'false');
+  document.hidden = true; listeners.get('visibilitychange')(); assert.equal(progress.dataset.paused, 'true');
+  document.hidden = false; listeners.get('visibilitychange')(); assert.equal(progress.dataset.paused, 'false');
+  get('view').onclick({ target: { dataset: { view: 'usage' } } }); assert.equal(progress.dataset.paused, 'true');
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } }); assert.equal(progress.dataset.paused, 'false');
+  assert.ok(clocks.every(clock => clock.currentTime === 4300), 'main tab navigation preserves the same frame');
+  assert.equal(requests.length, before);
+  await get('review-cancel').onclick(); assert.equal(progress.dataset.paused, 'true');
+  assert.equal(get('review-animation-toggle').disabled, true);
+  release({ cards: [] }); await pending;
+  assert.equal(progress.hidden, true);
+});
+
+test('desktop review provides a decorative still image for changing motion preferences and removes it after errors', async () => {
+  const { report } = await requestPanel();
+  const { get, server, requests, motion } = await mountPanel(report, { reviewModel: 'fixture-model' }, undefined, undefined, { reducedMotion: true });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'review' } } });
+  let release;
+  server.review = () => new Promise(resolve => { release = resolve; });
+  const pending = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+  assert.equal(get('review-progress').dataset.still, 'true'); assert.equal(get('review-progress').dataset.paused, 'true');
+  assert.equal(get('review-animation-toggle').hidden, true);
+  assert.equal(get('review-desktop').getAttribute('aria-hidden'), 'true');
+  get('review-desktop-record').onanimationiteration({ animationName: 'review-desktop-cycle' });
+  assert.equal(get('review-progress').dataset.scene, '0');
+  motion.matches = false; motion.changed();
+  assert.equal(get('review-animation-toggle').hidden, false); assert.equal(get('review-progress').dataset.paused, 'false');
+  motion.matches = true; motion.changed();
+  assert.equal(get('review-progress').dataset.still, 'true');
+  release({ cards: [] }); await pending;
+  server.reviewError = 'Review unavailable'; await get('efficiency-review-open').onclick();
+  assert.equal(get('review-progress').hidden, true); assert.equal(get('efficiency-review-status').textContent, 'Review unavailable');
+  assert.equal(requests.filter(r => r.method === 'review.analyze').length, 2);
+});
+
+test('a failed review restores focus when its animation control disappears', async () => {
+  const { report } = await requestPanel();
+  const { get, server, document } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'review' } } });
+  let prepare;
+  server.prepare = () => new Promise(resolve => { prepare = resolve; });
+  const pending = get('efficiency-review-open').onclick(); await new Promise(setImmediate);
+  get('review-animation-toggle').focus();
+  get('review-progress').contains = node => node === get('review-animation-toggle');
+  server.reviewError = 'Review unavailable';
+  prepare({ id: 'ready', model: 'fixture-model', preview: '{}', reasoningEffort: 'default', hasEvidence: true }); await pending;
+  assert.equal(get('review-progress').hidden, true);
+  assert.equal(document.activeElement, get('efficiency-review-open'));
 });

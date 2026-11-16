@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.90** brings AI review into one panel with a Create button, settings gear, progress feedback, emoji assessments and confidence dials. Reviews use the selected dates across all models and environments. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.91** adds a miniature desktop animation while AI reviews run, with four variations, a pause control and a still scene for reduced motion. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 
@@ -339,7 +339,7 @@ Efficiency carries a small red development notice. Closing it dismisses it for t
 
 The gear in **Your AI review** opens model and reasoning settings. Refresh the Copilot model list, select a model and reasoning level, then save. Opus is recommended for a new selection; existing saved choices stay selected. Medium is recommended when supported, with High optional. **Reconnect to GitHub** verifies an isolated helper against the desktop account without inference. If needed, sign in to Copilot and GitHub CLI (`gh auth login`) with the same account, then reconnect.
 
-The first button has a subtle light around its edge; while working, three dots and short status phrases indicate activity, not estimated progress. Reduced-motion preferences disable the animation and phrase rotation. **Cancel review** stops owned work; already incurred charges can still exist. Completed cards remain in this canvas until it closes, and changing the date range marks an older result as a previous snapshot. A failed new review does not erase an earlier result.
+The first button has a subtle light around its edge. While working, a miniature desktop opens records, highlights text, compares bars, traces a trend and compares two records. Four nine-second scenes make a 36-second cycle; these illustrations and short status phrases indicate activity, not estimated progress or actual findings. **Pause animation** freezes the scene without stopping the review. Motion also pauses when you leave the panel, and reduced-motion preferences show a still scene and stop phrase rotation. **Cancel review** stops owned work; already incurred charges can still exist. Completed cards remain in this canvas until it closes, and changing the date range marks an older result as a previous snapshot. A failed new review does not erase an earlier result.
 
 Cards can be **statistics, proportion rings, comparisons, or line trends**. The app chooses the graphic from measured evidence; the model chooses useful findings, not arbitrary chart values. Guidance encourages variety only when the evidence supports it. A review can still contain only statistics, or no cards if nothing is defensible. Expand a card for the observation, underlying measurements and coverage, alternative explanations, a practical experiment, and what to compare afterward.
 
