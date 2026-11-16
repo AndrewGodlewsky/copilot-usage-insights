@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.101** prioritizes fresh recent usage while older history loads in the background, with loading states for wider ranges and separate readiness timings in Show logs. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.102** adds larger interactive views for Activity and When you work, and simplifies the Skills table with wider skill and project names. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -223,6 +223,8 @@ Simplified magnitudes use at most one decimal place, omit a trailing `.0`, and r
 
 
 ## Loading and refresh performance
+
+On **Usage**, click **Activity** or **When you work** (or their expand buttons) for a larger interactive view. Select a date or weekday/hour slot to inspect its recorded values; arrow keys move between cells, and Home/End select the first/last cell. Close or press Escape to return. Activity keeps its existing 26-week scope with the model/project/session/environment filters. When you work uses the selected dates and shows tokens by local call time, not hours worked. Expanded views use the current report, make no additional requests, and do not change dashboard filters. Activity waits for background history verification; available recent time-of-week data is labelled provisional.
 
 The first load reads current source files, prioritizing journals modified within the **last 30 local calendar days**. It shows **Recent usage so far** for date ranges inside that window while older files, databases, and desktop session names finish loading in the background. Nothing is restored from a previous dashboard opening or saved to a new history database. Rolling 30 still means month-to-date; on the 31st it extends beyond this initial window and waits for history.
 
@@ -429,7 +431,7 @@ Each detail panel has its summary on the left and a **Sort by** menu on the righ
 
 Counts sort from highest to lowest; recently used sorts newest first, with missing dates last. Names and marketplaces sort alphabetically as displayed. Enabled first puts installed, enabled plugins first and plugins not yet installed last. Sorting changes only row order, not counts or filters.
 
-The **Skills** columns are **Skill** (with folder actions), **Uses**, **By user**, **By agent**, **Sessions**, **Failures**, **Source plugin**, **Plugin version**, **Skill version (installed)**, and **Last used**, in that order. Skill names stay left-aligned, while the remaining headers and values are centered with faint dotted column dividers. The skill column narrows as space becomes limited, and long names wrap. All columns remain available; scroll horizontally when they no longer fit. Rows distinguish recorded plugin versions and locations. Date, project, and session filters apply to successful activations and failed load attempts. Failed attempts use the tool-start date and project. The model filter does not filter either because skill activity does not consistently record a model.
+The **Skills** columns are **Skill** (with a folder-path copy button), **Uses**, **By user**, **By agent**, **Sessions**, **Failures**, **Skill version (installed)**, and **Last used**, in that order. The wider Skill/Project column wraps long names; its copy button stays at the right edge. Other headers and values are centered with faint dotted dividers. Rows retain separate identities for recorded plugin versions and locations even though source-plugin and plugin-version columns are hidden. Date, project, and session filters apply to successful activations and failed load attempts. Failed attempts use the tool-start date and project. The model filter does not filter either because skill activity does not consistently record a model.
 
 **Sessions** includes sessions with recorded uses or failed loads. **Last used** is the most recent use or failed load attempt and displays local time in a compact month/day/year format, such as **11/13/26, 10:49 PM**. Hover over it for the full timestamp, including seconds.
 
@@ -441,7 +443,7 @@ A failure carrying only a requested name is attached to an existing skill only w
 
 Failures reuse the existing incremental journal parser and scanner, with no additional source, scan, or network request. Mixed or missing provider attribution excludes them with a separate omitted-failures notice. An outcome must be recorded at or after its start and no later than the current time; duplicate outcomes follow the existing latest-completion rule.
 
-**Source plugin** and **Plugin version** come from `data.pluginName` and `data.pluginVersion` in Copilot's saved `skill.invoked` or `skill.invoked_ref` events under `session-state/<session>/events.jsonl`. The tracker reads the values recorded for that activation, rather than looking up the plugin's currently installed version. They identify the plugin that supplied the skill and that plugin's version, not a version declared in the skill itself. These fields are optional in GitHub's [`skill.invoked` event reference](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events#skillinvoked). Personal skills such as `~/.copilot/skills/example-skill/SKILL.md`, and project skills, normally have no source plugin. A dash (**—**) in either column means that field was absent; it does not mean the skill failed to run.
+Recorded source-plugin and plugin-version metadata comes from `data.pluginName` and `data.pluginVersion` in Copilot's saved `skill.invoked` or `skill.invoked_ref` events under `session-state/<session>/events.jsonl`. It remains available for attribution and row identity, but is no longer displayed in separate columns. It identifies the supplying plugin rather than a version declared in the skill itself; missing metadata does not mean that a skill failed to run.
 
 A skill can declare its own optional version in its `SKILL.md` frontmatter. The [Agent Skills specification](https://agentskills.io/specification#metadata-field) demonstrates `metadata.version` as a string; it does not define a top-level `version` field:
 
@@ -460,7 +462,7 @@ The column shows **Not declared** when a readable file has no `metadata.version`
 
 This is the **current installed version**, not evidence of which version ran in an older session. Neither GitHub's event reference nor the SDK's [`SkillInvokedData` type](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts) defines a dedicated `skillVersion` field. The event's injected content does not guarantee preserved YAML frontmatter; inspected local records omitted it. Historical skill-version reporting would need version information saved with the activation. The [event reader](src/core/copilot.mjs) keeps recorded plugin metadata and paths; the separate [installed-version reader](src/node/skill-version.mjs) supplies the current file metadata.
 
-Click a skill name to expand its statistics by project; click it again to collapse. One skill expands at a time. Project rows show **Uses**, **By user**, **By agent**, distinct **Sessions**, **Failures**, and **Last used**, with the same source plugin and version metadata as the parent skill. The rows share the parent table's aligned columns and use a different background. Uses, failures, and trigger counts add up to the parent totals. Session counts may not: a session that changes projects appears in both projects but only once in the skill total.
+Click a skill name to expand its statistics by project; click it again to collapse. One skill expands at a time. Project rows show **Uses**, **By user**, **By agent**, distinct **Sessions**, **Failures**, and **Last used**, with the parent's installed skill version. The rows share the parent table's aligned columns and use a different background. Uses, failures, and trigger counts add up to the parent totals. Session counts may not: a session that changes projects appears in both projects but only once in the skill total.
 
 Project statistics follow the same date, project, session, environment, and provider-attribution rules as their parent; the model filter still does not affect skills. Sorting and refreshing keep the expanded skill when it remains available; changing filters closes it. Expansion uses the current report with no extra scan or request. Unresolved failed loads and skills without a recorded path can also expand.
 

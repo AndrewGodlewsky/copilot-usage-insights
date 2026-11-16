@@ -149,7 +149,7 @@ export function levels(values) {
 }
 
 // GitHub-style calendar: columns are weeks (Sun..Sat rows), oldest left.
-export function calendarHeatmap(calendar, { cell = 11, gap = 2, fmt = compact, showCoverage = true } = {}) {
+export function calendarHeatmap(calendar, { cell = 11, gap = 2, fmt = compact, showCoverage = true, selectable = false, selected = 0 } = {}) {
   const label = 'Daily activity calendar'
   if (!calendar?.length) return empty(300, 100, label)
   const first = new Date(calendar[0].day + 'T00:00:00')
@@ -177,21 +177,22 @@ export function calendarHeatmap(calendar, { cell = 11, gap = 2, fmt = compact, s
       }
     }
     const tip = esc(JSON.stringify({ title: shortDay(d.day), rows: [['Tokens', usageValue(d, 'total', fmt, showCoverage)]] }))
-    body += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2" class="mark cell q${lv[i]}" data-tip="${tip}"/>`
+    const selection = selectable ? ` data-inspect="${i}" role="button" tabindex="${i === selected ? 0 : -1}" aria-pressed="${i === selected}" aria-label="${esc(d.day)}: ${esc(usageValue(d, 'total', fmt, showCoverage))} tokens"` : ''
+    body += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2" class="mark cell q${lv[i]}" data-tip="${tip}"${selection}/>`
   })
-  for (const r of [1, 3, 5]) body += `<text x="0" y="${top + r * step + cell - 2}" class="t-muted">${WEEKDAYS[r]}</text>`
-  return svg(w, h, body, label)
+  for (const r of selectable ? [0, 1, 2, 3, 4, 5, 6] : [1, 3, 5]) body += `<text x="0" y="${top + r * step + cell - 2}" class="t-muted">${WEEKDAYS[r]}</text>`
+  return svg(w, h, body, label, selectable ? 'group' : 'img')
 }
 
 // Weekday x hour punch card; dot area follows the value.
-export function punchCard(grid, { cell = 13 } = {}) {
+export function punchCard(grid, { cell = 13, selectable = false, selected = 0, fmt = compact } = {}) {
   const label = 'Activity by weekday and hour'
   const values = Array.from({ length: 168 }, (_, i) => Number(grid?.[i]) || 0)
   const max = Math.max(...values)
   const left = 28
   const w = left + 24 * cell
   const h = 7 * cell + 16
-  if (max <= 0) return empty(w, h, label)
+  if (max <= 0 && !selectable) return empty(w, h, label)
   let body = ''
   for (let d = 0; d < 7; d++) {
     body += `<text x="0" y="${d * cell + cell / 2 + 4}" class="t-muted">${WEEKDAYS[d]}</text>`
@@ -200,13 +201,16 @@ export function punchCard(grid, { cell = 13 } = {}) {
       const cx = left + hr * cell + cell / 2
       const cy = d * cell + cell / 2
       const r = v > 0 ? Math.max(1.5, Math.sqrt(v / max) * (cell / 2 - 1)) : 1
-      const tip = esc(JSON.stringify({ title: `${WEEKDAYS[d]} ${String(hr).padStart(2, '0')}:00`, rows: [['Tokens', v]] }))
-      body += `<g class="mark" data-tip="${tip}"><rect x="${cx - cell / 2}" y="${cy - cell / 2}" width="${cell}" height="${cell}" class="hit"/>`
+      const name = `${WEEKDAYS[d]} ${String(hr).padStart(2, '0')}:00`
+      const tip = esc(JSON.stringify({ title: name, rows: [['Tokens', fmt(v)]] }))
+      const index = d * 24 + hr
+      const selection = selectable ? ` data-inspect="${index}" role="button" tabindex="${index === selected ? 0 : -1}" aria-pressed="${index === selected}" aria-label="${name}: ${esc(fmt(v))} tokens"` : ''
+      body += `<g class="mark" data-tip="${tip}"${selection}><rect x="${cx - cell / 2}" y="${cy - cell / 2}" width="${cell}" height="${cell}" class="hit"/>`
       body += `<circle cx="${cx}" cy="${cy}" r="${r}" class="${v > 0 ? 'dot' : 'dot-empty'}"/></g>`
     }
   }
-  for (const hr of [0, 6, 12, 18]) body += `<text x="${left + hr * cell + 2}" y="${h - 2}" class="t-muted">${hr}h</text>`
-  return svg(w, h, body, label)
+  for (const hr of selectable ? Array.from({ length: 24 }, (_, i) => i) : [0, 6, 12, 18]) body += `<text x="${left + hr * cell + 2}" y="${h - 2}" class="t-muted">${hr}h</text>`
+  return svg(w, h, body, label, selectable ? 'group' : 'img')
 }
 
 // Ring chart with 2px gaps between segments. segments: [{ label, value, color }]

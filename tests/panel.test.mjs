@@ -48,6 +48,17 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
   }
   get('cache').checked = true;
+  let activityMarkup = '', activityMarks = [];
+  Object.defineProperty(get('activity-chart'), 'innerHTML', { get: () => activityMarkup, set(value) {
+    activityMarkup = value;
+    activityMarks = [...value.matchAll(/<(?:rect|g)[^>]*data-inspect="(\d+)"([^>]*)>/g)].map(([, index, rest]) => {
+      const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
+      return { dataset: { inspect: index }, focus() { document.activeElement = this; }, closest() { return this; },
+        setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k) };
+    });
+  } });
+  get('activity-chart').querySelectorAll = () => activityMarks;
+  get('activity-chart').querySelector = selector => activityMarks.find(mark => mark.dataset.inspect === selector.match(/="(\d+)"/)?.[1]) || null;
   const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now(), transportError: initial.transportError };
   const objectUrls = new Map(), revoked = [];
   server.downloads = [];
@@ -1023,6 +1034,71 @@ async function requestPanel() {
   return { ...panel, click, report, records, now };
 }
 
+test('Activity and When you work expand, inspect cached data, navigate by keyboard and restore focus', async () => {
+  const { get, report, requests, document, server, listeners } = await requestPanel();
+  const dialog = get('activity-dialog');
+  dialog.close = () => { dialog.open = false; dialog.onclose(); };
+  const requestsBefore = requests.length;
+  get('activity-card').onclick();
+  assert.equal(dialog.open, true);
+  assert.equal(get('activity-title').textContent, 'Activity');
+  assert.match(get('activity-caption').textContent, /26 weeks.*independent of the date dropdown/);
+  assert.match(get('activity-detail').innerHTML, /AI credits|Model turns|Cache read/);
+  assert.equal(get('activity-chart').querySelectorAll().length, 182);
+  const key = key => { let prevented = false; const target = get('activity-chart').querySelectorAll().find(mark => mark.getAttribute('aria-pressed') === 'true'); get('activity-chart').onkeydown({ key, target, preventDefault() { prevented = true; } }); assert.equal(prevented, true); };
+  key('Home'); assert.equal(document.activeElement.dataset.inspect, '0');
+  key('ArrowRight'); assert.equal(document.activeElement.dataset.inspect, '7');
+  key('ArrowDown'); assert.equal(document.activeElement.dataset.inspect, '8');
+  key('End'); assert.equal(document.activeElement.dataset.inspect, '181');
+  key('ArrowRight'); assert.equal(document.activeElement.dataset.inspect, '181');
+  get('activity-close').onclick();
+  assert.equal(document.activeElement, get('activity-expand'));
+  get('rhythm-expand').onclick();
+  assert.equal(get('activity-title').textContent, 'When you work');
+  assert.equal(get('activity-chart').querySelectorAll().length, 168);
+  key('Home'); key('ArrowDown'); key('ArrowRight');
+  assert.equal(document.activeElement.dataset.inspect, '25');
+  assert.match(get('activity-detail-title').textContent, /Monday.*01:00/);
+  assert.match(get('activity-detail').innerHTML, /Share of recorded tokens/);
+  const mark = get('activity-chart').querySelector('[data-inspect="157"]');
+  get('activity-chart').onclick({ target: mark });
+  assert.match(get('activity-detail-title').textContent, /Saturday.*13:00/);
+  listeners.get('pointermove')({ target: mark });
+  assert.equal(get('tip').hidden, true, 'dialog details replace the body-level tooltip');
+  assert.equal(requests.length, requestsBefore, 'expanding and selecting do not fetch or rescan');
+  mark.focus();
+  await get('refresh').onclick();
+  assert.equal(dialog.open, true); assert.equal(document.activeElement.dataset.inspect, '157');
+  assert.match(get('activity-detail-title').textContent, /Saturday.*13:00/);
+  get('activity-close').onclick(); assert.equal(document.activeElement, get('rhythm-expand'));
+  server.report = () => ({ ...report, loading: { phase: 'recent' } });
+  await get('refresh').onclick();
+  assert.equal(get('activity-expand').disabled, true);
+  get('activity-card').onclick(); assert.equal(dialog.open, false);
+  get('rhythm-card').onclick(); assert.equal(dialog.open, true);
+  assert.match(get('activity-caption').textContent, /history is still loading/);
+  server.report = () => ({ loading: { phase: 'history' } });
+  get('range').value = '90d'; get('range').onchange(); await new Promise(setImmediate);
+  assert.equal(dialog.open, false, 'a loading-only range cannot leave old details open');
+  assert.equal(document.activeElement, get('range'));
+});
+
+test('expanded charts distinguish empty recorded slots from unavailable accounting', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const last = report.calendar.at(-1);
+  Object.assign(last, { requests: 1, knownTokenRequests: 0, missingTokens: 1, credits: null, missingCredits: 1 });
+  const { get, requests } = await mountPanel(report);
+  const dialog = get('activity-dialog'); dialog.close = () => { dialog.open = false; dialog.onclose(); };
+  const before = requests.length;
+  get('activity-expand').onclick();
+  assert.match(get('activity-detail').innerHTML, /<dt>Tokens<\/dt><dd>Unavailable<\/dd>/);
+  assert.match(get('activity-detail').innerHTML, /<dt>AI credits<\/dt><dd>Unavailable<\/dd>/);
+  get('activity-close').onclick(); get('rhythm-expand').onclick();
+  assert.match(get('activity-detail').innerHTML, /<dt>Share of recorded tokens<\/dt><dd>—<\/dd>/);
+  assert.doesNotMatch(get('activity-detail').innerHTML + get('activity-summary').innerHTML + get('activity-chart').innerHTML, /NaN|Infinity|undefined/);
+  assert.equal(requests.length, before);
+});
+
 test('both Breakdown hierarchies keep aligned columns, repeated headings, and alternating level backgrounds', async () => {
   const { get, click, records, requests } = await requestPanel();
   const html = () => get('breakdown').innerHTML;
@@ -1919,10 +1995,10 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   const { get, nodes, requests } = await mountPanel(report);
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
-  assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Failures', 'Source plugin', 'Plugin version', 'Skill version (installed)', 'Last used']);
+  assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Failures', 'Skill version (installed)', 'Last used']);
   const cells = [...get('skills').innerHTML.matchAll(/<td(?:\s[^>]*)?>(.*?)<\/td>/g)].map(([, value]) => value.replace(/<\/?span[^>]*>/g, ''));
   assert.equal(cells.length, headers.length);
-  assert.deepEqual(cells.slice(1, 9), ['5', '2', '1', '1', '0', '&lt;team-tools&gt;', '2.0', '1.0.1']);
+  assert.deepEqual(cells.slice(1, 7), ['5', '2', '1', '1', '0', '1.0.1']);
   assert.equal(cells.at(-1), '11/13/26, 10:49 PM');
   assert.equal(get('skills-summary').textContent, '5 uses · 0 failures · 1 session');
   assert.ok(get('skills').innerHTML.includes(`title="${now.toLocaleString()}"`), 'full timestamp stays available on hover');
@@ -1930,7 +2006,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   assert.doesNotMatch(get('skills').innerHTML, /Reasoning|Success rate|<th[^>]*>Projects<|<hello-test>/);
   assert.ok(!nodes.has('skill-details'));
   await get('refresh').onclick();
-  assert.match(get('skills').innerHTML, /Source plugin/);
+  assert.doesNotMatch(get('skills').innerHTML, /Source plugin|Plugin version/);
   assert.match(get('breakdown').innerHTML, /Reasoning/);
   assert.match(get('breakdown').innerHTML, /Avg\. tokens \/ turn/);
   assert.ok(!nodes.has('tools'));
@@ -1950,7 +2026,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   assert.match(get('session').innerHTML, />Renamed session<\/option>/);
 });
 
-test('skills table keeps ten aligned columns and makes unresolved failures readable without folder actions', async () => {
+test('skills table keeps eight aligned columns and makes unresolved failures readable without folder actions', async () => {
   const { get, report, records, now } = await requestPanel();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
   const timestamp = now.toISOString(), missingName = '<missing-skill-with-a-long-requested-name>';
@@ -1966,7 +2042,7 @@ test('skills table keeps ten aligned columns and makes unresolved failures reada
   assert.ok(html.includes('title="Recorded failed attempts to load this skill.">Failures</th>'));
   const rows = [...html.matchAll(/<tbody><tr>(.*?)<\/tr><\/tbody>/g)].map(([, row]) => row);
   assert.equal(rows.length, 2);
-  for (const row of rows) assert.equal(row.split('<td').length - 1, 10, 'every row keeps a cell beneath each header');
+  for (const row of rows) assert.equal(row.split('<td').length - 1, 8, 'every row keeps a cell beneath each header');
   assert.ok(rows[0].includes('data-skill-action="toggle"'));
   assert.ok(rows[1].includes('&lt;missing-skill-with-a-long-requested-name&gt;'));
   assert.ok(rows[1].includes('(unresolved)'));
@@ -2040,8 +2116,8 @@ test('skills expand aligned project statistics locally, preserve focus and refre
   assert.doesNotMatch(html, /<project|<skill>/);
   assert.equal((html.match(/<table>/g) || []).length, 1, 'expanded rows share the original table columns');
   const body = html.split('class="skill-projects"')[1].split('</tbody>')[0];
-  assert.equal((body.match(/<th /g) || []).length, 10);
-  assert.equal((body.match(/<td(?:\s|>)/g) || []).length, 10);
+  assert.equal((body.match(/<th /g) || []).length, 8);
+  assert.equal((body.match(/<td(?:\s|>)/g) || []).length, 8);
   assert.ok(focusCount > 0);
   assert.equal(document.activeElement, toggle);
   await click(copy);
@@ -2142,7 +2218,7 @@ test('simplified numbers apply across views and context, persist, and only chang
   const large = [{ ...records[0], inputTotal: 42_242_785, input: 42_242_785, cacheRead: 0, cacheWrite: 0, output: 2131,
     reasoning: 1000, toolTokenCount: 2131, nanoAiu: 2_131_000_000_000 }];
   Object.assign(report, buildReport(large, {}, now));
-  report.skills = { invocations: 2131, sessions: 1, rows: [{ id: 'skill', name: 'Skill', invocations: 2131, sessions: 1, projects: 1, lastUsed: now.toISOString(), version: '1.2.3' }] };
+  report.skills = { invocations: 2131, sessions: 1, rows: [{ id: 'skill', name: 'Skill', invocations: 2131, sessions: 1, projects: 1, lastUsed: now.toISOString(), installedVersion: { value: '1.2.3', status: 'available' } }] };
   report.mcp.rows = [{ name: 'Server', calls: 2131, failures: 0, successes: 2131, unknown: 0, successRate: 100, lastUsed: null, status: 'unavailable' }];
   report.sources = [{ state: 'ok', path: '/fixture', records: 2131, files: 1_000_000 }];
   server.requestPage = input => buildRequestPage(large, input, now);

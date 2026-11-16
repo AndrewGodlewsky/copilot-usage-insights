@@ -172,6 +172,20 @@ test('punchCard draws 168 cells', () => {
   assert.match(punchCard([]), /No usage yet/)
 })
 
+test('expanded activity charts expose selectable dates and hour slots with one keyboard entry point', () => {
+  const calendar = calendarHeatmap([day('2026-11-14', 100), day('2026-11-15', 0)], { cell: 24, gap: 4, selectable: true, selected: 1 });
+  wellFormed(calendar);
+  assert.match(calendar, /role="group"/);
+  assert.equal((calendar.match(/data-inspect=/g) || []).length, 2);
+  assert.match(calendar, /data-inspect="1"[^>]*tabindex="0"[^>]*aria-pressed="true"/);
+  assert.match(calendar, /2026-11-15/);
+  const rhythm = punchCard(Array(168).fill(0), { cell: 28, selectable: true, selected: 27, fmt: n => `n${n}` });
+  wellFormed(rhythm);
+  assert.equal((rhythm.match(/data-inspect=/g) || []).length, 168, 'zero slots remain inspectable');
+  assert.equal((rhythm.match(/tabindex="0"/g) || []).length, 1);
+  assert.match(rhythm, /data-inspect="27"[^>]*aria-label="Mon 03:00.*n0/);
+});
+
 test('donut skips zero segments and escapes labels', () => {
   const s = donut([{ label: '<b>', value: 3, color: 'red' }, { label: 'b', value: 0, color: 'blue' }, { label: 'c', value: 1, color: 'green' }])
   wellFormed(s)

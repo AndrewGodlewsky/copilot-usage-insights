@@ -377,6 +377,7 @@ function renderLoadStatus() {
   const matching = state.report && state.filterKey === JSON.stringify(query());
   if (!matching) rememberReviewAnimation();
   $('content').hidden = !matching;
+  if (!matching && $('activity-dialog').open) $('activity-dialog').close();
   if (historyLoading) {
     $('status').hidden = false;
     $('status').textContent = loadError ? 'History loading stopped. Any recent results shown are incomplete. Use Refresh to retry. ' + loadError
@@ -604,10 +605,10 @@ function skillName(skill, open) {
   return `<span class="skill-actions"><button class="model-toggle skill-toggle" data-skill-id="${esc(skill.id)}" data-skill-action="toggle" aria-expanded="${open}"${open ? ' aria-controls="skill-project-rows"' : ''} aria-label="Projects for ${esc(skill.name)}" title="${hint}"><span aria-hidden="true">${open ? '\u25be' : '\u25b8'}</span> ${esc(skill.name)}${skill.unresolved ? ' <span class="muted">(unresolved)</span>' : ''}</button>${skill.path && !skill.unresolved && skillFolder(skill.path) ? `<button class="skill-copy" data-skill-id="${esc(skill.id)}" data-skill-action="copy" aria-label="Copy folder path for ${esc(skill.name)}" title="Copy folder path"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>` : ''}</span>`;
 }
 function skillHeader(label) {
-  return `<tr><th scope="col">${label}</th><th scope="col" title="Recorded successful skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th scope="col" title="Uses explicitly requested by the user.">By user</th><th scope="col" title="Uses requested by the agent.">By agent</th><th scope="col">Sessions</th><th scope="col" title="Recorded failed attempts to load this skill.">Failures</th><th scope="col">Source plugin</th><th scope="col">Plugin version</th><th scope="col" title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th scope="col" title="Most recent recorded use or failed load.">Last used</th></tr>`;
+  return `<tr><th scope="col">${label}</th><th scope="col" title="Recorded successful skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th scope="col" title="Uses explicitly requested by the user.">By user</th><th scope="col" title="Uses requested by the agent.">By agent</th><th scope="col">Sessions</th><th scope="col" title="Recorded failed attempts to load this skill.">Failures</th><th scope="col" title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th scope="col" title="Most recent recorded use or failed load.">Last used</th></tr>`;
 }
 function skillStats(row, skill = row) {
-  return `<td title="${esc(skillTriggerSummary(row))}">${number(row.invocations)}</td><td>${number(row.triggers?.manual ?? 0)}</td><td>${number(row.triggers?.agent ?? 0)}</td><td>${number(row.sessions)}</td><td>${number(row.failures ?? 0)}</td>${textCell(skill.plugin || '\u2014')}${textCell(skill.version || '\u2014')}${textCell(skill.installedVersion?.value ?? (skill.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(row.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(row.lastUsed)))}</td>`;
+  return `<td title="${esc(skillTriggerSummary(row))}">${number(row.invocations)}</td><td>${number(row.triggers?.manual ?? 0)}</td><td>${number(row.triggers?.agent ?? 0)}</td><td>${number(row.sessions)}</td><td>${number(row.failures ?? 0)}</td>${textCell(skill.installedVersion?.value ?? (skill.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(row.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(row.lastUsed)))}</td>`;
 }
 function skillTable(skills) {
   return `<table><thead>${skillHeader('Skill')}</thead>${sortActivity(skills, $('skills-sort').value).map(skill => {
@@ -615,7 +616,7 @@ function skillTable(skills) {
     const parent = `<tbody><tr><td class="text-cell" title="${esc(skill.name)}">${skillName(skill, open)}</td>${skillStats(skill)}</tr></tbody>`;
     if (!open) return parent;
     const projects = sortActivity(skill.projectRows || [], $('skills-sort').value);
-    return parent + `<tbody id="skill-project-rows" class="skill-projects" aria-label="Projects for ${esc(skill.name)}">${skillHeader('Project')}${projects.length ? projects.map(project => `<tr>${textCell(project.name)}${skillStats(project, skill)}</tr>`).join('') : '<tr><td colspan="10">No project statistics available. Refresh to update this skill.</td></tr>'}</tbody>`;
+    return parent + `<tbody id="skill-project-rows" class="skill-projects" aria-label="Projects for ${esc(skill.name)}">${skillHeader('Project')}${projects.length ? projects.map(project => `<tr>${textCell(project.name)}${skillStats(project, skill)}</tr>`).join('') : '<tr><td colspan="8">No project statistics available. Refresh to update this skill.</td></tr>'}</tbody>`;
   }).join('')}</table>`;
 }
 function skillTriggerSummary(skill) {
@@ -1269,7 +1270,9 @@ function renderContent() {
   const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
   $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
   $('calendar').innerHTML = r.loading ? '<p class="muted">Activity history is loading…</p>' : calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
-  $('rhythm').innerHTML = punchCard(r.rhythm);
+  $('rhythm').innerHTML = punchCard(r.rhythm, { fmt: number });
+  $('activity-expand').disabled = !!r.loading;
+  renderActivityExplorer();
   const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
   const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
   $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
@@ -1313,6 +1316,103 @@ function selectDay(day) {
 $('daily').onclick = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day) selectDay(day); };
 $('daily').onkeydown = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day && ['Enter', ' '].includes(e.key)) { e.preventDefault(); selectDay(day); } };
 $('all-days').onclick = () => selectDay(null);
+
+let activityKind, activitySelection;
+const activityDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const activityDate = day => new Date(day + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const activityStats = rows => rows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('');
+function activityIndex() {
+  return activityKind === 'calendar' ? state.report.calendar.findIndex(day => day.day === activitySelection) : activitySelection;
+}
+function openActivity(kind) {
+  if (!state.report || kind === 'calendar' && state.report.loading || $('activity-dialog').open) return;
+  activityKind = kind;
+  const r = state.report;
+  activitySelection = kind === 'calendar' ? (r.calendar.findLast(day => day.requests > 0) || r.calendar.at(-1))?.day
+    : r.rhythm.reduce((best, value, i) => value > r.rhythm[best] ? i : best, 0);
+  $('tip').hidden = true;
+  $('activity-dialog').showModal();
+  renderActivityExplorer();
+}
+function renderActivityExplorer() {
+  const r = state.report;
+  if (!$('activity-dialog').open || !r) return;
+  const calendar = activityKind === 'calendar', focused = document.activeElement?.dataset?.inspect;
+  if (calendar && r.loading) { $('activity-dialog').close(); return; }
+  if (calendar && activityIndex() < 0) activitySelection = r.calendar.at(-1)?.day;
+  $('activity-title').textContent = calendar ? 'Activity' : 'When you work';
+  $('activity-caption').textContent = calendar
+    ? `${r.calendar[0]?.day || ''} — ${r.calendar.at(-1)?.day || ''} · 26 weeks · current model, project, session and environment filters; independent of the date dropdown.`
+    : `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time · current filters${r.loading ? ' · recent usage so far; history is still loading' : ''}`;
+  if (calendar) {
+    const active = r.calendar.filter(day => day.requests > 0), peak = active.reduce((best, day) => day.total > (best?.total || 0) ? day : best, null);
+    $('activity-summary').innerHTML = activityStats([['Active days', number(active.length)], ['Model turns', number(active.reduce((sum, day) => sum + day.requests, 0))], ['Busiest recorded day', peak ? activityDate(peak.day) : '—']]);
+    $('activity-chart').innerHTML = calendarHeatmap(r.calendar, { cell: 24, gap: 4, selectable: true, selected: activityIndex(), fmt: number, showCoverage: !$('coverage').hidden });
+  } else {
+    const days = activityDays.map((_, d) => r.rhythm.slice(d * 24, d * 24 + 24).reduce((sum, value) => sum + value, 0));
+    const hours = Array.from({ length: 24 }, (_, h) => days.reduce((sum, _, d) => sum + r.rhythm[d * 24 + h], 0));
+    const peakDay = days.indexOf(Math.max(...days)), peakHour = hours.indexOf(Math.max(...hours));
+    const total = days.reduce((sum, value) => sum + value, 0);
+    $('activity-summary').innerHTML = activityStats([['Recorded tokens', recordedValue(r.totals, 'total', number)], ['Busiest weekday', total ? activityDays[peakDay] : '—'], ['Busiest hour', total ? `${String(peakHour).padStart(2, '0')}:00–${String(peakHour + 1).padStart(2, '0')}:00` : '—']]);
+    $('activity-chart').innerHTML = punchCard(r.rhythm, { cell: 28, selectable: true, selected: activityIndex(), fmt: number });
+  }
+  $('activity-note').textContent = calendar
+    ? 'Color intensity compares recorded daily tokens. A day with no recorded usage is not proof of no activity. Input includes cache; reasoning is part of output.'
+    : 'Dots group recorded tokens by the local time of model calls, not hours spent working. Weekdays and hours combine all selected dates; missing token counts are not estimated.';
+  if (!r.query.includeCache) $('activity-note').textContent += ' Cache is excluded from totals; individual cache counts remain available.';
+  renderActivitySelection();
+  if (focused !== undefined) $('activity-chart').querySelector(`[data-inspect="${activityIndex()}"]`)?.focus({ preventScroll: true });
+}
+function renderActivitySelection() {
+  const r = state.report, index = activityIndex();
+  for (const mark of $('activity-chart').querySelectorAll('[data-inspect]')) {
+    const selected = Number(mark.dataset.inspect) === index;
+    mark.setAttribute('aria-pressed', String(selected)); mark.setAttribute('tabindex', selected ? '0' : '-1');
+  }
+  if (activityKind === 'calendar') {
+    const day = r.calendar[index];
+    $('activity-detail-title').textContent = day ? activityDate(day.day) : 'No recorded dates';
+    $('activity-detail').innerHTML = day ? activityStats([['Tokens', recordedValue(day, 'total', number)], ['AI credits', recordedValue(day, 'credits', creditNumber)], ['Model turns', number(day.requests)], ['Sessions', number(day.sessions)], ['Uncached input', recordedValue(day, 'input', number)], ['Cache read', recordedValue(day, 'cacheRead', number)], ['Cache write', recordedValue(day, 'cacheWrite', number)], ['Output', recordedValue(day, 'output', number)]]) : '';
+  } else {
+    const day = Math.floor(index / 24), hour = index % 24, tokens = r.rhythm[index] || 0, total = r.rhythm.reduce((sum, value) => sum + value, 0);
+    const weekdayTotal = r.rhythm.slice(day * 24, day * 24 + 24).reduce((sum, value) => sum + value, 0);
+    $('activity-detail-title').textContent = `${activityDays[day]} · ${String(hour).padStart(2, '0')}:00–${String(hour + 1).padStart(2, '0')}:00`;
+    $('activity-detail').innerHTML = activityStats([['Recorded tokens in this slot', number(tokens)], ['Share of recorded tokens', total ? `${number(tokens / total * 100)}%` : '—'], [`All ${activityDays[day]} tokens`, number(weekdayTotal)]]);
+  }
+}
+function selectActivity(index, focus = false) {
+  if (!state.report || !Number.isInteger(index)) return;
+  const count = activityKind === 'calendar' ? state.report.calendar.length : 168;
+  if (index < 0 || index >= count) return;
+  activitySelection = activityKind === 'calendar' ? state.report.calendar[index].day : index;
+  renderActivitySelection();
+  if (focus) {
+    const chart = $('activity-chart'), mark = chart.querySelector(`[data-inspect="${index}"]`);
+    mark?.focus({ preventScroll: true });
+    const cell = mark?.getBoundingClientRect?.(), bounds = chart.getBoundingClientRect();
+    if (cell?.left < bounds.left) chart.scrollLeft -= bounds.left - cell.left + 5;
+    else if (cell?.right > bounds.right) chart.scrollLeft += cell.right - bounds.right + 5;
+  }
+}
+for (const [id, kind] of [['activity', 'calendar'], ['rhythm', 'rhythm']]) {
+  $(`${id}-card`).onclick = () => openActivity(kind);
+  $(`${id}-expand`).onclick = () => openActivity(kind);
+}
+$('activity-close').onclick = () => $('activity-dialog').close();
+$('activity-dialog').onclose = () => {
+  const opener = activityKind === 'calendar' ? 'activity-expand' : 'rhythm-expand';
+  activityKind = undefined;
+  ($('content').hidden ? $('range') : $(opener)).focus({ preventScroll: true });
+};
+$('activity-chart').onclick = e => { const mark = e.target.closest('[data-inspect]'); if (mark) selectActivity(Number(mark.dataset.inspect)); };
+$('activity-chart').onfocusin = e => { const mark = e.target.closest('[data-inspect]'); if (mark) selectActivity(Number(mark.dataset.inspect)); };
+$('activity-chart').onkeydown = e => {
+  const mark = e.target.closest('[data-inspect]'); if (!mark) return;
+  const index = Number(mark.dataset.inspect), calendar = activityKind === 'calendar', count = calendar ? state.report.calendar.length : 168;
+  const offsets = calendar ? { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 } : { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -24, ArrowDown: 24 };
+  const next = e.key === 'Home' ? 0 : e.key === 'End' ? count - 1 : e.key in offsets ? Math.max(0, Math.min(count - 1, index + offsets[e.key])) : ['Enter', ' '].includes(e.key) ? index : undefined;
+  if (next !== undefined) { e.preventDefault(); selectActivity(next, true); }
+};
 function selectButton(container, name, value) {
   for (const button of $(container).querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset[name] === value));
 }
@@ -1519,6 +1619,7 @@ function showTooltip(mark, x, y) {
   popup.style.top = `${Math.max(margin, Math.min(top, viewportHeight - height - margin))}px`;
 }
 document.addEventListener('pointermove', e => {
+  if ($('activity-dialog').open) { $('tip').hidden = true; return; }
   const mark = e.target.closest('.mark[data-tip]');
   if (!mark) { $('tip').hidden = true; return; }
   showTooltip(mark, e.clientX, e.clientY);
