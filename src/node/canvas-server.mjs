@@ -15,6 +15,7 @@ import { prepareInsightReview } from './review-evidence.mjs';
 import { loadReviewGuidance } from './review-insights.mjs';
 import { createWslDiscovery } from './wsl-sources.mjs';
 import { createVSCodeSources } from './vscode-sources.mjs';
+import { validEndpoint } from './canvas-endpoint.mjs';
 
 const MAX_BODY = 64 * 1024, MAX_REPORTS = 12;
 // The latest time carried by anything in a scan: until then, the clock can still change a report.
@@ -26,14 +27,15 @@ function latestTime(scan) {
   }
   return latest;
 }
-export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }) } = {}) {
+export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }), endpoint } = {}) {
+  if (endpoint !== undefined && !validEndpoint(endpoint)) throw new TypeError('Invalid dashboard endpoint');
   scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources() });
   html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
-  const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch }, ...diagnostics.snapshot() });
+  const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch, processId: process.pid }, ...diagnostics.snapshot() });
   const savedDiagnosticSnapshot = () => ({ ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) });
-  const token = randomBytes(32).toString('hex'), prefix = `/${token}/`;
+  const token = endpoint?.token ?? randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
   const pending = new Set();
   let history, reviewRequest, preparedReview, contextSnapshot;
@@ -251,7 +253,10 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       json(res, status, { error: e.message });
     }
   }
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(endpoint?.port ?? 0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
+  });
   origin = `http://127.0.0.1:${server.address().port}`;
   diagnostics.record('info', 'server.listening');
   let closing;

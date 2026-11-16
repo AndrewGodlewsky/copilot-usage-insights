@@ -119,7 +119,7 @@ async function request(method, input = {}, refresh = false, signal, known) {
 function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   const client = clientDiagnostics.snapshot();
   const lines = [`Usage Insights v${BUILD_VERSION}`, `Exported: ${new Date().toISOString()}`,
-    server ? `Server: v${server.version}, Node ${server.runtime.node}, ${server.runtime.platform}/${server.runtime.arch}` : 'Server logs unavailable.',
+    server ? `Server: v${server.version}, Node ${server.runtime.node}, ${server.runtime.platform}/${server.runtime.arch}${server.runtime.processId ? `, process ${server.runtime.processId}` : ''}` : 'Server logs unavailable.',
     `Dashboard started: ${client.startedAt}; retained ${client.entries.length}/${client.limit} entries; dropped ${client.dropped}`];
   if (server) lines.push(`Server started: ${server.startedAt}; retained ${server.entries.length}/${server.limit} entries; dropped ${server.dropped}`);
   if (server && cached) lines.push(`Cached server snapshot from ${server.capturedAt || server.startedAt}; this is not a live connection check.`);
@@ -279,7 +279,23 @@ async function load(force = false, refresh = false) {
         const input = query(), filterKey = JSON.stringify(input);
         // When this very view is already on screen, the server may answer that nothing changed.
         const known = method === 'usage.report' && state.report && !state.creditsUnavailable && filterKey === state.filterKey ? state.report.revision : undefined;
-        const report = await request(method, input, rescan, undefined, known);
+        let report;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            report = await request(method, input, rescan, undefined, known);
+            if (attempt) clientDiagnostics.record('info', 'ui.reconnect', { phase: 'finished' });
+            break;
+          } catch (error) {
+            // Only the explicit, read-only Refresh action retries. Never replay an AI
+            // review or settings change after an uncertain transport outcome.
+            if (method !== 'usage.refresh' || error.requestStage !== 'fetch' || version !== state.version) throw error;
+            if (attempt === 3) { clientDiagnostics.record('warn', 'ui.reconnect', { phase: 'failed' }); throw error; }
+            clientDiagnostics.record('info', 'ui.reconnect', { phase: 'started' });
+            $('live').textContent = 'Reconnecting to the dashboard server';
+            await new Promise(resolve => setTimeout(resolve, [500, 1000, 2000][attempt]));
+            if (version !== state.version) throw error;
+          }
+        }
         if (rescan || method === 'usage.refresh') lastSuccessfulScanAt = Date.now();
         if (version !== state.version) continue;
         loadError = '';
@@ -309,7 +325,7 @@ async function load(force = false, refresh = false) {
         if (version !== state.version) continue;
         state.creditsUnavailable = !state.report || state.filterKey !== JSON.stringify(query());
         if (state.creditsUnavailable) { state.requestView = null; state.modelView = null; state.projectView = null; }
-        loadError = e.requestStage === 'fetch' ? 'Could not reach the local dashboard server. Try Refresh, or close and reopen Usage Insights from Copilot.' : `Could not update usage: ${e.message}`;
+        loadError = e.requestStage === 'fetch' ? 'Could not reach the local dashboard server. Copilot may have restarted the extension. Try Refresh to reconnect; if it stays unavailable, close and reopen Usage Insights from Copilot.' : `Could not update usage: ${e.message}`;
         renderHeaderCredits();
         renderLoadStatus();
         if (state.creditsUnavailable) $('status').before($('filters'));

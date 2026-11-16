@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.95",
+    "summary": "The dashboard can reconnect after Copilot reloads its plugin extensions. Refresh now waits through brief connection interruptions, and logs make server restarts easier to identify."
+  },
+  {
     "version": "0.1.94",
     "summary": "AI review has less explanatory clutter, with routine metadata tucked into Review details. Targeted prompt excerpts are now an enabled-by-default setting; your choice is saved, and you can turn them off for statistics-only reviews."
   },

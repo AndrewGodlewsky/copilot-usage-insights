@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, createServer } from 'node:http';
 import { createSettings } from '../src/node/settings.mjs';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { registerCanvas } from '../src/node/canvas.mjs';
@@ -144,6 +144,57 @@ test('canvas instances isolate review ownership, reuse their own server, and dis
   await canvas.open({ instanceId: 'c' }); assert.equal(starts, 3);
   await config.tools[0].handler({}); assert.equal(opened.canvasId, 'usage-insights');
   await registration.dispose(); assert.equal(stops, 3);
+});
+
+test('a replacement extension restores the existing dashboard address and Refresh reaches it', async t => {
+  const directory = await fixture(t);
+  const registrations = [];
+  t.after(() => Promise.all(registrations.map(r => r.dispose())));
+  async function extension(sessionId = 'same-session') {
+    let canvas;
+    const registration = await registerCanvas({
+      createCanvas: c => c,
+      joinSession: async c => { canvas = c.canvases[0]; return { sessionId }; },
+      endpointDirectory: directory,
+      serverOptions: { html: '<title>Test</title>', settings: createSettings(directory),
+        scanner: { scan: async () => ({ records: [], sources: [], coverage: {} }) } },
+    });
+    registrations.push(registration);
+    return { ...registration, open: instanceId => canvas.open({ sessionId, instanceId }), close: instanceId => canvas.onClose({ sessionId, instanceId }) };
+  }
+  const first = await extension(), original = await first.open('dashboard');
+  const refresh = () => fetch(original.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'usage.refresh' }) });
+  assert.equal((await refresh()).status, 200);
+  await first.dispose();
+  await assert.rejects(refresh(), { name: 'TypeError' });
+  const replacement = await extension(), restored = await replacement.open('dashboard');
+  assert.equal(restored.url, original.url, 'the still-open renderer must not be stranded on a dead port/token');
+  assert.equal((await refresh()).status, 200, 'Refresh uses the original URL after host replacement');
+  assert.notEqual((await replacement.open('second-dashboard')).url, original.url);
+  assert.notEqual((await (await extension('other-session')).open('dashboard')).url, original.url);
+  await replacement.close('dashboard');
+  assert.notEqual((await replacement.open('dashboard')).url, original.url, 'explicit close revokes the old address; only extension disposal preserves it');
+});
+
+test('closing after a failed handoff resets an occupied address without disturbing its new owner', { timeout: 12_000 }, async t => {
+  const directory = await fixture(t);
+  let canvas;
+  const registration = await registerCanvas({ createCanvas: c => c,
+    joinSession: async c => { canvas = c.canvases[0]; return { sessionId: 'port-conflict' }; }, endpointDirectory: directory,
+    serverOptions: { html: '<title>Test</title>' } });
+  t.after(() => registration.dispose());
+  const ctx = { sessionId: 'port-conflict', instanceId: 'dashboard', extensionId: 'provider' };
+  const first = await canvas.open(ctx);
+  await registration.dispose();
+  const blocker = createServer((_req, res) => res.end('unrelated listener'));
+  await new Promise(resolve => blocker.listen(Number(new URL(first.url).port), '127.0.0.1', resolve));
+  t.after(() => { blocker.closeAllConnections(); return new Promise(resolve => blocker.close(resolve)); });
+  await assert.rejects(canvas.open(ctx), { code: 'EADDRINUSE' });
+  await canvas.onClose(ctx);
+  const fresh = await canvas.open(ctx);
+  assert.notEqual(fresh.url, first.url);
+  assert.equal((await fetch(fresh.url)).status, 200);
+  assert.equal(await (await fetch(first.url)).text(), 'unrelated listener');
 });
 
 test('context endpoint is protected, rejects arbitrary options and never scans history', async t => {

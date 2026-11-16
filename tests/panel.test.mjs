@@ -105,6 +105,60 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context };
 }
 
+async function finishReconnect(timeouts, pending) {
+  for (let i = 0; i < 4; i++) {
+    await new Promise(setImmediate);
+    const retry = timeouts.find(timer => [500, 1000, 2000].includes(timer.ms) && !timer.ran && !timer.cleared);
+    if (!retry) break;
+    retry.ran = true;
+    retry.callback();
+  }
+  await pending;
+}
+
+test('manual Refresh reconnects during an extension restart without repeating AI work', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, requests, timeouts } = await mountPanel(report);
+  server.transportError = true;
+  const start = requests.length;
+  const pending = get('refresh').onclick();
+  await new Promise(setImmediate);
+  assert.equal(get('refresh').dataset.refreshState, 'busy', 'Refresh waits through a brief host restart');
+  server.transportError = false;
+  await finishReconnect(timeouts, pending);
+  assert.equal(get('refresh').dataset.refreshState, 'done');
+  assert.equal(requests.slice(start).filter(r => r.method === 'usage.refresh').length, 2);
+  assert.equal(requests.slice(start).some(r => r.method.startsWith('review.')), false);
+  assert.doesNotMatch(get('status').textContent, /Could not reach/);
+});
+
+test('queued filters supersede a reconnect attempt without loading the old scope', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, requests, timeouts } = await mountPanel(report);
+  server.transportError = true;
+  const pending = get('refresh').onclick();
+  await new Promise(setImmediate);
+  const start = requests.length;
+  get('project').value = 'Changed project';
+  await get('project').onchange();
+  server.transportError = false;
+  await finishReconnect(timeouts, pending);
+  const reports = requests.slice(start).filter(r => ['usage.report', 'usage.refresh'].includes(r.method));
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].input.project, 'Changed project');
+  assert.equal(get('refresh').disabled, false);
+});
+
+test('Refresh does not retry server errors or start background reconnection polling', async () => {
+  const { get, server, requests, timeouts } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  server.report = () => { throw new Error('fixture server error'); };
+  const before = requests.length;
+  await get('refresh').onclick();
+  assert.equal(requests.length, before + 1, 'a response/decode error is not a lost server');
+  assert.equal(timeouts.some(t => [500, 1000, 2000].includes(t.ms)), false);
+  assert.equal(get('refresh').disabled, false);
+});
+
 test('refresh controls show pending and successful feedback, including unchanged data', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, server, timeouts } = await mountPanel(report);
@@ -133,15 +187,17 @@ test('refresh controls show pending and successful feedback, including unchanged
 
 test('a new refresh clears success feedback and failures restore both controls without claiming success', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
-  const { get, server, timeouts } = await mountPanel(report);
+  const { get, server, timeouts, requests } = await mountPanel(report);
   await get('refresh').onclick();
   const reset = timeouts.findLast(t => t.ms === 1400 && !t.cleared);
   assert.ok(reset, 'successful manual refresh has a brief completion state');
   server.transportError = true;
+  const before = requests.length;
   const failed = get('footer-refresh').onclick();
   assert.equal(reset.cleared, true, 'previous completion cannot reset a new refresh');
   assert.equal(get('refresh').dataset.refreshState, 'busy');
-  await failed;
+  await finishReconnect(timeouts, failed);
+  assert.equal(requests.length - before, 4, 'one manual refresh has at most three recovery retries');
   for (const id of ['refresh', 'footer-refresh']) {
     assert.equal(get(id).dataset.refreshState, 'idle');
     assert.equal(get(`${id}-label`).textContent, 'Refresh');
@@ -206,13 +262,13 @@ test('failed filter changes do not display the previous report under a new scope
 
 test('inventory retains server diagnostics for a later outage without an extra request', async () => {
   const snapshot = { version: '0.1.73', runtime: { node: 'v24.0.0', platform: 'win32', arch: 'x64' }, capturedAt: '2026-11-15T12:00:00.000Z', startedAt: '2026-11-15T11:59:00.000Z', limit: 300, dropped: 0, entries: [{ at: '2026-11-15T11:59:00.000Z', level: 'info', event: 'server.listening' }] };
-  const { get, requests, server, windowListeners, viewport } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} }, undefined, undefined,
+  const { get, requests, server, windowListeners, viewport, timeouts } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} }, undefined, undefined,
     () => ({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] }, diagnostics: snapshot }));
   assert.deepEqual(requests.map(r => r.method), ['usage.report', 'usage.inventory']);
   viewport.navigator.onLine = true;
   windowListeners.get('securitypolicyviolation')({ effectiveDirective: 'connect-src', blockedURI: 'PRIVATE_URL' });
   server.transportError = true;
-  await get('refresh').onclick();
+  await finishReconnect(timeouts, get('refresh').onclick());
   await get('logs-open').onclick();
   const logs = get('logs-output').value;
   assert.match(logs, /Cached server snapshot from 2026-11-15T12:00:00.000Z/);
@@ -670,10 +726,10 @@ test('daily keyboard focus shows values without fetching and hides them on blur 
 
 test('footer actions share controls and logs copy safely with offline and clipboard fallbacks', async () => {
   const report = { ...buildReport([], { range: '7d' }), sources: [], coverage: {} };
-  const { get, requests, server, windowListeners, document } = await mountPanel(report);
+  const { get, requests, server, windowListeners, document, timeouts } = await mountPanel(report);
   assert.equal(get('footer-refresh').onclick, get('refresh').onclick);
   assert.equal(get('footer-settings').onclick, get('settings-open').onclick);
-  await get('footer-refresh').onclick();
+  await finishReconnect(timeouts, get('footer-refresh').onclick());
   assert.equal(requests.findLast(r => r.method !== 'usage.inventory').method, 'usage.refresh');
   assert.equal(get('footer-refresh').disabled, false);
   await get('footer-settings').onclick();
@@ -700,7 +756,7 @@ test('footer actions share controls and logs copy safely with offline and clipbo
   assert.equal(get('logs-output').selected, true);
   assert.equal(document.activeElement, get('logs-output'));
   server.transportError = true;
-  await get('footer-refresh').onclick();
+  await finishReconnect(timeouts, get('footer-refresh').onclick());
   assert.equal(get('content').hidden, false);
   await get('logs-reload').onclick();
   assert.match(get('logs-status').textContent, /last server snapshot/);
