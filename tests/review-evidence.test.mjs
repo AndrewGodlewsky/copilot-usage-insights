@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { prepareInsightReview } from '../src/node/review-evidence.mjs';
 import { reviewUsageHome } from '../src/node/settings.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
+import { analyzeInsights } from '../src/node/review-insights.mjs';
 
 test('review evidence is frozen, numeric, aliased, with valid zero credits and all topic families', async () => {
   const f = reviewFixture(); f.user('one'); f.call('one', 'a');
@@ -24,6 +25,53 @@ test('review evidence is frozen, numeric, aliased, with valid zero credits and a
   scan.records[0].inputTotal = 99999;
   assert.equal(s.payload.evidence.find(e => e.id === 'input').value, 100);
   assert.ok(Buffer.byteLength(s.preview) < 48 * 1024);
+});
+
+test('review receives bounded conversation distribution and joint work evidence with limitations and no names', async () => {
+  const a = reviewFixture({ sessionId: 'PRIVATE SINGLE' }); a.user('one');
+  for (let n = 0; n < 6; n++) a.call('one', `call${n}`, { initiator: n ? 'agent' : 'user' });
+  const b = reviewFixture({ sessionId: 'PRIVATE MULTI' });
+  b.time(new Date(2026, 10, 14, 10)); b.user('first'); b.call('first', 'first');
+  b.time(new Date(2026, 10, 15, 10)); b.user('second'); b.call('second', 'second');
+  const scans = [a.scan(), b.scan()];
+  const scan = Object.fromEntries(['records', 'promptEvents', 'interactions', 'skills', 'tools', 'sources'].map(key => [key, scans.flatMap(s => s[key] || [])]));
+  const result = await prepareInsightReview(scan, { range: '7d' }, reviewNow), evidence = result.payload.evidence;
+  assert.deepEqual(evidence.find(e => e.id === 'conversation-depth').values.map(v => v.value), [1, 1, 0, 0]);
+  assert.equal(evidence.find(e => e.id === 'conversation-median').value, 1.5);
+  assert.equal(evidence.find(e => e.id === 'session-length').value, 1.5);
+  assert.equal(evidence.find(e => e.id === 'conversation-multiday').value, 50);
+  assert.deepEqual(evidence.find(e => e.id === 'conversation-work-1').values.map(v => v.value), [0, 0, 1]);
+  assert.match(evidence.find(e => e.id === 'conversation-work-1').limitation, /not task duration/);
+  assert.doesNotMatch(result.preview, /PRIVATE|call0|"id": "one"/);
+  assert.ok(Buffer.byteLength(result.preview) < 38 * 1024);
+  const filtered = await prepareInsightReview(scan, { range: '7d', models: ['PRIVATE MODEL'] }, reviewNow);
+  assert.ok(!filtered.payload.evidence.some(e => e.id.startsWith('conversation-') || e.id === 'session-length'));
+});
+
+test('conversation evidence fits the existing submission budget alongside every other topic family', async () => {
+  const fixtures = Array.from({ length: 6 }, (_, n) => {
+    const f = reviewFixture({ sessionId: `PRIVATE SESSION ${n}` });
+    for (let p = 0; p < [1, 3, 6][n % 3]; p++) {
+      f.user(`prompt-${p}`);
+      for (let c = 0; c < n + 1; c++) f.call(`prompt-${p}`, `${p}-${c}`, { model: `PRIVATE MODEL ${n}`, initiator: c ? 'agent' : 'user' });
+    }
+    f.push('skill.invoked', { name: `PRIVATE SKILL ${n}`, path: `PRIVATE PATH ${n}`, trigger: 'user-invoked' });
+    f.push('tool.execution_start', { toolCallId: `tool-${n}`, toolName: 'PRIVATE TOOL', mcpServerName: `PRIVATE SERVER ${n}` });
+    f.push('tool.execution_complete', { toolCallId: `tool-${n}`, success: false });
+    return f.scan();
+  });
+  const scan = Object.fromEntries(['records', 'promptEvents', 'interactions', 'skills', 'tools', 'sources'].map(key => [key, fixtures.flatMap(s => s[key] || [])]));
+  const context = { available: true, checkedAt: reviewNow.toISOString(), categories: { systemPrompt: 10, customInstructions: 20, systemTools: 30, mcpTools: 40, messages: 50 } };
+  const snapshot = await prepareInsightReview(scan, { range: '90d' }, reviewNow, context);
+  assert.equal(new Set(snapshot.payload.evidence.map(e => e.topic)).size, 6);
+  assert.ok(Buffer.byteLength(snapshot.preview) < 38 * 1024);
+  let sends = 0;
+  await analyzeInsights(snapshot, { send: async (prompt, schema) => {
+    sends++;
+    assert.ok(Buffer.byteLength(prompt) + Buffer.byteLength(JSON.stringify(schema)) <= 47 * 1024);
+    return JSON.stringify({ cards: [], emptyReason: 'Synthetic budget verification', followUp: null });
+  } });
+  assert.equal(sends, 1, 'new evidence does not require an extra analysis pass');
 });
 
 test('candidate selection uses originating human prompts, deduplicates calls, and respects filters', async () => {

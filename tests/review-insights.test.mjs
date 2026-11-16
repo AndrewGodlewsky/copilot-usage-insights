@@ -15,6 +15,9 @@ test('guidance is bounded, versioned and selects only relevant topic files', asy
   assert.match(guide.text, /cache/i);
   assert.doesNotMatch(guide.text, /MCP-specific/);
   await assert.rejects(loadReviewGuidance(['../../secret']));
+  const all = await loadReviewGuidance(['context-cache', 'tools-mcp', 'skills-instructions', 'prompts-sessions', 'delegation', 'model-spend']);
+  assert.ok(Buffer.byteLength(all.text) <= 8192, 'a review spanning every topic must fit the existing guidance budget');
+  assert.match(all.text, /not task duration/);
 });
 
 test('validated cards get numbers from local evidence, not output; malformed or invented references fail', () => {

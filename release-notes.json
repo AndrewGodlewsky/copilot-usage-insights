@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.92",
+    "summary": "Conversation habits now charts how many prompts you use per session and the agent work between prompts, with clear coverage limits. AI reviews can use these patterns to explore how you work without treating short or long chats as inherently better."
+  },
+  {
     "version": "0.1.91",
     "summary": "AI reviews now show a miniature desktop exploring records, charts and comparisons while they run. Four animation variations create a longer cycle, with pause controls and reduced-motion support."
   },

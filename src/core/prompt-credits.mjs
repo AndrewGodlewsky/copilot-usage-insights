@@ -1,4 +1,5 @@
 import { dayOfMs } from './query.mjs';
+import { createConversationAccumulator } from './conversations.mjs';
 
 // IDs must remain exact: truncating long API call IDs can alias unrelated calls.
 export const linkId = value => typeof value === 'string' && value.length <= 8192 ? value : '';
@@ -461,6 +462,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     work: { requests: 0, averageRequests: null, maxRequests: null, tokenPrompts: 0, tokens: null, averageTokens: null } };
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
   const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
+  const conversations = createConversationAccumulator(records, query, start, end, now);
   const projectCount = name => projectPrompts.get(name) || projectPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
   const sessionCount = (project, id) => {
     const key = JSON.stringify([project, id]);
@@ -473,6 +475,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
       projectCount(seed.project); sessionCount(seed.project, seed.sessionId);
     }
     for (const prompt of outcome.prompts) {
+      conversations.add(prompt, prompt.state === ELIGIBLE);
       if (query.session && query.session !== prompt.sessionId) continue;
       const charges = prompt.charges, selected = models ? charges.filter(r => models.includes(r.model)) : charges;
       const dated = prompt.day >= start && prompt.day <= end;
@@ -514,6 +517,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     }
   }
   result.projectPrompts = [...projectPrompts.values()];
+  result.conversations = conversations.finish();
   result.modelPrompts = [...modelPrompts.values()];
   result.sessionPrompts = [...sessionPrompts.values()];
   if (result.eligiblePrompts) { result.credits = nano.number() / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }

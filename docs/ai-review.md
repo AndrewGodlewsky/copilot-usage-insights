@@ -20,6 +20,8 @@ Review knowledge ships in [src/review-guides](../src/review-guides/README.md): v
 
 ## Implementation
 
+Conversation evidence reuses confirmed submissions from the existing accounting graph: depth buckets, median/average prompts per session, multi-day activity and earlier matching prompts. The joint prompt/call distribution uses only sessions whose counted prompts have complete, finished accounting. Counts are aggregates without names or session identifiers; model-filtered session metrics remain unavailable. Guidance 1.1.1 distinguishes possible interaction patterns from claims about task duration, task count, success or efficiency. All-topic guidance and dense evidence fixtures are tested against the unchanged input limits; no extra analysis pass or prompt read is required.
+
 - `src/node/ai-review.mjs`: desktop SDK discovery, catalog filtering, same-account verification, isolated helper, cancellation, deadlines, and safe errors.
 - `src/node/review-usage.mjs`: allowlisted accounting, atomic writes, live/durable receipt deduplication, and stopped-journal reconciliation.
 - `src/node/canvas-server.mjs`: same-origin, per-canvas secret URL endpoints for catalog, reconnect, prepare, analyze, legacy run, and cancel. Request ownership starts before asynchronous settings reads. A disconnected request cannot start a later review or cancel another request.

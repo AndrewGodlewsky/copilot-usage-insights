@@ -2366,12 +2366,19 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
   assert.equal(get('efficiency-review-panel').hidden, false);
   report.efficiency.interactions = { prompts: 6, promptSamples: 6, promptSessions: 2, averagePromptChars: 1250,
     averagePromptsPerSession: 3, turns: 12, turnSessions: 2, averageTurnsPerSession: 6, observedSessions: 2, sessionErrors: 1 };
+  report.efficiency.conversations = { windowed: true, sessions: 3, countedSessions: 2, uncertainSessions: 0, withoutPrompts: 1, prompts: 6,
+    medianPrompts: 3, averagePrompts: 3, multiDaySessions: 1, priorSessions: 0,
+    distribution: [{ label: '1 prompt', count: 1 }, { label: '2–5 prompts', count: 1 }, { label: '6–15 prompts', count: 0 }, { label: '16+ prompts', count: 0 }],
+    workSessions: 1, workPrompts: 1, averageCallsPerPrompt: 3, workMatrix: [[0, 0, 0], [1, 0, 0], [0, 0, 0]] };
   report.tools.rows = [{ name: '<private tool>', calls: 4, successes: 2, failures: 1, unknown: 1 },
     { name: 'mcp-tool', server: '<server>', calls: 2, successes: 0, failures: 2, unknown: 0 }];
   await get('refresh').onclick();
   choose('patterns');
   assert.equal(get('efficiency-method').hidden, false);
   assert.match(get('efficiency-habits').innerHTML, /1\.3K/);
+  assert.match(get('efficiency-conversations').innerHTML, /User prompts per session/);
+  assert.match(get('efficiency-conversations').innerHTML, /2 of 3 sessions/);
+  assert.match(get('efficiency-conversations').innerHTML, /50%/);
   assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call/);
   assert.equal((get('efficiency-habits').innerHTML.match(/Characters \/ prompt/g) || []).length, 1);
   assert.match(get('efficiency-habits').innerHTML, /separate averages, not a matched ratio/);
@@ -2392,7 +2399,10 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
   assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call:/);
   assert.doesNotMatch(get('efficiency-habits').innerHTML, /No matching message or turn metadata was recorded/);
   report.efficiency.interactions = { reason: 'model-filter' };
+  report.efficiency.conversations = { reason: 'model-filter' };
   await get('refresh').onclick();
+  assert.match(get('efficiency-conversations').innerHTML, /Clear the model filter/);
+  assert.doesNotMatch(get('efficiency-conversations').innerHTML, /<table|conversation-bar/);
   assert.match(get('efficiency-habits').innerHTML, /Clear the model filter/);
   assert.doesNotMatch(get('efficiency-habits').innerHTML, /Characters \/ prompt|Input tokens \/ call/);
   assert.match(get('efficiency-reliability').innerHTML, /unavailable under a model filter/);

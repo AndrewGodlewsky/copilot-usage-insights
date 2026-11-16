@@ -4,6 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
+import { renderConversations } from './conversations.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
@@ -858,9 +859,8 @@ function efficiencyDirection(insight) {
 function renderEfficiencyHabits() {
   const habits = state.report?.efficiency?.interactions;
   const summary = state.report?.efficiency?.summary;
+  $('efficiency-conversations').innerHTML = renderConversations(state.report?.efficiency?.conversations, { number });
   const metrics = [
-    ['User messages', habits?.prompts, 'Recorded user-origin messages'],
-    ['Messages / session', habits?.averagePromptsPerSession, `${number(habits?.promptSessions ?? 0)} sessions with messages`],
     ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`, habits?.promptSamples < habits?.prompts],
     ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`, summary?.inputRequests < summary?.requests],
     ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],

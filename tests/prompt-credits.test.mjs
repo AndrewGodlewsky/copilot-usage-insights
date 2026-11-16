@@ -417,6 +417,10 @@ function delegated({ complete = true, parent = 'task', childReceipt = true } = {
 test('reliably parent-linked subagent charges belong to one root prompt, including model contributions', () => {
   const f = delegated(), r = metrics(f.events);
   assert.equal(r.prompts, 1); assert.equal(r.eligiblePrompts, 1); assert.equal(r.averageCredits, 6);
+  const conversations = report(f.events).efficiency.conversations;
+  assert.equal(conversations.prompts, 1); assert.equal(conversations.modelCalls, 3); assert.equal(conversations.workSessions, 1);
+  const unfinished = report(delegated({ complete: false }).events).efficiency.conversations;
+  assert.equal(unfinished.prompts, 1); assert.equal(unfinished.workSessions, 0);
   const filtered = metrics(f.events, { models: ['Model B'], project: 'Project A', session: 's1' });
   assert.equal(filtered.averageCredits, 2); assert.equal(filtered.eligiblePrompts, 1); assert.equal(filtered.modelFiltered, true);
   assert.equal(metrics(delegated({ complete: false }).events).eligiblePrompts, 0);

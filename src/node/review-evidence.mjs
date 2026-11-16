@@ -47,7 +47,25 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const i = e.interactions;
   if (i.reason !== 'model-filter') {
     add('prompt-length', 'prompts-sessions', 'Average prompt length', i.averagePromptChars, 'characters', i.promptSamples, i.prompts, 'Displayed text only; attachments/injected context excluded. Length does not measure completeness.');
-    add('session-length', 'prompts-sessions', 'Conversation length', i.averagePromptsPerSession, 'prompts/session', i.promptSessions, i.observedSessions, 'Observed prompts within these dates, not lifetime session length.');
+  }
+  const conversations = e.conversations;
+  if (conversations?.countedSessions) {
+    const c = conversations, topic = 'prompts-sessions';
+    const limitation = 'Confirmed human submissions in selected dates, not lifetime session depth. Sessions with uncertain identity or no confirmed prompts are excluded. Missing logs can understate depth; short or long sessions are not quality ratings.';
+    const comparison = (id, label, values, samples, total, note) => {
+      if (samples) evidence.push({ id, topic, label, template: 'comparison', unit: 'sessions', values, samples, total, limitation: note });
+    };
+    comparison('conversation-depth', 'User prompts per session', c.distribution.map(b => ({ label: b.label, value: b.count })), c.countedSessions, c.sessions, limitation);
+    add('session-length', topic, 'Average conversation depth', c.averagePrompts, 'prompts/session', c.countedSessions, c.sessions, limitation);
+    add('conversation-median', topic, 'Median conversation depth', c.medianPrompts, 'prompts/session', c.countedSessions, c.sessions, limitation);
+    add('conversation-multiday', topic, 'Sessions used on multiple days', c.multiDaySessions / c.countedSessions * 100, '% of counted sessions', c.countedSessions, c.sessions, 'Confirmed prompts on at least two selected calendar dates. Does not establish continuous work or one task. ' + limitation);
+    if (c.windowed) add('conversation-prior', topic, 'Sessions with earlier recorded activity', c.priorSessions / c.countedSessions * 100, '% of counted sessions', c.countedSessions, c.sessions, 'Matching confirmed prompts exist before the selected dates. Other sessions are not necessarily new; earlier logs may be missing.');
+    const workNote = 'Average model calls per prompt, not task duration, task count or success. Only sessions where every counted prompt has complete, finished accounting. Linked continuations and subagents are included before date filtering. These samples can differ from excluded sessions.';
+    add('conversation-work-average', topic, 'Model calls per prompt in measured sessions', c.averageCallsPerPrompt, 'calls/prompt', c.workPrompts, c.prompts, workNote);
+    for (const [column, label] of ['1 prompt', '2–5 prompts', '6+ prompts'].entries()) {
+      const values = ['1 call/prompt', '>1–5 calls/prompt', '>5 calls/prompt'].map((label, row) => ({ label, value: c.workMatrix[row][column] }));
+      comparison(`conversation-work-${column + 1}`, `${label} per session: agent activity`, values, values.reduce((n, v) => n + v.value, 0), column < 2 ? c.distribution[column].count : c.distribution[2].count + c.distribution[3].count, workNote);
+    }
   }
   for (const row of e.byInitiator || []) if (row.id === 'sub-agent') add('delegated', 'delegation', 'Delegated model turns', row.requests, 'turns', row.requests, s.requests, 'Explicit sub-agent initiator only. Unknown initiators remain unknown.');
   // Even without delegated calls, the observed initiator coverage is useful evidence.
