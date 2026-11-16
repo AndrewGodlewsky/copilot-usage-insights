@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.93",
+    "summary": "Compact refresh controls now show a rotating arrow while usage updates and briefly confirm successful refreshes. The feedback stays inside the button, supports reduced motion, and works from both the toolbar and footer."
+  },
+  {
     "version": "0.1.92",
     "summary": "Conversation habits now charts how many prompts you use per session and the agent work between prompts, with clear coverage limits. AI reviews can use these patterns to explore how you work without treating short or long chats as inherently better."
   },

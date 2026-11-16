@@ -248,15 +248,31 @@ async function loadInventory(refresh = false) {
     if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
   }
 }
+let refreshFeedbackTimer;
+function setRefreshFeedback(status) {
+  clearTimeout(refreshFeedbackTimer);
+  const busy = status === 'busy', label = busy ? 'Refreshing…' : status === 'done' ? 'Updated' : 'Refresh';
+  for (const id of ['refresh', 'footer-refresh']) {
+    $(id).dataset.refreshState = status;
+    $(id).disabled = busy;
+    $(id).setAttribute('aria-busy', String(busy));
+    $(id).setAttribute('aria-label', busy ? 'Refreshing usage' : status === 'done' ? 'Usage updated. Refresh again.' : 'Refresh usage');
+    $(`${id}-label`).textContent = label;
+  }
+  if (status === 'done') refreshFeedbackTimer = setTimeout(() => setRefreshFeedback('idle'), 1400);
+}
 async function load(force = false, refresh = false) {
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
   state.pending = true;
-  $('refresh').disabled = $('footer-refresh').disabled = true;
+  setRefreshFeedback('busy');
+  let successful = false, manual = false;
   try {
     let version;
     do {
       version = state.version;
+      successful = false;
+      manual ||= state.force;
       const method = state.force ? 'usage.refresh' : 'usage.report'; state.force = false;
       const rescan = state.rescan; state.rescan = false;
       try {
@@ -274,6 +290,7 @@ async function load(force = false, refresh = false) {
           renderLoadStatus();
           if (!inventorySnapshot || rescan) void loadInventory(rescan);
           $('live').textContent = 'Usage updated';
+          successful = true;
           continue;
         }
         if (filterKey !== state.filterKey) { state.selectedDay = null; state.requestView = null; state.modelView = null; state.projectView = null; state.skillView = null; state.filterKey = filterKey; }
@@ -287,6 +304,7 @@ async function load(force = false, refresh = false) {
         if (state.modelView) loadModelProjectPage(state.modelView.offset);
         if (state.projectView?.models) loadSessionModels();
         $('live').textContent = 'Usage updated';
+        successful = true;
       } catch (e) {
         if (version !== state.version) continue;
         state.creditsUnavailable = !state.report || state.filterKey !== JSON.stringify(query());
@@ -297,7 +315,7 @@ async function load(force = false, refresh = false) {
         if (state.creditsUnavailable) $('status').before($('filters'));
       }
     } while (version !== state.version);
-  } finally { state.pending = false; $('refresh').disabled = $('footer-refresh').disabled = false; }
+  } finally { state.pending = false; setRefreshFeedback(manual && successful ? 'done' : 'idle'); }
 }
 function renderLoadStatus() {
   const matching = state.report && state.filterKey === JSON.stringify(query());

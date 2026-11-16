@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.92** adds conversation-depth and agent-work charts to Conversation habits, and makes those measurements available to AI review. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.93** adds compact refresh-button feedback: a rotating arrow while loading and a brief confirmation after success, with reduced-motion support. Fully quit and restart Copilot, then start a new session and reopen Usage Insights so the updated extension code is running.
 
 ### WSL histories on Windows
 

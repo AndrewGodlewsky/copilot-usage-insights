@@ -105,6 +105,73 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context };
 }
 
+test('refresh controls show pending and successful feedback, including unchanged data', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, timeouts } = await mountPanel(report);
+  const check = (status, label, busy) => {
+    for (const id of ['refresh', 'footer-refresh']) {
+      assert.equal(get(id).dataset.refreshState, status);
+      assert.equal(get(`${id}-label`).textContent, label);
+      assert.equal(get(id).disabled, busy);
+      assert.equal(get(id).getAttribute('aria-busy'), String(busy));
+    }
+  };
+  check('idle', 'Refresh', false);
+  let resolve;
+  server.report = () => new Promise(done => { resolve = done; });
+  const pending = get('refresh').onclick();
+  check('busy', 'Refreshing…', true);
+  await new Promise(setImmediate);
+  resolve({ unchanged: true, generatedAt: new Date().toISOString() });
+  await pending;
+  check('done', 'Updated', false);
+  const reset = timeouts.findLast(t => t.ms === 1400 && !t.cleared);
+  assert.ok(reset);
+  reset.callback();
+  check('idle', 'Refresh', false);
+});
+
+test('a new refresh clears success feedback and failures restore both controls without claiming success', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server, timeouts } = await mountPanel(report);
+  await get('refresh').onclick();
+  const reset = timeouts.findLast(t => t.ms === 1400 && !t.cleared);
+  assert.ok(reset, 'successful manual refresh has a brief completion state');
+  server.transportError = true;
+  const failed = get('footer-refresh').onclick();
+  assert.equal(reset.cleared, true, 'previous completion cannot reset a new refresh');
+  assert.equal(get('refresh').dataset.refreshState, 'busy');
+  await failed;
+  for (const id of ['refresh', 'footer-refresh']) {
+    assert.equal(get(id).dataset.refreshState, 'idle');
+    assert.equal(get(`${id}-label`).textContent, 'Refresh');
+    assert.equal(get(id).disabled, false);
+    assert.equal(get(id).getAttribute('aria-busy'), 'false');
+  }
+  assert.match(get('status').textContent, /Could not reach/);
+  assert.equal(timeouts.some(t => t.ms === 1400 && !t.cleared), false);
+});
+
+test('refresh feedback stays busy through queued filters and ignores stale responses', async () => {
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server } = await mountPanel(report);
+  const responses = [];
+  server.report = () => new Promise(resolve => responses.push(resolve));
+  const pending = get('footer-refresh').onclick();
+  await new Promise(setImmediate);
+  get('project').value = 'Another project';
+  await get('project').onchange();
+  responses[0](report);
+  await new Promise(setImmediate);
+  assert.equal(responses.length, 2);
+  assert.equal(get('refresh').dataset.refreshState, 'busy');
+  assert.equal(get('footer-refresh').disabled, true);
+  responses[1](report);
+  await pending;
+  assert.equal(get('refresh').dataset.refreshState, 'done');
+  assert.equal(get('footer-refresh').disabled, false);
+});
+
 test('failed automatic refresh preserves the last matching report and marks it stale', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, server, intervals } = await mountPanel(report);
