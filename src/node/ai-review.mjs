@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { createUsageRecorder, reconcileUsageJournal } from './review-usage.mjs';
 import { analyzeInsights } from './review-insights.mjs';
+import { normalizeModelCatalog, modelReferenceInstructions } from '../core/model-reference.mjs';
 
 const messages = {
   runtime: 'AI review needs the supported GitHub Copilot desktop extension runtime. Update or restart Copilot and reopen this canvas.',
@@ -72,8 +73,9 @@ async function deadline(work, ms, signal) {
 }
 
 // The runtime/recorder seam is for fixtures only; HTTP clients cannot override either.
-export function createReviewService(parent, { runtime = desktopRuntime, recorder = createUsageRecorder, readSamples, diagnostics, timeoutMs = 180_000, storageTimeoutMs = 10_000 } = {}) {
+export function createReviewService(parent, { runtime = desktopRuntime, recorder = createUsageRecorder, readSamples, diagnostics, timeoutMs = 180_000, storageTimeoutMs = 10_000, catalogTtlMs = 300_000, catalogTimeoutMs = 15_000, clock = Date.now } = {}) {
   let current, closed = false;
+  let cachedCatalog, catalogFlight;
   const record = (stage, phase, started, error, fields = {}) => diagnostics?.record(error ? 'error' : 'info', 'review.operation', {
     stage, phase, durationMs: Date.now() - started, ...(error ? { errorCode: safeReviewError(error).code } : {}), ...fields,
   });
@@ -91,19 +93,45 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
     });
     return job.promise;
   }
-  async function getCatalog(signal) {
+  async function getCatalog(signal, refresh = true) {
     const started = Date.now(); let stage = 'runtime';
     try {
       await deadline(runtime((key, value) => record(stage, 'started', started, null, { [key]: value })), 15_000, signal);
       stage = 'catalog';
-      const [auth, result] = await deadline(Promise.all([parent?.rpc.gitHubAuth.getStatus(), parent?.rpc.model.list({ refresh: true })]), 15_000, signal);
+      const auth = await deadline(Promise.resolve().then(() => parent?.rpc.gitHubAuth.getStatus()), 15_000, signal);
       if (!identity(auth)) throw fail('account');
+      if (cachedCatalog && !sameAccount(auth, cachedCatalog.auth)) cachedCatalog = undefined;
+      if (!refresh && cachedCatalog && clock() - cachedCatalog.at < catalogTtlMs) return structuredClone(cachedCatalog.value);
+      const result = await deadline(Promise.resolve().then(() => parent?.rpc.model.list({ refresh: true })), 15_000, signal);
       if (!Array.isArray(result?.list)) throw fail('catalog');
-      const models = result.list.filter(eligible).map(m => ({ id: m.id, label: typeof m.name === 'string' ? m.name.slice(0, 200) : m.id, reasoningEfforts: efforts(m) }));
+      const duplicateIds = new Set(), ids = new Set();
+      for (const m of result.list) { if (ids.has(m?.id)) duplicateIds.add(m.id); ids.add(m?.id); }
+      const models = result.list.filter(m => eligible(m) && !duplicateIds.has(m.id)).slice(0, 200).map(m => ({ id: m.id, label: typeof m.name === 'string' ? m.name.slice(0, 200) : m.id, reasoningEfforts: efforts(m) }));
       record(stage, 'finished', started, null, { received: result.list.length, eligible: models.length });
       if (!models.length) throw fail('catalog');
-      return { models, recommendedModel: models.find(m => /opus/i.test(m.id + ' ' + m.label))?.id || '' };
-    } catch (error) { record(stage, 'failed', started, error); throw error; }
+      // Joined sessions expose session.model.list, not models.listTokenPriceUnits. Never guess its unit.
+      const reference = normalizeModelCatalog(result, { capturedAt: new Date(clock()).toISOString() });
+      const confirmedAuth = await deadline(Promise.resolve().then(() => parent?.rpc.gitHubAuth.getStatus()), 10_000, signal);
+      if (!sameAccount(auth, confirmedAuth)) throw fail('account');
+      signal.throwIfAborted();
+      const value = { models, reference, token: randomUUID(), recommendedModel: models.find(m => /opus/i.test(m.id + ' ' + m.label))?.id || '' };
+      cachedCatalog = { auth: { isAuthenticated: true, login: auth.login, host: auth.host }, at: clock(), value };
+      return structuredClone(value);
+    } catch (error) { cachedCatalog = undefined; record(stage, 'failed', started, error); throw error; }
+  }
+  function catalog(signal, { refresh = true } = {}) {
+    if (closed || signal?.aborted) return Promise.reject(fail('cancelled'));
+    if (refresh && catalogFlight && !catalogFlight.refresh) return deadline(catalogFlight.promise, catalogTimeoutMs, signal).catch(() => {}).then(() => catalog(signal, { refresh: true }));
+    if (!catalogFlight) {
+      const controller = new AbortController(), flight = { controller, readers: 0, refresh };
+      catalogFlight = flight;
+      flight.promise = operation(ownedSignal => getCatalog(ownedSignal, refresh), controller.signal).finally(() => { if (catalogFlight === flight) catalogFlight = undefined; });
+    }
+    const flight = catalogFlight;
+    flight.readers++;
+    return deadline(flight.promise, catalogTimeoutMs, signal).then(value => structuredClone(value)).catch(error => { throw safeReviewError(error); }).finally(() => {
+      if (--flight.readers === 0 && catalogFlight === flight) flight.controller.abort(fail('cancelled'));
+    });
   }
   async function run({ model, prompt, reasoningEffort = 'default', analysis, allowSamples = false }, signal, verifyOnly = false) {
     if (!modelId(model)) throw fail('model');
@@ -136,7 +164,7 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
       step('session');
       const session = await deadline(client.createSession({ sessionId, onEvent: event => usage?.record(event),
         workingDirectory: workspace, configDirectory: home, model, ...(reasoningEffort !== 'default' ? { reasoningEffort } : {}),
-        systemMessage: { mode: 'replace', content: reviewSystem },
+        systemMessage: { mode: 'replace', content: reviewSystem + ' ' + modelReferenceInstructions },
         availableTools: [], onPermissionRequest: () => ({ kind: 'denied-by-rules', rules: [] }),
         requestExtensions: false, requestCanvasRenderer: false, pluginDirectories: [], mcpServers: {},
         enableConfigDiscovery: false, skipCustomInstructions: true, enableSkills: false, enableFileHooks: false,
@@ -153,7 +181,14 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
         parent.rpc.gitHubAuth.getStatus(), session.rpc.gitHubAuth.getStatus(), session.rpc.metadata.snapshot(),
       ]), 20_000, signal);
       if (!sameAccount(parentAuth, helperAuth)) throw fail('account');
-      if (![parentModels, helperModels].every(c => Array.isArray(c?.list) && c.list.some(m => eligible(m) && m.id === model))) throw fail('model');
+      if (analysis?.catalogToken) {
+        const fresh = normalizeModelCatalog(parentModels, { capturedAt: cachedCatalog?.value.reference?.capturedAt });
+        if (analysis.catalogToken !== cachedCatalog?.value.token || !sameAccount(parentAuth, cachedCatalog?.auth) || JSON.stringify(fresh) !== JSON.stringify(cachedCatalog?.value.reference)) {
+          cachedCatalog = undefined;
+          throw fail('snapshot');
+        }
+      }
+      if (![parentModels, helperModels].every(c => Array.isArray(c?.list) && c.list.filter(m => m?.id === model).length === 1 && c.list.some(m => eligible(m) && m.id === model))) throw fail('model');
       if (reasoningEffort !== 'default' && ![parentModels, helperModels].every(c => efforts(c.list.find(m => eligible(m) && m.id === model)).includes(reasoningEffort))) throw fail('effort');
       step('workspace');
       if (metadata.isRemote !== false || await realpath(metadata.workingDirectory) !== await realpath(workspace)) throw fail('isolation');
@@ -171,7 +206,7 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
         let pass = 0;
         const send = async (content, schema) => {
           check();
-          if (++pass > 2 || Buffer.byteLength(content) + Buffer.byteLength(reviewSystem) + Buffer.byteLength(JSON.stringify(schema)) > 48 * 1024) throw fail('response');
+          if (++pass > 2 || Buffer.byteLength(content) + Buffer.byteLength(reviewSystem + ' ' + modelReferenceInstructions) + Buffer.byteLength(JSON.stringify(schema)) > 48 * 1024) throw fail('response');
           const [a, b] = await deadline(Promise.all([parent.rpc.gitHubAuth.getStatus(), session.rpc.gitHubAuth.getStatus()]), 10_000, signal);
           if (!sameAccount(parentAuth, a) || !sameAccount(parentAuth, b)) throw fail('account');
           record('generate', 'started', started, null, { pass, inputChars: content.length });
@@ -214,7 +249,7 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
     }
   }
   return {
-    catalog: signal => operation(getCatalog, signal),
+    catalog,
     reconnect: (model, callerSignal) => operation(async signal => {
       const catalog = await getCatalog(signal);
       const selected = catalog.models.find(m => m.id === model) || catalog.models[0];
@@ -223,6 +258,6 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
     }, callerSignal),
     review: (input, signal) => operation(ownedSignal => run(input, ownedSignal), signal),
     cancel() { current?.controller.abort(fail('cancelled')); },
-    async close() { closed = true; this.cancel(); await current?.promise.catch(() => {}); },
+    async close() { closed = true; cachedCatalog = undefined; this.cancel(); await current?.promise.catch(() => {}); },
   };
 }

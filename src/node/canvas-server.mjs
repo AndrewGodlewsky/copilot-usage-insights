@@ -12,7 +12,7 @@ import { localDay, dayKey, parseDateDay, RANGE_DAYS } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
 import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
 import { prepareInsightReview } from './review-evidence.mjs';
-import { loadReviewGuidance } from './review-insights.mjs';
+import { finalizeInsightReview } from './review-insights.mjs';
 import { createWslDiscovery } from './wsl-sources.mjs';
 import { createVSCodeSources } from './vscode-sources.mjs';
 import { validEndpoint } from './canvas-endpoint.mjs';
@@ -168,7 +168,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
           const aborted = new Promise((_, reject) => { rejectAborted = () => reject(controller.signal.reason); controller.signal.addEventListener('abort', rejectAborted, { once: true }); });
           const timer = setTimeout(() => controller.abort(new ReviewError('timeout')), 15_000);
           try {
-            const config = await Promise.race([settings.get(), aborted]);
+            const config = { ...await Promise.race([settings.get(), aborted]) };
             clearTimeout(timer);
             if (res.destroyed || controller.signal.aborted) throw new ReviewError('cancelled');
             if (message.method === 'review.run' && (!input.expectedModel || input.expectedModel !== config.reviewModel)) throw new ReviewError('model');
@@ -176,23 +176,34 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               if (!history) throw new ReviewError('snapshot');
               if (!history.complete || history.error) throw new ReviewError('snapshot');
               const { scan } = await Promise.race([history.promise, aborted]);
-              const snapshot = await prepareInsightReview(scan, input.filters, now(), contextSnapshot);
-              snapshot.guide = await loadReviewGuidance([...new Set(snapshot.payload.evidence.map(e => e.topic))]);
-              const catalog = config.reviewModel ? await reviewService.catalog(controller.signal) : { models: [] };
+              // Freeze the same history/context before awaiting optional reference metadata.
+              preparedReview = undefined;
+              const frozenContext = structuredClone(contextSnapshot);
+              const preparedAt = now();
+              let catalog = { models: [], reference: null };
+              try { catalog = await Promise.race([reviewService.catalog(controller.signal, { refresh: false }), aborted]); }
+              catch { controller.signal.throwIfAborted(); /* A statistics-only review remains usable. */ }
+              const snapshot = await prepareInsightReview(scan, input.filters, preparedAt, frozenContext, { catalog: catalog.reference });
+              snapshot.catalogToken = catalog.token;
               const supported = catalog.models.find(m => m.id === config.reviewModel)?.reasoningEfforts || [];
               snapshot.model = config.reviewModel || '';
               snapshot.savedReasoning = config.reviewReasoning;
               snapshot.allowSamples = config.reviewAllowSamples !== false;
               snapshot.reasoningEffort = config.reviewReasoning || (supported.includes('medium') ? 'medium' : 'default');
+              await finalizeInsightReview(snapshot, snapshot.allowSamples, controller.signal);
+              const latest = await Promise.race([settings.get(), aborted]);
+              if (latest.reviewModel !== config.reviewModel || latest.reviewReasoning !== config.reviewReasoning || (latest.reviewAllowSamples !== false) !== snapshot.allowSamples) throw new ReviewError('snapshot');
               controller.signal.throwIfAborted();
               preparedReview = snapshot;
               result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt,
-                model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, allowSamples: snapshot.allowSamples, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0 };
+                model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, allowSamples: snapshot.allowSamples, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0,
+                referenceStatus: snapshot.payload.modelReference.catalog?.models.length ? `Copilot model reference captured ${snapshot.payload.modelReference.catalog.capturedAt}. ${snapshot.payload.modelReference.catalog.coverage.verifiedHistoricalGroups} of ${snapshot.payload.modelReference.catalog.coverage.historicalGroups} historical model groups identified. Token pricing units unavailable in this host.` : 'Statistics-only review: verified public model reference unavailable.' };
             } else if (message.method === 'review.analyze') {
               const snapshot = preparedReview;
               if (!snapshot || snapshot.id !== input.snapshotId) throw new ReviewError('snapshot');
               if (!input.expectedModel || input.expectedModel !== snapshot.model || config.reviewModel !== snapshot.model) throw new ReviewError('model');
               if (input.expectedReasoning !== snapshot.reasoningEffort || config.reviewReasoning !== snapshot.savedReasoning) throw new ReviewError('effort');
+              if (input.allowSamples !== snapshot.allowSamples || (config.reviewAllowSamples !== false) !== snapshot.allowSamples) throw new ReviewError('snapshot');
               preparedReview = undefined;
               const allowSamples = input.allowSamples && snapshot.allowSamples && config.reviewAllowSamples !== false;
               result = { ...await reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples }, controller.signal),

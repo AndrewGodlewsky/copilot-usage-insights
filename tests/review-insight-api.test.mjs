@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
+import { normalizeModelCatalog } from '../src/core/model-reference.mjs';
 
 async function setup(t) {
   const f = reviewFixture(); f.user('p'); f.call('p', 'a');
   const state = { scans: 0, sent: [], config: { reviewModel: 'opus-fixture', reviewReasoning: 'medium', extraHomes: [], disabledHomes: [] } };
   const server = await startServer({ html: '<title>Fixture</title>', now: () => reviewNow, settings: { get: async () => state.config }, scanner: { scan: async () => { state.scans++; return f.scan(); } }, reviewService: {
-    catalog: async () => ({ models: [{ id: 'opus-fixture', reasoningEfforts: ['medium', 'high'] }] }),
+    catalog: async () => { state.catalogCalls = (state.catalogCalls || 0) + 1; state.entered?.(); if (state.hold) await state.hold; if (state.catalogFailure) throw new Error('PRIVATE'); return { models: [{ id: 'opus-fixture', reasoningEfforts: ['medium', 'high'] }], reference: state.reference }; },
     review: async input => { state.sent.push(input); return { cards: [], emptyReason: 'Limited data', passes: 1, samples: 0 }; },
     cancel() {}, close: async () => {},
   } });
@@ -20,7 +21,7 @@ async function setup(t) {
 }
 
 test('preparation reuses loaded history, freezes filters, and analysis consumes one server-owned snapshot', async t => {
-  const { state, request } = await setup(t);
+  const { state, request } = await setup(t); state.config.reviewAllowSamples = false;
   assert.notEqual((await request('review.prepare', { filters: { range: 'all' } })).status, 200);
   assert.equal(state.scans, 0);
   await request('usage.report', { range: 'all' });
@@ -33,14 +34,48 @@ test('preparation reuses loaded history, freezes filters, and analysis consumes 
   assert.equal((await request('review.analyze', { ...input, snapshotId: 'foreign' })).status, 500);
   const result = await request('review.analyze', input); assert.equal(result.status, 200);
   assert.equal(state.sent[0].analysis.scope.range, '7d'); assert.equal(state.sent[0].allowSamples, false);
+  assert.equal(state.sent[0].analysis.preview, p.body.preview, 'copyable preview is the frozen first-pass input');
+  assert.equal(state.catalogCalls, 1, 'usage loads and filter changes do not read the catalog');
   assert.equal(result.body.scope.range, '7d'); assert.equal(state.scans, 1);
   assert.equal((await request('review.analyze', input)).status, 500); assert.equal(state.sent.length, 1);
 });
 
-test('excerpt access requires the request, prepared preference and current saved preference', async t => {
+test('reference failure produces a labelled statistics-only preview and does not prevent explicit review', async t => {
+  const { state, request } = await setup(t); state.catalogFailure = true;
+  await request('usage.report', { range: 'all' });
+  const p = await request('review.prepare', { filters: { range: 'all' } });
+  assert.equal(p.status, 200); assert.match(p.body.referenceStatus, /Statistics-only/);
+  assert.match(p.body.preview, /"catalog": null/); assert.equal(state.sent.length, 0);
+  assert.equal((await request('review.analyze', { snapshotId: p.body.id, expectedModel: 'opus-fixture', expectedReasoning: 'medium', allowSamples: true })).status, 200);
+});
+
+test('reference preparation freezes metadata and rejects cancellation or settings changes during a late read', async t => {
   const { state, request } = await setup(t);
-  for (const [prepared, current, requested, expected] of [
-    [undefined, undefined, true, true], [false, false, true, false],
+  state.reference = normalizeModelCatalog({ list: [{ id: 'gpt-5.3-codex', provider: { kind: 'copilot' } }] }, { capturedAt: reviewNow.toISOString() });
+  await request('usage.report', { range: 'all' });
+  const first = await request('review.prepare', { filters: { range: 'all' } });
+  assert.match(first.body.preview, /gpt-5.3-codex/); assert.doesNotMatch(first.body.preview, /PRIVATE/);
+  state.reference.models[0].label = 'PRIVATE';
+  assert.doesNotMatch(first.body.preview, /PRIVATE/);
+  let release, enter;
+  state.hold = new Promise(resolve => { release = resolve; });
+  const entered = new Promise(resolve => { enter = resolve; }); state.entered = enter;
+  const late = request('review.prepare', { filters: { range: '7d' } }); await entered;
+  state.config.reviewModel = 'changed'; release(); state.hold = null;
+  assert.equal((await late).status, 500); assert.equal(state.sent.length, 0);
+  state.hold = new Promise(resolve => { release = resolve; });
+  const waiting = new Promise(resolve => { state.entered = resolve; });
+  const cancelled = request('review.prepare', { filters: { range: '7d' } }); await waiting;
+  await request('review.cancel'); assert.equal((await cancelled).status, 500);
+  release(); state.hold = null;
+  const next = await request('review.prepare', { filters: { range: '1d' } }); assert.equal(next.status, 200);
+  assert.equal((await request('review.analyze', { snapshotId: first.body.id, expectedModel: 'opus-fixture', expectedReasoning: 'medium', allowSamples: true })).status, 500);
+});
+
+test('excerpt policy is frozen; changed settings or requests require re-preparation', async t => {
+  const { state, request } = await setup(t);
+  for (const [prepared, current, requested, valid] of [
+    [undefined, undefined, true, true], [false, false, false, true], [false, false, true, false],
     [true, false, true, false], [false, true, true, false], [true, true, false, false],
   ]) {
     state.config.reviewAllowSamples = prepared;
@@ -49,8 +84,8 @@ test('excerpt access requires the request, prepared preference and current saved
     assert.equal(snapshot.allowSamples, prepared !== false);
     state.config.reviewAllowSamples = current;
     const result = await request('review.analyze', { snapshotId: snapshot.id, expectedModel: 'opus-fixture', expectedReasoning: 'medium', allowSamples: requested });
-    assert.equal(result.status, 200);
-    assert.equal(state.sent.at(-1).allowSamples, expected);
+    assert.equal(result.status, valid ? 200 : 500);
+    if (valid) assert.equal(state.sent.at(-1).allowSamples, requested);
   }
 });
 

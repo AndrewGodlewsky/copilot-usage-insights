@@ -90,6 +90,10 @@ export function createEfficiencyAccumulator() {
       addMeasurement(total, r);
       if (r.model !== model) { model = r.model; modelTotal = models.get(model); if (!modelTotal) models.set(model, modelTotal = measurement()); }
       addMeasurement(modelTotal, r);
+      // A display group is identifiable only if every record carries the same exact raw ID.
+      const rawModelId = typeof r.modelId === 'string' && r.modelId.length <= 128 && r.modelId ? r.modelId : null;
+      if (modelTotal.requests === 1) modelTotal.modelId = rawModelId;
+      else if (modelTotal.modelId !== rawModelId) modelTotal.modelId = null;
       const effort = recordedEffort(r.effort), effortKey = JSON.stringify([r.model, effort]);
       if (!efforts.has(effortKey)) efforts.set(effortKey, { name: r.model, effort, ...measurement(), durationRequests: 0, durationTotal: 0 });
       const effortTotal = efforts.get(effortKey);

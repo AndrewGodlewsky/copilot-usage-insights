@@ -406,6 +406,8 @@ Historical request and tool measures follow the selected date, model, project an
 
 The [research index](docs/research/README.md) preserves the techniques, scenarios, data inventory, and inference limits behind this design. The [analysis proposal](docs/research/2026-11-14-efficiency-analysis-proposal.md) records the earlier manual-handoff design. The current isolated SDK integration and its validation limits are described in [AI Review integration](docs/ai-review.md). Guidance follows GitHub's [AI usage optimization](https://docs.github.com/en/copilot/tutorials/optimize-ai-usage) and [conversation context guidance](https://docs.github.com/en/copilot/tutorials/optimize-chat-usage).
 
+The AI reviewer can also receive a bounded model reference from the existing Copilot connection. Exact verified public model IDs may supplement historical aliases; private or ambiguous names stay aliased. The complete prepared first-pass prompt is copyable. See [SDK model reference](docs/model-reference.md) for the editable identity/schema module, capture and cache behavior, pricing-unavailable fallback, and why current prices never rewrite recorded usage.
+
 ### Where to improve the AI reviewer
 
 The reviewer’s editable knowledge lives in [src/review-guides](src/review-guides/README.md). Each review combines the system prompt, core guidance, relevant topic guides, and a snapshot of usage evidence. Optional prompt excerpts can support one follow-up. It does not inherit user-installed skills, this repository’s instructions, or persistent memory.

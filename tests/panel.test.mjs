@@ -2993,6 +2993,9 @@ test('one explicit Create action reviews the date range across all filters and s
   assert.doesNotMatch(get('review-answer').innerHTML, /<script>/);
   assert.equal(get('review-result').hidden, false);
   const snapshot = get('efficiency-review-output').value;
+  assert.match(get('review-reference-status').textContent, /Statistics-only/);
+  await get('efficiency-review-copy').onclick();
+  assert.equal(server.copied.at(-1), snapshot);
   get('project').value = ''; await get('project').onchange();
   assert.equal(get('efficiency-review-output').value, snapshot);
   assert.doesNotMatch(get('review-result-context').textContent, /different date/i);

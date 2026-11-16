@@ -1,3 +1,4 @@
+import { modelReferenceInstructions, serializeReviewEvidence } from '../core/model-reference.mjs';
 import { readFile } from 'node:fs/promises';
 import { readReviewSamples } from './review-evidence.mjs';
 
@@ -65,12 +66,23 @@ async function abortable(work, signal) {
   } finally { signal?.removeEventListener('abort', abort); }
 }
 
+export async function finalizeInsightReview(snapshot, allowSamples, signal) {
+  const guide = snapshot.guide || await abortable(() => loadReviewGuidance([...new Set(snapshot.payload.evidence.map(e => e.topic))]), signal);
+  const payload = structuredClone({ ...snapshot.payload, candidates: allowSamples ? snapshot.payload.candidates : [], samplingAllowed: allowSamples });
+  const prefix = `${guide.text}\n\n${modelReferenceInstructions}\n\nReview this frozen evidence. Return JSON only.\n`;
+  const budget = 46 * 1024 - Buffer.byteLength(prefix) - Buffer.byteLength(JSON.stringify(INSIGHT_RESPONSE_SCHEMA));
+  const preview = prefix + serializeReviewEvidence(payload, budget);
+  signal?.throwIfAborted();
+  Object.assign(snapshot, { guide, payload, preview, preparedPrompt: true, allowSamples });
+  return snapshot;
+}
+
 export async function analyzeInsights(snapshot, { send, allowSamples = false, readSamples = readReviewSamples, signal } = {}) {
   signal?.throwIfAborted();
-  const guide = snapshot.guide || await abortable(() => loadReviewGuidance([...new Set(snapshot.payload.evidence.map(e => e.topic))]), signal);
-  const payload = { ...snapshot.payload, candidates: allowSamples ? snapshot.payload.candidates : [], samplingAllowed: allowSamples };
-  const prompt = `${guide.text}\n\nReview this frozen evidence. Return JSON only.\n${JSON.stringify(payload)}`;
-  if (Buffer.byteLength(prompt) + Buffer.byteLength(JSON.stringify(INSIGHT_RESPONSE_SCHEMA)) > 47 * 1024) throw new Error('Review input exceeds its limit');
+  if (!snapshot.preparedPrompt) await finalizeInsightReview(snapshot, allowSamples, signal);
+  if (snapshot.allowSamples !== allowSamples) throw new Error('Review settings changed. Prepare a new review.');
+  const guide = snapshot.guide, prompt = snapshot.preview;
+  if (Buffer.byteLength(prompt) + Buffer.byteLength(JSON.stringify(INSIGHT_RESPONSE_SCHEMA)) > 46 * 1024) throw new Error('Review input exceeds its limit');
   signal?.throwIfAborted();
   const first = validateInsightResponse(await abortable(() => send(prompt, INSIGHT_RESPONSE_SCHEMA), signal), snapshot);
   signal?.throwIfAborted();

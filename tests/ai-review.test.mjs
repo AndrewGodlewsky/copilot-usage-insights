@@ -5,10 +5,13 @@ import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createReviewService, hostRuntime, runtimeEnvironment } from '../src/node/ai-review.mjs';
 import { createDiagnostics } from '../src/core/diagnostics.mjs';
+import { prepareInsightReview } from '../src/node/review-evidence.mjs';
+import { finalizeInsightReview } from '../src/node/review-insights.mjs';
+import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 
 function fixture(t, overrides = {}) {
   const state = { login: 'person', tools: [], selected: 'model-a', provider: 'copilot', policy: 'enabled', sent: [], stopped: 0, prepared: 0, flushed: 0, ...overrides };
-  const models = () => ({ list: [{ id: 'model-a', name: 'Model A', provider: { kind: state.provider }, policy: { state: state.policy }, capabilities: { supports: { reasoningEffort: !!state.efforts } }, supportedReasoningEfforts: state.efforts }] });
+  const models = () => ({ list: [{ id: 'model-a', name: 'Model A', provider: { kind: state.provider }, policy: { state: state.policy }, capabilities: { supports: { reasoningEffort: !!state.efforts } }, supportedReasoningEfforts: state.efforts }, ...(state.extraModels || [])] });
   const parent = { rpc: { model: { list: async () => models() }, gitHubAuth: { getStatus: async () => ({ isAuthenticated: true, login: 'person', host: 'github.com' }) } } };
   const sdk = {
     RuntimeConnection: { forStdio: options => options },
@@ -58,6 +61,29 @@ function fixture(t, overrides = {}) {
   return { state, service, diagnostics, parent };
 }
 const input = { model: 'model-a', prompt: 'Synthetic statistics only' };
+
+test('frozen references are sent unchanged and refreshed or changed metadata requires re-preparation', async t => {
+  const publicRow = { id: 'gpt-5.3-codex', provider: { kind: 'copilot' }, capabilities: { supports: { vision: true } } };
+  for (const change of ['none', 'capability', 'policy', 'refresh', 'account']) {
+    await t.test(change, async t => {
+      const f = fixture(t, { extraModels: [structuredClone(publicRow)], outputs: [JSON.stringify({ cards: [], emptyReason: 'Limited evidence', followUp: null })] });
+      const catalog = await f.service.catalog();
+      const records = reviewFixture(); records.user('p'); records.call('p', 'a');
+      const snapshot = await prepareInsightReview(records.scan(), { range: 'all' }, reviewNow, null, { catalog: catalog.reference });
+      snapshot.catalogToken = catalog.token;
+      await finalizeInsightReview(snapshot, false);
+      if (change === 'capability') f.state.extraModels[0].capabilities.supports.vision = false;
+      if (change === 'policy') f.state.extraModels[0].policy = { state: 'disabled' };
+      if (change === 'refresh') await f.service.catalog();
+      if (change === 'account') { f.state.login = 'other'; f.parent.rpc.gitHubAuth.getStatus = async () => ({ isAuthenticated: true, login: 'other', host: 'github.com' }); }
+      const review = f.service.review({ model: 'model-a', analysis: snapshot, allowSamples: false });
+      if (change === 'none') {
+        await review; assert.equal(f.state.sent[0].prompt, snapshot.preview);
+        assert.match(f.state.config.systemMessage.content, /modelReference/);
+      } else { await assert.rejects(review, { code: 'REVIEW_SNAPSHOT' }); assert.equal(f.state.sent.length, 0); }
+    });
+  }
+});
 
 test('reasoning capabilities are preserved and unsupported effort fails before inference', async t => {
   const f = fixture(t, { efforts: ['low', 'medium', 'high'] });

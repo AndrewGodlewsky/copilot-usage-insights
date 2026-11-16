@@ -6,6 +6,7 @@ import { parseDateDay } from '../core/query.mjs';
 import { reviewPromptCandidates } from '../core/prompt-credits.mjs';
 import { reviewUsageHome } from './settings.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
+import { buildModelReference, verifiedHistoricalModelId, serializeReviewEvidence } from '../core/model-reference.mjs';
 
 const measured = value => Number.isFinite(value) && value >= 0;
 const sourceKey = source => { const p = path.resolve(source || '.'); return process.platform === 'win32' ? p.toLowerCase() : p; };
@@ -19,7 +20,7 @@ const scopeLimits = [
   'Own review activity is excluded by known source identity. Unrecognized older copied review journals may remain.',
 ];
 
-export async function prepareInsightReview(scan, filters, now = new Date(), context) {
+export async function prepareInsightReview(scan, filters, now = new Date(), context, modelReference = {}) {
   const ownRoot = sourceKey(reviewUsageHome());
   const excluded = new Set(scan.records.filter(r => r.reviewOrigin || r.source && sourceKey(r.source) === ownRoot).map(r => r.sessionId));
   const activity = { ...scan, cache: {} };
@@ -123,8 +124,9 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const payload = { schema: 'usage-insights-evidence-v1', capturedAt: now.toISOString(), scope, evidence,
     candidates: chosen.map(c => ({ id: c.id, characters: c.chars, delivery: c.delivery, model: `Model ${Math.max(0, e.models.findIndex(m => m.name === c.record.model)) + 1}` })),
     limits: scopeLimits, omitted: { models: Math.max(0, e.models.length - 6), skills: Math.max(0, report.skills.rows.length - 6), mcp: Math.max(0, report.mcp.rows.length - 6), promptCandidates: candidates.length - chosen.length } };
-  const preview = JSON.stringify(payload, null, 2);
-  if (Buffer.byteLength(preview) > 38 * 1024) throw new Error('Review evidence is too large. Narrow the filters.');
+  payload.modelReference = buildModelReference(modelReference, e.models.slice(0, 6));
+  payload.models = e.models.slice(0, 6).map((row, i) => ({ name: `Model ${i + 1}`, modelId: verifiedHistoricalModelId(row, payload.modelReference) }));
+  const preview = serializeReviewEvidence(payload, 38 * 1024);
   // These readable names stay on the local dashboard; the sent scope contains only filter flags.
   const filterLabels = [filters.models?.length && `Models: ${filters.models.join(', ')}`, filters.project && `Project: ${filters.project}`,
     filters.session && `Session: ${report.options.sessions.find(s => s.id === filters.session)?.name || 'Selected session'}`,
