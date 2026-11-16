@@ -78,9 +78,10 @@ const unavailable = () => new Error('Could not read the locked WSL usage databas
 
 export function createUsageDatabaseReader({ platform = process.platform, readLocal = readUsageDatabase, run = runProcess, timeoutMs = 5000 } = {}) {
   return async (file, receiptSessions, source, { readWslDatabases = true } = {}) => {
-    try { return readLocal(file, receiptSessions, source); }
+    const location = platform === 'win32' && wslDatabaseLocation(file);
+    // A Windows lock wait cannot resolve WSL's WAL locking incompatibility; use the native fallback immediately.
+    try { return readLocal(file, receiptSessions, source, { waitForLock: !location }); }
     catch (error) {
-      const location = platform === 'win32' && wslDatabaseLocation(file);
       if (!location || !isLocked(error)) throw error;
       if (!readWslDatabases) throw new Error('WSL usage database is locked and the native WSL database reader is disabled in Settings. Journals remain included.');
       const executable = path.win32.join(process.env.SystemRoot || 'C:\\Windows', process.arch === 'ia32' ? 'Sysnative' : 'System32', 'wsl.exe');

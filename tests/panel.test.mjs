@@ -49,7 +49,19 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   }
   get('cache').checked = true;
   const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now(), transportError: initial.transportError };
-  const document = { getElementById: get, activeElement: null, hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
+  const objectUrls = new Map(), revoked = [];
+  server.downloads = [];
+  const document = { getElementById: get, activeElement: null, hidden: false,
+    body: { appendChild(node) { node.attached = true; } },
+    createElement(tag) {
+      assert.equal(tag, 'a');
+      return { click() {
+        assert.equal(this.attached, true);
+        if (server.downloadError) throw new Error('PRIVATE download failure');
+        server.downloads.push({ name: this.download, blob: objectUrls.get(this.href) });
+      }, remove() { this.attached = false; } };
+    },
+    addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
       classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
   } };
   const motion = { matches: initial.reducedMotion === true, addEventListener(type, callback) { this.changed = callback; } };
@@ -57,6 +69,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     Date: class extends Date { static now() { return server.now; } },
     innerWidth: 1200, innerHeight: 800,
     document,
+    Blob, URL: { createObjectURL(blob) { const url = `blob:synthetic-${objectUrls.size}`; objectUrls.set(url, blob); return url; }, revokeObjectURL(url) { revoked.push(url); objectUrls.delete(url); } },
     window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: query => query.includes('prefers-reduced-motion') ? motion : ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
@@ -102,8 +115,38 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context };
+  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context, objectUrls, revoked };
 }
+
+test('diagnostic Markdown download uses the displayed snapshot offline and releases its blob', async () => {
+  const { get, server, requests, document, timeouts, objectUrls, revoked } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  await get('logs-open').onclick();
+  server.transportError = true;
+  await get('logs-reload').onclick();
+  const before = requests.length, logs = get('logs-output').value;
+  get('logs-download').focus();
+  get('logs-download').onclick();
+  assert.equal(server.downloads.length, 1);
+  const download = server.downloads[0];
+  assert.match(download.name, /^usage-insights-v\d+\.\d+\.\d+-\d{4}-\d\d-\d\dT[\d-]+Z\.md$/);
+  assert.equal(download.blob.type, 'text/markdown;charset=utf-8');
+  assert.equal(await download.blob.text(), `# Usage Insights diagnostic logs\n\n\`\`\`text\n${logs}\n\`\`\`\n`);
+  assert.match(logs, /Cached server snapshot|Server logs unavailable/);
+  assert.match(logs, /Load timing summary/);
+  assert.doesNotMatch(await download.blob.text(), /PRIVATE/);
+  assert.equal(document.activeElement, get('logs-download'));
+  assert.equal(requests.length, before, 'downloading makes no network request or scan');
+  assert.equal(objectUrls.size, 1, 'allow the browser to consume the URL before revoking it');
+  timeouts.at(-1).callback();
+  assert.equal(objectUrls.size, 0); assert.equal(revoked.length, 1);
+  server.downloadError = true;
+  get('logs-download').onclick();
+  assert.match(get('logs-status').textContent, /Copy logs/);
+  timeouts.at(-1).callback();
+  assert.equal(objectUrls.size, 0);
+  await get('logs-copy').onclick();
+  assert.equal(server.copied.at(-1), logs);
+});
 
 async function finishReconnect(timeouts, pending) {
   for (let i = 0; i < 4; i++) {
@@ -871,11 +914,14 @@ test('a stalled server log request times out while local logs remain copyable', 
   const { get, server, timeouts } = await mountPanel(report);
   server.logsStalled = true;
   const loading = get('logs-open').onclick();
+  const logsTimeout = timeouts.at(-1);
   assert.equal(get('logs-copy').disabled, false);
+  get('logs-download').onclick();
+  assert.match(await server.downloads[0].blob.text(), /ui\.started/);
   await get('logs-copy').onclick();
   assert.match(server.copied[0], /ui\.started/);
-  assert.equal(timeouts.at(-1).ms, 3000);
-  timeouts.at(-1).callback(); await loading;
+  assert.equal(logsTimeout.ms, 3000);
+  logsTimeout.callback(); await loading;
   assert.match(get('logs-status').textContent, /Server logs are unavailable/);
   assert.match(get('logs-output').value, /AbortError/);
   assert.equal(get('logs-reload').disabled, false);

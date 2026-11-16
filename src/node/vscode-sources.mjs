@@ -4,6 +4,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { sourceEnvironment, sourceIdentity } from './source-paths.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
+import { inOrder } from './read-queue.mjs';
 
 const absent = e => ['ENOENT', 'ENOTDIR'].includes(e?.code);
 const MAX_WORKSPACES = 2000, MAX_LOGS = 20000;
@@ -76,6 +77,8 @@ export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), plat
         }
       }
       let found = false;
+      const journals = [];
+      let limitedSource;
       for (const candidate of candidates) {
         if (disabledIds.has(sourceIdentity(candidate.dir, platform))) {
           found = true;
@@ -95,19 +98,28 @@ export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), plat
           try { entries = (await fs.readdir(directory, { withFileTypes: true })).filter(d => d.isFile() && d.name.endsWith('.jsonl')).sort((a, b) => a.name.localeCompare(b.name)); }
           catch (error) { source.state = 'warning'; source.message = 'A VS Code debug session could not be read.'; source.diagnostic = diagnosticError(error); continue; }
           for (const entry of entries) {
-            if (++logs > MAX_LOGS) { source.state = 'warning'; source.message = 'VS Code log discovery reached its limit.'; break; }
+            if (++logs > MAX_LOGS) { limitedSource = source; break; }
             const file = path.join(directory, entry.name);
-            try {
-              const stat = await fs.stat(file);
-              const snapshot = await readJournal(file, stat, candidate.dir, session.name, force, { format: 'vscode', project: candidate.project, cwd: candidate.cwd, environment: candidate.environment });
-              files.push(file); snapshots.push(snapshot); owners.push(source); source.files++;
-              if (snapshot.unclassified || snapshot.invalid) { source.state = 'warning'; source.message = 'Some VS Code calls lack valid recorded Copilot charges or have conflicting data and were excluded.'; }
-            } catch (error) { source.state = 'warning'; source.message = 'A VS Code debug log could not be read.'; source.diagnostic = diagnosticError(error); }
+            journals.push({ file, candidate, session: session.name, source });
           }
           if (logs > MAX_LOGS) break;
         }
         if (logs > MAX_LOGS) break;
       }
+      // Read independent journals together, but retain the same order for copied-log ownership.
+      const results = await inOrder(journals, async ({ file, candidate, session }) => {
+        try {
+          const stat = await fs.stat(file);
+          return { snapshot: await readJournal(file, stat, candidate.dir, session, force, { format: 'vscode', project: candidate.project, cwd: candidate.cwd, environment: candidate.environment }) };
+        } catch (error) { return { error }; }
+      }, 8);
+      for (let i = 0; i < journals.length; i++) {
+        const { file, source } = journals[i], { snapshot, error } = results[i];
+        if (error) { source.state = 'warning'; source.message = 'A VS Code debug log could not be read.'; source.diagnostic = diagnosticError(error); continue; }
+        files.push(file); snapshots.push(snapshot); owners.push(source); source.files++;
+        if (snapshot.unclassified || snapshot.invalid) { source.state = 'warning'; source.message = 'Some VS Code calls lack valid recorded Copilot charges or have conflicting data and were excluded.'; }
+      }
+      if (limitedSource) { limitedSource.state = 'warning'; limitedSource.message = 'VS Code log discovery reached its limit.'; }
       if (!found || rootSource.state === 'warning') {
         if (!rootSource.message) rootSource.message = 'No retained VS Code Copilot debug logs found. See README for logging setup; ordinary saved chats do not contain reliable accounting.';
         sources.push(rootSource);

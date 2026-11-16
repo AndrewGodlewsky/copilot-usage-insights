@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.100",
+    "summary": "Large VS Code histories load faster, and WSL database reads spend less time waiting. Show logs now lets you download the displayed diagnostics as a Markdown file, including cached logs when the server is unavailable."
+  },
+  {
     "version": "0.1.99",
     "summary": "Show logs now includes a load-time summary with timings for source discovery, file reading, databases, report preparation and display. It also shows how much data was read or reused, making slow startup easier to diagnose without sharing private content."
   },

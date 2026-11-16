@@ -845,6 +845,27 @@ $('efficiency-review-open').onclick = async () => {
     if (run.analysisStarted) await load(false, true);
   }
 };
+$('logs-download').onclick = () => {
+  let url, link;
+  try {
+    const markdown = `# Usage Insights diagnostic logs\n\n\`\`\`text\n${$('logs-output').value}\n\`\`\`\n`;
+    url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }));
+    link = document.createElement('a');
+    link.href = url;
+    link.download = `usage-insights-v${BUILD_VERSION}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    $('logs-status').textContent = 'Download requested. Check Downloads, or the save location chosen by your browser.';
+  } catch (error) {
+    clientDiagnostics.record('warn', 'diagnostics.download', diagnosticError(error));
+    $('logs-status').textContent = 'Could not start the download. Use Copy logs instead.';
+  } finally {
+    link?.remove();
+    // Give the download time to consume the URL before releasing its memory.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+};
 async function cancelReview() {
   if (reviewRun) {
     const run = reviewRun;

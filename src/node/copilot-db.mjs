@@ -36,11 +36,11 @@ export function readDesktopSessionNames(file, sessionIds) {
 
 export const USAGE_DB_FIELDS = ['id', 'session_id', 'model', 'created_at', 'input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens', 'reasoning_tokens', 'total_nano_aiu'];
 
-export function readUsageDatabase(file, receiptSessions, source) {
+export function readUsageDatabase(file, receiptSessions, source, { waitForLock = true } = {}) {
   let db;
   try {
     db = new DatabaseSync(file, { readOnly: true });
-    db.exec('PRAGMA query_only = ON; PRAGMA trusted_schema = OFF; PRAGMA busy_timeout = 1000;');
+    db.exec(`PRAGMA query_only = ON; PRAGMA trusted_schema = OFF; PRAGMA busy_timeout = ${waitForLock ? 1000 : 0};`);
     const columns = new Set(db.prepare('PRAGMA table_info(assistant_usage_events)').all().map(c => c.name));
     const supported = ['id', 'session_id', 'model', 'created_at'].every(c => columns.has(c));
     const fields = USAGE_DB_FIELDS;

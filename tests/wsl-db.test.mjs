@@ -6,13 +6,55 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { createUsageDatabaseReader, wslDatabaseLocation, WSL_USAGE_EXPORT } from '../src/node/wsl-db.mjs';
-import { readUsageDatabase } from '../src/node/copilot-db.mjs';
+import { readUsageDatabase, normalizeDatabaseRows } from '../src/node/copilot-db.mjs';
 import { createScanner } from '../src/node/copilot-source.mjs';
 import { diagnosticError } from '../src/core/diagnostics.mjs';
 
 const file = String.raw`\\wsl.localhost\Ubuntu\home\example\.copilot\session-store.db`;
 const locked = () => Object.assign(new Error('PRIVATE database is locked'), { code: 'ERR_SQLITE_ERROR', errcode: 5 });
 const row = { id: 1, session_id: 'old', model: 'model', created_at: '2026-11-01T12:00:00Z', input_tokens: 20, output_tokens: 5, cache_read_tokens: 10, cache_write_tokens: 0, total_nano_aiu: 1000000000 };
+test('WSL probes do not wait on Windows SQLite locks before the native fallback', async () => {
+  const waits = [];
+  const read = createUsageDatabaseReader({ platform: 'win32', readLocal: (file, sessions, source, options) => {
+    waits.push(options?.waitForLock);
+    return { records: [] };
+  } });
+  await read(file, new Set(), 'source');
+  await read('C:\\local\\session-store.db', new Set(), 'source');
+  assert.deepEqual(waits, [false, true]);
+});
+
+test('database reads overlap in pairs and still reconcile copied rows in source order', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-db-parallel-'));
+  t.after(async () => {
+    assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(temp).startsWith('usage-db-parallel-'));
+    await fs.rm(temp, { recursive: true, force: true });
+  });
+  const homes = [];
+  for (let i = 0; i < 4; i++) {
+    const home = path.join(temp, String(i)); homes.push(home);
+    await fs.mkdir(home);
+    await fs.writeFile(path.join(home, 'session-store.db'), '');
+  }
+  let active = 0, peak = 0;
+  const scanner = createScanner({ readDatabase: async (file, receipts, source) => {
+    peak = Math.max(peak, ++active);
+    try {
+      await new Promise(resolve => setTimeout(resolve, source === homes[0] ? 60 : 20));
+      if (source === homes[2]) throw Object.assign(new Error('synthetic database failure'), { code: 'EIO' });
+      return normalizeDatabaseRows([row], new Map([['old', { repository: source === homes[0] ? 'first' : 'copy' }]]), receipts, source, true);
+    } finally { active--; }
+  } });
+  const first = await scanner.scan(homes);
+  assert.equal(peak, 2, 'do not serialize WSL processes or start an unbounded number');
+  assert.equal(first.records.length, 1);
+  assert.equal(first.records[0].project, 'first', 'completion order must not change duplicate ownership');
+  assert.equal(first.records[0].nanoAiu, 1e9);
+  assert.equal(first.sources[2].diagnostic.errorCode, 'EIO');
+  assert.equal(await scanner.scan(homes), first, 'unchanged records and warnings keep cached reports valid');
+});
+
 test('locked WSL database usage is recovered without copying a database or counting receipt sessions twice', async () => {
   const calls = [];
   const read = createUsageDatabaseReader({ platform: 'win32', readLocal: () => { throw locked(); }, run: async (exe, args, options, input) => {

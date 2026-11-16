@@ -12,6 +12,59 @@ const event = (id, attrs = {}, extra = {}) => ({ v: 1, type: 'llm_request', sid:
   attrs: { model: 'model', inputTokens: 100, outputTokens: 20, cachedTokens: 80, copilotUsageNanoAiu: 125000000, ...attrs }, ...extra });
 function parse(events) { const p = createVSCodeParser({ source: 'fixture', logFile: 'main.jsonl', project: 'project' }); for (const e of events) p.push(JSON.stringify(e)); return p.snapshot(); }
 
+test('VS Code reads overlap with a bounded queue and preserve discovery order and individual failures', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-vscode-parallel-'));
+  t.after(async () => {
+    assert.equal(path.dirname(path.resolve(temp)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(temp).startsWith('usage-vscode-parallel-'));
+    await fs.rm(temp, { recursive: true, force: true });
+  });
+  const root = path.join(temp, 'globalStorage', 'github.copilot-chat', 'debug-logs');
+  for (let i = 0; i < 24; i++) {
+    const dir = path.join(root, String(i).padStart(2, '0'));
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'main.jsonl'), '{}\n');
+  }
+  let active = 0, peak = 0;
+  const result = await createVSCodeSources({ defaultHomes: [temp] })({ readJournal: async (file, stat, source, session) => {
+    peak = Math.max(peak, ++active);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      if (session === '07') throw Object.assign(new Error('synthetic read error'), { code: 'EIO' });
+      return { session, invalid: 0, unclassified: 0 };
+    } finally { active--; }
+  } });
+  assert.ok(peak > 1, 'independent journal reads must not serialize filesystem waits');
+  assert.ok(peak <= 8, 'cap journal reads to avoid unbounded memory and file handles');
+  assert.deepEqual(result.snapshots.map(s => s.session), Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).filter(s => s !== '07'));
+  assert.equal(result.files.length, 23);
+  assert.equal(result.sources[0].files, 23);
+  assert.equal(result.sources[0].state, 'warning');
+  assert.equal(result.sources[0].diagnostic.errorCode, 'EIO');
+  assert.ok(result.owners.every(owner => owner === result.sources[0]));
+});
+
+test('VS Code discovery limits remain explicit when earlier queued reads fail or contain invalid records', async t => {
+  const root = path.resolve(os.tmpdir(), 'synthetic-vscode-limit'), debug = path.join(root, 'globalStorage', 'github.copilot-chat', 'debug-logs');
+  t.mock.method(fs, 'stat', async file => ({ isDirectory: () => file === root, isFile: () => file !== root }));
+  t.mock.method(fs, 'readdir', async dir => {
+    if (dir === debug) return [{ name: 'session', isDirectory: () => true }];
+    if (dir === path.join(debug, 'session')) return Array.from({ length: 20001 }, (_, i) => ({ name: `${String(i).padStart(5, '0')}.jsonl`, isFile: () => true }));
+    return [];
+  });
+  for (const failure of [false, true]) {
+    let calls = 0;
+    const result = await createVSCodeSources({ defaultHomes: [root] })({ readJournal: async () => {
+      calls++;
+      if (failure && calls === 1) throw Object.assign(new Error('synthetic read failure'), { code: 'EIO' });
+      return { invalid: calls === 1 ? 1 : 0, unclassified: 0 };
+    } });
+    assert.equal(calls, 20000, 'the cap still bounds all queued reads');
+    assert.equal(result.sources[0].state, 'warning');
+    assert.equal(result.sources[0].message, 'VS Code log discovery reached its limit.');
+  }
+});
+
 test('VS Code records exact per-call charges, zero credits and inclusive tokens without retaining payloads', () => {
   const s = parse([event('a', { userRequest: 'PRIVATE_PROMPT', inputMessages: 'PRIVATE_CONTEXT', requestOptions: 'PRIVATE_OPTIONS' }), event('b', { copilotUsageNanoAiu: 0 })]);
   assert.equal(s.records.length, 2);

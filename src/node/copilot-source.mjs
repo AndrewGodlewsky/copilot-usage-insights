@@ -11,10 +11,9 @@ import { sourceIdentity, sourceEnvironment } from './source-paths.mjs';
 import { createVSCodeParser } from '../core/vscode.mjs';
 import { mergeCoverage } from '../core/coverage.mjs';
 import { enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
+import { inOrder } from './read-queue.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
-// File system calls wait on the operating system, so several session folders are read at once.
-const PARALLEL = 16;
 // A digest of what was read lets a journal that has grown be continued instead of read again.
 // Journals untouched for a day rarely grow, so they are read without one; if one does change,
 // it is read again from the start, and from then on with a digest.
@@ -36,16 +35,6 @@ async function hashPrefix(handle, length, metrics) {
   } finally { chunks.push(buffer); }
   return hash;
 }
-// Runs `task` over every item with bounded concurrency; results keep the items' order.
-async function inOrder(items, task) {
-  const results = new Array(items.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(PARALLEL, items.length) }, async () => {
-    while (next < items.length) { const i = next++; results[i] = await task(items[i]); }
-  }));
-  return results;
-}
-
 // Combines every journal's contribution, in folder order. Every entry is filed under a session
 // ID, so journals can repeat one another only when they share one: a copied or moved session.
 // Those few are reconciled entry by entry, the first copy winning; all others are simply joined
@@ -300,7 +289,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const coverageEntries = snapshots.flatMap(s => [...(s.coverageEntries || []), ...(s.emptySummary && summaryActivity.has(s.emptySummary.sessionId) ? [s.emptySummary] : [])]);
     for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
-    for (const { db, source } of databases) {
+    // WSL readers wait on child processes. Overlap at most two, then reconcile in source order.
+    const databaseResults = await inOrder(databases, async ({ db, source }) => {
       try {
         const fields = { sourceIndex: sources.indexOf(source) + 1, sourceKind: 'copilot', environmentType: environmentType(source) };
         const result = await measure('history.database', fields, async () => {
@@ -308,6 +298,13 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           Object.assign(fields, { records: result.records.length, databaseReader: result.databaseRead === 'wsl' ? 'wsl' : 'local' });
           return result;
         });
+        return { result };
+      } catch (error) { return { error }; }
+    }, 2);
+    for (let i = 0; i < databases.length; i++) {
+      const { db, source } = databases[i], { result, error } = databaseResults[i];
+      try {
+        if (error) throw error;
         if (result.databaseRead === 'wsl') {
           if (!source.message) source.message = 'Usage database read inside WSL; no database copy was created.';
           coverage.wslDatabases = (coverage.wslDatabases || 0) + 1;

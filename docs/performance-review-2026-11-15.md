@@ -1,5 +1,29 @@
 # Dashboard opening performance review
 
+## v0.1.100: measured VS Code and WSL delays
+
+The supplied v0.1.99 diagnostics identify a 30,005 ms initial usage load on the other Windows computer. History scanning took 28,689 ms: VS Code discovery/journals consumed 19,265 ms for 1,395 files (1,669,940,283 bytes); Copilot roots/journals took 3,078 ms; two WSL databases then took 2,192 and 3,615 ms sequentially. Report calculation took 1,193 ms, response decoding 5 ms, and DOM work 50 ms. Inventory was separate. These measurements identify source reading as the primary delay; they do not identify antivirus, drive speed or an individual file as the cause.
+
+VS Code was awaiting each journal before beginning the next. It now reads up to eight journals concurrently using the existing bounded queue pattern. Discovery order, CLI precedence, copied-log ownership, parser limits, incremental caching and source warnings are preserved. Two usage databases may read concurrently; their results are still applied in source order. For recognized WSL database paths on Windows, the local SQLite probe no longer waits one second for a lock before using the existing native WSL fallback. Local Windows databases retain their lock wait; WSL opt-out, read-only transactions, deadlines, and the check that the distribution is already running remain unchanged.
+
+The reproducible synthetic benchmark is:
+
+```text
+node scripts/benchmark-vscode.mjs --files=1395 --kib=1168
+```
+
+It creates 1,395 synthetic journals across 40 workspaces (1,668,745,320 bytes), verifies exact credits/record counts and unchanged-snapshot reuse, runs three fresh scanner instances, then removes only its verified temporary fixture folder. It reads no personal logs. On the development Windows machine:
+
+| Measure | v0.1.99 | v0.1.100 |
+| --- | ---: | ---: |
+| Fresh scanner, three runs | 4,585 / 4,943 / 4,741 ms | 3,385 / 3,235 / 2,942 ms |
+| Fresh scanner median | 4,741 ms | 3,235 ms |
+| Unchanged scan median | 173 ms | 130 ms |
+
+The initial median improved about 32% in this fixture. Operating-system caches were warm after fixture creation. This synthetic shape has one accounting event with a large payload per file; actual histories have different event shapes. It does not reproduce the other computer's storage, real WSL process startup or browser paint, and does not predict its final load time. Tests separately exercise overlapping delayed reads, ordered duplicate reconciliation, per-source failures, WSL fallback/opt-out, committed WAL data, and zero-credit accounting. No history is skipped by date, no persistent usage cache is added, and the remaining full-history parsing cost still grows with bytes and events.
+
+After updating, reopen the dashboard and use **Show logs → Download logs (.md)** after the initial load, before Refresh. The Markdown contains the same sanitized snapshot as Copy logs, with the existing stage timings. Confirm the actual download in the desktop host and compare the affected computer's new timings; neither has been verified through desktop/browser automation.
+
 ## v0.1.99: startup diagnostics and scale check
 
 The other computer's slow opening has not been reproduced locally. This release makes the existing scan observable rather than changing accounting or skipping older history. Existing logs timed the entire scan, report, skill versions and rendering, but did not separate the work inside the scan. The report cache-hit field was also being dropped by the diagnostic allowlist; it is now reported as `cacheHit`.

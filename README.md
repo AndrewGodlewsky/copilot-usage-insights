@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.99** adds detailed startup timings to Show logs so slow source reads and report preparation can be diagnosed from copied logs. Close and reopen Usage Insights once after updating to register its recoverable address. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.100** speeds up large VS Code history scans and WSL database reads, and adds Markdown downloads to Show logs. Close and reopen Usage Insights once after updating to register its recoverable address. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -244,9 +244,11 @@ Every tab has a centered footer: **Usage Insights** (opens the GitHub repository
 
 To report a problem:
 
-1. Open **Show logs** after the problem happens, then click **Copy logs**.
+1. Open **Show logs** after the problem happens, then click **Copy logs** or **Download logs (.md)**.
 2. Click **Feedback** to open this repository's new-issue form. The form includes the plugin version and spaces for what happened, reproduction steps, and logs.
-3. Paste the copied logs, add your description, and submit the issue yourself. GitHub may ask you to sign in. Logs are not attached or submitted automatically.
+3. Paste the copied logs or attach the downloaded file, add your description, and submit the issue yourself. GitHub may ask you to sign in. Logs are not attached or submitted automatically.
+
+**Download logs (.md)** saves the exact displayed snapshot as a Markdown file named with the plugin version and export time. It uses the host's normal download behavior: usually Downloads, or a save location if prompted. It works while server logs are loading or unavailable, includes any imported logs already shown, and does not fetch data, scan usage, or upload anything. If downloads are blocked by the host, use **Copy logs** instead.
 
 Logs include UTC timestamps, operation starts/completions/failures, durations in milliseconds, cache reuse, file/record/row counts, source and inventory availability, and safe error types, codes, and code locations. Timings cover scans, report calculations, installed skill-version reads, inventory reads, individual prompt lookups, API calls, and dashboard JavaScript/DOM updates. UI timings do not include the browser's final paint. The export also identifies the plugin and Node versions, operating system, and CPU architecture.
 
