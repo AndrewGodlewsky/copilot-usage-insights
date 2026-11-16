@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.96",
+    "summary": "The Refresh button takes up less space, with a closer icon and label and tighter padding."
+  },
+  {
     "version": "0.1.95",
     "summary": "The dashboard can reconnect after Copilot reloads its plugin extensions. Refresh now waits through brief connection interruptions, and logs make server restarts easier to identify."
   },
