@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "copilot-usage-insights",
-  "version": "0.1.107",
+  "version": "0.1.108",
   "description": "Explore local GitHub Copilot tokens, recorded AI credits, models, projects, and activity in a canvas.",
   "keywords": ["copilot", "usage", "analytics", "canvas"],
   "extensions": {

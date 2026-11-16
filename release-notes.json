@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.108",
+    "summary": "AI reviews can now use verified Copilot model details and bundled coding benchmark evidence when available, with clear coverage and comparison limits. The preview and copied prompt include the same reference information sent for analysis."
+  },
+  {
     "version": "0.1.107",
     "summary": "Conversation Habits now shows recorded steering and queued prompts even when they share a run with another prompt. AI reviews use the corrected delivery counts and coverage, while token totals, credit accounting and conversation-depth calculations stay unchanged."
   },
