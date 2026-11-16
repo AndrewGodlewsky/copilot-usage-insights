@@ -7,7 +7,7 @@ export function createConversationAccumulator(records, query, start, end, now) {
   let userStops = 0;
   const matches = item => (!query.project || item.project === query.project) && (!query.session || item.sessionId === query.session);
   const session = id => {
-    if (!sessions.has(id)) sessions.set(id, { active: false, prompts: 0, uncertain: 0, complete: 0, calls: 0, days: new Set(), prior: false,
+    if (!sessions.has(id)) sessions.set(id, { active: false, prompts: 0, deliveryPrompts: 0, unconfirmedDelivery: 0, uncertain: 0, complete: 0, calls: 0, days: new Set(), prior: false,
       delivery: { idle: 0, steering: 0, queued: 0, unknown: 0 } });
     return sessions.get(id);
   };
@@ -25,9 +25,11 @@ export function createConversationAccumulator(records, query, start, end, now) {
       const s = session(prompt.sessionId);
       if (prompt.day < start) { if (prompt.identity) s.prior = true; return; }
       s.active = true;
+      if (prompt.humanDelivery) {
+        s.deliveryPrompts++; s.delivery[['idle', 'steering', 'queued'].includes(prompt.delivery) ? prompt.delivery : 'unknown']++;
+      } else s.unconfirmedDelivery++;
       if (!prompt.identity) { s.uncertain++; return; }
       s.prompts++; s.days.add(prompt.day);
-      s.delivery[['idle', 'steering', 'queued'].includes(prompt.delivery) ? prompt.delivery : 'unknown']++;
       if (complete) { s.complete++; s.calls += prompt.charges.length; }
     },
     finish() {
@@ -36,21 +38,26 @@ export function createConversationAccumulator(records, query, start, end, now) {
         distribution: ['1 prompt', '2–5 prompts', '6–15 prompts', '16+ prompts'].map(label => ({ label, count: 0 })),
         workSessions: 0, workPrompts: 0, modelCalls: 0, averageCallsPerPrompt: null,
         workMatrix: Array.from({ length: 3 }, () => [0, 0, 0]),
-        delivery: { idle: 0, steering: 0, queued: 0, unknown: 0, known: 0, classifiedSessions: 0, steeredSessions: 0, averageSteering: null, userStops, stopSessions: stopSessions.size } };
+        delivery: { idle: 0, steering: 0, queued: 0, unknown: 0, known: 0, prompts: 0, sessions: 0, unconfirmedPrompts: 0,
+          classifiedSessions: 0, steeredSessions: 0, averageSteering: null, userStops, stopSessions: stopSessions.size } };
       const delivery = result.delivery;
       let classifiedSteering = 0;
       const counts = [];
       for (const s of sessions.values()) {
         if (!s.active) continue;
         result.sessions++;
+        delivery.unconfirmedPrompts += s.unconfirmedDelivery;
+        if (s.deliveryPrompts) {
+          delivery.sessions++; delivery.prompts += s.deliveryPrompts;
+          for (const key of ['idle', 'steering', 'queued', 'unknown']) delivery[key] += s.delivery[key];
+          if (!s.delivery.unknown && !s.unconfirmedDelivery) {
+            delivery.classifiedSessions++; delivery.steeredSessions += Number(s.delivery.steering > 0);
+            classifiedSteering += s.delivery.steering;
+          }
+        }
         if (s.uncertain) { result.uncertainSessions++; continue; }
         if (!s.prompts) { result.withoutPrompts++; continue; }
         result.countedSessions++; result.prompts += s.prompts; counts.push(s.prompts);
-        for (const key of ['idle', 'steering', 'queued', 'unknown']) delivery[key] += s.delivery[key];
-        if (!s.delivery.unknown) {
-          delivery.classifiedSessions++; delivery.steeredSessions += Number(s.delivery.steering > 0);
-          classifiedSteering += s.delivery.steering;
-        }
         result.multiDaySessions += Number(s.days.size > 1); result.priorSessions += Number(s.prior);
         result.distribution[s.prompts === 1 ? 0 : s.prompts <= 5 ? 1 : s.prompts <= 15 ? 2 : 3].count++;
         if (s.complete !== s.prompts) continue;

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildReport } from '../src/core/copilot-report.mjs';
-import { reviewFixture, reviewNow } from './fixtures/review.mjs';
+import { reviewFixture, steeringFixture, reviewNow } from './fixtures/review.mjs';
 import { createConversationAccumulator } from '../src/core/conversations.mjs';
 import { localDay } from '../src/core/query.mjs';
 
@@ -116,13 +116,30 @@ function delivered(id, modes) {
   return f;
 }
 
+test('ordinary steering and queued messages retain delivery when their shared billing group is ambiguous', () => {
+  const f = steeringFixture();
+  assert.ok(f.events.filter(e => e.type === 'user.message').every(e => !('source' in e.data)));
+  const scan = f.scan(), report = buildReport(scan.records, { range: 'all' }, reviewNow, scan);
+  const c = report.efficiency.conversations, d = c.delivery;
+  assert.deepEqual([d.idle, d.steering, d.queued, d.unknown], [1, 1, 1, 0]);
+  assert.equal(d.prompts, 3); assert.equal(d.sessions, 1); assert.equal(d.classifiedSessions, 1);
+  assert.equal(d.steeredSessions, 1); assert.equal(d.averageSteering, 1);
+  assert.equal(c.countedSessions, 0); assert.equal(c.uncertainSessions, 1); assert.equal(c.prompts, 0);
+  assert.equal(report.promptCredits.eligiblePrompts, 0); assert.equal(report.promptCredits.excluded.attribution, 3);
+  assert.equal(report.promptCredits.averageCredits, null); assert.equal(report.totals.credits, 6);
+  f.events.push(...structuredClone(f.events));
+  const copy = f.scan(), repeated = buildReport(copy.records, { range: 'all' }, reviewNow, copy);
+  assert.deepEqual(repeated.promptCredits, report.promptCredits);
+  assert.deepEqual(repeated.efficiency.conversations, c);
+});
+
 test('delivery counts distinct human prompts and uses fully classified sessions for steering rates', () => {
   const a = delivered('a', ['idle', 'steering', 'steering', 'queued']);
   const b = delivered('b', ['idle', undefined, 'unsupported']);
   const c = delivered('c', ['queued']);
   a.events.push(...structuredClone(a.events));
   const d = conversations([a, b, c]).delivery;
-  assert.deepEqual(d, { idle: 2, steering: 2, queued: 2, unknown: 2, known: 6,
+  assert.deepEqual(d, { idle: 2, steering: 2, queued: 2, unknown: 2, known: 6, prompts: 8, sessions: 3, unconfirmedPrompts: 0,
     classifiedSessions: 2, steeredSessions: 1, averageSteering: 1, userStops: 0, stopSessions: 0 });
   assert.doesNotMatch(JSON.stringify(d), /PRIVATE|p0|interaction/);
 });
@@ -138,6 +155,66 @@ test('delivery-only conflicts become unknown without changing prompt charges', (
   assert.equal(report.efficiency.conversations.delivery.classifiedSessions, 0);
   assert.equal(report.efficiency.conversations.delivery.averageSteering, null);
   assert.deepEqual(report.promptCredits, buildReport(before.records, { range: 'all' }, reviewNow, before).promptCredits);
+});
+
+test('delivery excludes automated and child messages and does not guess from missing root evidence', () => {
+  const f = steeringFixture();
+  for (const [n, data] of [{ source: 'agent-task' }, { source: 'system' }, { source: 'autopilot' },
+    { isAutopilotContinuation: true }, { causalDependencies: ['upstream'] }].entries()) {
+    f.user('run', { messageId: `auto-${n}`, delivery: 'steering', ...data });
+  }
+  f.user('child-run', { delivery: 'queued' }, { agentId: 'child' });
+  f.call('child-run', 'child-call', { initiator: 'sub-agent' });
+  f.user('uncertain', { delivery: 'steering' }); f.call('uncertain', 'uncertain-call', { initiator: 'agent' });
+  const d = conversations([f]).delivery;
+  assert.deepEqual([d.idle, d.steering, d.queued, d.prompts, d.sessions], [1, 1, 1, 3, 1]);
+  assert.equal(d.unconfirmedPrompts, 1); assert.equal(d.classifiedSessions, 0);
+  const unbilled = reviewFixture({ sessionId: 'no-bills' }); unbilled.user('x', { source: 'user', delivery: 'steering' });
+  assert.equal(conversations([unbilled]).delivery.prompts, 0, 'provider evidence is still required');
+  const byok = steeringFixture({ sessionId: 'byok' });
+  for (const e of byok.events) if (e.type === 'session.usage_record') e.data.usage.provider.kind = 'byok';
+  assert.equal(conversations([byok]).delivery.prompts, 0);
+});
+
+test('conflicting replay dates, projects and origins cannot certify human delivery', () => {
+  for (const conflict of ['date', 'project', 'origin']) {
+    const f = delivered(conflict, ['steering']);
+    const copy = structuredClone(f.events.find(e => e.type === 'user.message'));
+    if (conflict === 'date') copy.timestamp = new Date(2026, 10, 14, 10).toISOString();
+    if (conflict === 'project') f.push('session.context_changed', { repository: 'Other project' });
+    if (conflict === 'origin') copy.data.source = 'system';
+    f.events.push(copy);
+    const d = conversations([f]).delivery;
+    assert.equal(d.prompts, 0, conflict); assert.equal(d.unconfirmedPrompts, 1, conflict);
+  }
+});
+
+test('conflicting root-call initiators cannot identify missing-source prompts as human', () => {
+  const f = steeringFixture(), duplicate = structuredClone(f.events.find(e => e.type === 'session.usage_record'));
+  duplicate.data.usage.initiator = 'agent'; f.events.push(duplicate);
+  const d = conversations([f]).delivery;
+  assert.equal(d.prompts, 0); assert.equal(d.unconfirmedPrompts, 3); assert.equal(d.classifiedSessions, 0);
+});
+
+test('shared-run delivery groups before filtering and follows each submission date', () => {
+  const f = reviewFixture({ sessionId: 'native', project: 'Native project' });
+  f.time(new Date(2026, 10, 1, 10)); f.user('run', { messageId: 'root', delivery: 'idle' }); f.call('run', 'initial');
+  f.time(new Date(2026, 10, 14, 10)); f.user('run', { messageId: 'steer', delivery: 'steering' }); f.call('run', 'next', { initiator: 'agent' });
+  f.time(new Date(2026, 10, 15, 10)); f.user('queued', { delivery: 'queued' }); f.call('queued', 'queued-call');
+  f.events.at(-2).data.originatingMessageId = 'root';
+  const other = delivered('wsl', ['steering']);
+  const scan = combined([f, other]); scan.cache = {};
+  for (const key of ['records', 'promptEvents', 'interactions']) for (const item of scan[key]) item.environment = item.sessionId;
+  const build = filters => buildReport(scan.records, filters, reviewNow, scan).efficiency.conversations;
+  assert.equal(build({ range: '7d', environment: 'native' }).delivery.prompts, 2);
+  assert.equal(build({ range: '90d', session: 'native' }).delivery.prompts, 3);
+  assert.equal(build({ range: 'mtd', project: 'Native project' }).delivery.prompts, 3);
+  const today = build({ range: '1d', environment: 'native' });
+  assert.deepEqual([today.delivery.idle, today.delivery.steering, today.delivery.queued], [0, 0, 1]);
+  const previous = build({ range: 'custom', startDate: '2026-11-14', endDate: '2026-11-14', session: 'native' });
+  assert.deepEqual([previous.delivery.idle, previous.delivery.steering, previous.delivery.queued], [0, 1, 0]);
+  assert.equal(build({ range: '90d', models: ['PRIVATE MODEL'] }).reason, 'model-filter');
+  assert.deepEqual(build({ range: '1d', environment: 'native' }), today);
 });
 
 test('replayed stops under conflicting project contexts do not invalidate recorded prompt costs', () => {

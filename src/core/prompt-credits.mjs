@@ -371,9 +371,14 @@ function attributeSessions(all, records, recordByKey) {
       let identity = prompt.origin === 'user' || linksKnown && initial;
       if (identity) for (const e of origin.space.userEvents.get(prompt.promptId)) if (e.project !== prompt.project || e.origin !== prompt.origin || eventNode.get(e).scope) { identity = false; break; }
       const sampleReceipt = receiptEvents.find(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId);
+      // Delivery describes a submission even when several submissions share a billing group.
+      // An omitted source still requires a user-initiated root call; conflicting copies cannot establish its date or origin.
+      let humanDelivery = prompt.origin === 'user' || prompt.origin === 'unspecified' && initial && !conflictingReceipts.has(sampleReceipt?.receiptKey);
+      if (humanDelivery) for (const e of origin.space.userEvents.get(prompt.promptId))
+        if (e.project !== prompt.project || e.origin !== prompt.origin || e.ms !== prompt.ms || e.interaction !== prompt.interaction || eventNode.get(e).scope) { humanDelivery = false; break; }
       let delivery = prompt.delivery || 'unknown';
       for (const e of origin.space.userEvents.get(prompt.promptId)) if ((e.delivery || 'unknown') !== delivery) { delivery = 'unknown'; break; }
-      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, limitation, delivery,
+      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, humanDelivery, limitation, delivery,
         sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms, delivery },
         provider: linksKnown && charges.length ? receiptEvents.every(r => r.copilot) : attributed(prompt.sessionId),
         state: doubtful || prompt.origin === 'unspecified' && !initial ? ATTRIBUTION : incomplete ? ACCOUNTING : unfinished ? UNFINISHED : ELIGIBLE });

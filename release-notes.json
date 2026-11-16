@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.107",
+    "summary": "Conversation Habits now shows recorded steering and queued prompts even when they share a run with another prompt. AI reviews use the corrected delivery counts and coverage, while token totals, credit accounting and conversation-depth calculations stay unchanged."
+  },
+  {
     "version": "0.1.106",
     "summary": "Skills now includes saved activations and failed loads even when a session has no billing receipts. Provider-unverified activity and excluded counts are clearly labelled, so older skill history is easier to understand without inventing charges."
   },

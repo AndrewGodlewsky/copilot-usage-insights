@@ -5,7 +5,8 @@ export function reviewFixture({ sessionId = 'session-a', source = 'fixture', pro
   const events = []; let ms = new Date(2026, 10, 15, 10).getTime(), id = 0;
   const push = (type, data, extra = {}) => { const e = { type, data, id: `${sessionId}-${id++}`, timestamp: new Date(ms++).toISOString(), ...extra }; events.push(e); return e; };
   push('session.start', { sessionId, context: { repository: project } });
-  const user = (interaction, data = {}, extra = {}) => push('user.message', { interactionId: interaction, messageId: interaction, source: 'user', content: 'PRIVATE PROMPT', ...data }, extra);
+  // Ordinary saved human messages omit source; explicit user origins remain opt-in.
+  const user = (interaction, data = {}, extra = {}) => push('user.message', { interactionId: interaction, messageId: interaction, content: 'PRIVATE PROMPT', ...data }, extra);
   const call = (interaction, api, extra = {}) => {
     push('assistant.turn_start', { turnId: api, interactionId: interaction });
     push('session.usage_record', { usage: { apiCallId: api, provider: { kind: 'copilot' }, model: 'PRIVATE MODEL', initiator: 'user', inputTokens: 100, outputTokens: 20, cacheReadTokens: 60, cacheWriteTokens: 10, reasoningTokens: 5, toolTokenCount: 25, copilotUsage: { totalNanoAiu: 0 }, ...extra } });
@@ -17,4 +18,16 @@ export function reviewFixture({ sessionId = 'session-a', source = 'fixture', pro
     for (const e of events) parser.push(JSON.stringify(e));
     return { ...parser.snapshot(), sources: [] };
   } };
+}
+
+export function steeringFixture(options) {
+  const f = reviewFixture(options);
+  f.user('run', { messageId: 'root', delivery: 'idle' });
+  f.call('run', 'initial', { copilotUsage: { totalNanoAiu: 1000000000 } });
+  f.user('run', { messageId: 'steer', delivery: 'steering' });
+  f.call('run', 'continuation', { initiator: 'agent', copilotUsage: { totalNanoAiu: 2000000000 } });
+  f.user('queued-run', { messageId: 'queued', delivery: 'queued' });
+  f.call('queued-run', 'queued', { copilotUsage: { totalNanoAiu: 3000000000 } });
+  f.events.at(-2).data.originatingMessageId = 'root';
+  return f;
 }

@@ -256,10 +256,11 @@ test('delivery and stops survive incremental refresh and copied journals without
   assert.equal(before.idle, 1); assert.equal(before.userStops, 1);
   assert.deepEqual(await read(true), before);
   const index = f.events.length;
-  f.user('second', { delivery: 'steering' }); f.call('second', 'second');
+  f.user('first', { messageId: 'second', delivery: 'steering' }); f.call('first', 'second', { initiator: 'agent' });
   await fs.appendFile(one.file, lines(f.events.slice(index)));
   const after = await read(false);
   assert.equal(after.idle, 1); assert.equal(after.steering, 1); assert.equal(after.userStops, 1);
+  assert.equal(after.prompts, 2); assert.equal(after.classifiedSessions, 1);
   assert.deepEqual(await read(true), after);
 });
 test('scanner tails complete lines, handles truncation, deduplicates roots, and drops deleted logs', async t => {

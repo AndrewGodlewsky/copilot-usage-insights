@@ -31,12 +31,13 @@ test('conversation graphics use configured formatting, escape labels, and explai
 
 test('delivery graphics show unknowns, independent stops and the restricted session denominator', () => {
   const c = measured();
-  c.delivery = { idle: 10, steering: 5, queued: 5, unknown: 5, known: 20, classifiedSessions: 4, steeredSessions: 2, averageSteering: .75, userStops: 3, stopSessions: 2 };
+  c.delivery = { idle: 10, steering: 5, queued: 5, unknown: 5, known: 20, prompts: 25, sessions: 9, unconfirmedPrompts: 2, classifiedSessions: 4, steeredSessions: 2, averageSteering: .75, userStops: 3, stopSessions: 2 };
   const html = renderConversations(c);
   assert.match(html, /How you guide the agent/);
   assert.match(html, /Prompt delivery distribution/);
   assert.match(html, /Started while idle/); assert.match(html, /Steering/); assert.match(html, /Queued/); assert.match(html, /Unknown/);
-  assert.match(html, /20 of 25 prompts/); assert.match(html, /4 of 8 counted sessions/);
+  assert.match(html, /20 of 25 prompts/); assert.match(html, /4 of 9 sessions/);
+  assert.match(html, /2 additional submissions/);
   assert.match(html, /User stops/); assert.match(html, /3/); assert.match(html, /not.*wasted/i);
   assert.doesNotMatch(html, /NaN|Infinity/);
   c.delivery.classifiedSessions = 0; c.delivery.averageSteering = null;
@@ -50,4 +51,14 @@ test('stops remain visible without a usable conversation-depth sample', () => {
   const html = renderConversations(c);
   assert.match(html, /User stops/); assert.match(html, /No confirmed prompt delivery sample/);
   assert.doesNotMatch(html, /NaN|Infinity/);
+});
+
+test('delivery has independent prompt and session denominators even without a depth sample', () => {
+  const c = { sessions: 2, countedSessions: 0, uncertainSessions: 2, prompts: 0,
+    delivery: { prompts: 4, sessions: 2, idle: 1, steering: 1, queued: 1, unknown: 1, known: 3,
+      classifiedSessions: 1, steeredSessions: 1, averageSteering: 1, userStops: 0, stopSessions: 0 } };
+  const html = renderConversations(c);
+  assert.match(html, /3 of 4 prompts/); assert.match(html, /1 of 2 sessions/);
+  assert.match(html, /width:25%/); assert.match(html, /separate.*depth/i);
+  assert.doesNotMatch(html, /No confirmed prompt delivery|NaN|Infinity/);
 });

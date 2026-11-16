@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareInsightReview } from '../src/node/review-evidence.mjs';
 import { reviewUsageHome } from '../src/node/settings.mjs';
-import { reviewFixture, reviewNow } from './fixtures/review.mjs';
+import { reviewFixture, steeringFixture, reviewNow } from './fixtures/review.mjs';
 import { analyzeInsights } from '../src/node/review-insights.mjs';
 
 test('review distinguishes saved skill activity from verified billing attribution', async () => {
@@ -80,6 +80,19 @@ test('review receives delivery coverage, session steering and separate stops wit
   assert.ok(!unknown.payload.evidence.some(e => e.id === 'conversation-steering-sessions'));
   const filtered = await prepareInsightReview(f.scan(), { range: '7d', models: ['PRIVATE MODEL'] }, reviewNow);
   assert.ok(!filtered.payload.evidence.some(e => e.id === 'conversation-delivery' || e.id === 'conversation-user-stops'));
+});
+
+test('AI review receives steering and queued evidence even when no session qualifies for depth or cost averages', async () => {
+  const snapshot = await prepareInsightReview(steeringFixture().scan(), { range: '7d' }, reviewNow);
+  const byId = new Map(snapshot.payload.evidence.map(e => [e.id, e]));
+  const d = byId.get('conversation-delivery');
+  assert.ok(d); assert.equal(d.samples, 3); assert.equal(d.total, 3);
+  assert.deepEqual(d.values.map(v => v.value), [1, 1, 1, 0]);
+  assert.equal(byId.get('conversation-steering-sessions').value, 100);
+  assert.equal(byId.get('conversation-steering-sessions').total, 1);
+  assert.ok(!byId.has('conversation-depth')); assert.ok(!byId.has('credit-prompt'));
+  assert.match(d.limitation, /separate.*depth/i);
+  assert.doesNotMatch(snapshot.preview, /PRIVATE|originatingMessageId|session-a/);
 });
 
 test('conversation evidence fits the existing submission budget alongside every other topic family', async () => {

@@ -66,15 +66,15 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
       const values = ['1 call/prompt', '>1–5 calls/prompt', '>5 calls/prompt'].map((label, row) => ({ label, value: c.workMatrix[row][column] }));
       comparison(`conversation-work-${column + 1}`, `${label} per session: agent activity`, values, values.reduce((n, v) => n + v.value, 0), column < 2 ? c.distribution[column].count : c.distribution[2].count + c.distribution[3].count, workNote);
     }
-    const d = c.delivery;
-    if (d) {
-      evidence.push({ id: 'conversation-delivery', topic, label: 'How prompts reach the agent', template: 'comparison', unit: 'prompts',
-        values: [['idle', 'Started while idle'], ['steering', 'Steering'], ['queued', 'Queued'], ['unknown', 'Unknown']].map(([key, label]) => ({ label, value: d[key] })),
-        samples: d.known, total: c.prompts, limitation: 'Confirmed prompts in counted sessions. Unknown includes missing/conflicting labels. Delivery is timing, not prompt quality; steering may be correction, new information or collaboration.' });
-      const steeringNote = 'Only sessions with delivery known for every confirmed prompt. Selected dates only. Repetition is a hypothesis to explore, not proof of poor prompting, failure or wasted spending.';
-      add('conversation-steering-sessions', topic, 'Sessions containing steering', d.classifiedSessions ? d.steeredSessions / d.classifiedSessions * 100 : null, '% of classified sessions', d.classifiedSessions, c.countedSessions, steeringNote);
-      add('conversation-steering-average', topic, 'Steering messages per session', d.averageSteering, 'prompts/session', d.classifiedSessions, c.countedSessions, steeringNote);
-    }
+  }
+  if (conversations?.delivery?.prompts) {
+    const d = conversations.delivery, topic = 'prompts-sessions';
+    evidence.push({ id: 'conversation-delivery', topic, label: 'How prompts reach the agent', template: 'comparison', unit: 'prompts',
+      values: [['idle', 'Started while idle'], ['steering', 'Steering'], ['queued', 'Queued'], ['unknown', 'Unknown']].map(([key, label]) => ({ label, value: d[key] })),
+      samples: d.known, total: d.prompts, limitation: `Confirmed human delivery in selected dates, separate from depth and cost samples. Unknown includes missing/conflicting labels. ${d.unconfirmedPrompts} other submissions lack consistent human-origin/linking evidence and are excluded. Older formats or absent billing links can understate coverage. Delivery is timing, not prompt quality; steering may be correction, new information or collaboration.` });
+    const steeringNote = 'Only sessions with human origin and delivery known for every observed submission. Uses the delivery sample, separate from depth and cost averages. Selected dates only; small samples are weak evidence. Repetition is a hypothesis to explore, not proof of poor prompting, failure or wasted spending.';
+    add('conversation-steering-sessions', topic, 'Sessions containing steering', d.classifiedSessions ? d.steeredSessions / d.classifiedSessions * 100 : null, '% of classified sessions', d.classifiedSessions, d.sessions, steeringNote);
+    add('conversation-steering-average', topic, 'Steering messages per session', d.averageSteering, 'prompts/session', d.classifiedSessions, d.sessions, steeringNote);
   }
   if (conversations?.delivery) {
     const d = conversations.delivery;
