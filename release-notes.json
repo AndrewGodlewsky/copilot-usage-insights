@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.106",
+    "summary": "Skills now includes saved activations and failed loads even when a session has no billing receipts. Provider-unverified activity and excluded counts are clearly labelled, so older skill history is easier to understand without inventing charges."
+  },
+  {
     "version": "0.1.105",
     "summary": "Efficiency now compares recorded effort levels within each model and shows real model and effort changes, separating manual selections from automatic changes. Missing effort stays unknown, and no-op changes are ignored."
   },

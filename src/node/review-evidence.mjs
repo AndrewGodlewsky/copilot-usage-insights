@@ -90,7 +90,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
     add(`model-cache-${n + 1}`, 'context-cache', `Model ${n + 1}: cache reuse`, row.cacheHitRate, '%', row.cacheRequests, row.requests, '', `${row.name}: cache reuse`);
   }
   for (const [n, row] of report.skills.rows.slice(0, 6).entries()) {
-    const note = 'Recorded successful loads and explicit failed loads only, not skill task outcomes or per-skill tokens. Ignores model filter.';
+    const note = 'Recorded successful loads and explicit failed loads only, not skill task outcomes or per-skill tokens. Ignores model filter.' + ` Provider unverified for ${row.unattributedUses || 0} uses and ${row.unattributedFailures || 0} failures; these activity counts are not attributed charges.`;
     add(`skill-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: uses`, row.invocations, 'loads', row.invocations + row.failures, row.invocations + row.failures, note, `${row.name}: uses`);
     add(`skill-fail-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: failed loads`, row.failures, 'failures', row.invocations + row.failures, row.invocations + row.failures, note, `${row.name}: failed loads`);
   }

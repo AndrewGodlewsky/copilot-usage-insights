@@ -97,7 +97,7 @@ test('older skills arrive after background scanning and date changes reuse the c
     const result = await call({ range }, revision);
     assert.equal(result.loading, undefined);
     assert.equal(result.unchanged, undefined, 'changing range returns its own skill results');
-    assert.deepEqual(result.skills.rows.map(r => r.name).sort(), range === '7d' ? ['recent'] : ['older', 'recent']);
+    assert.deepEqual(result.skills.rows.map(r => r.name).sort(), range === '7d' ? ['recent'] : ['older', 'recent', 'unattributed']);
     revision = result.revision;
   }
   assert.equal((await call({ range: '7d' }, revision)).unchanged, true);
@@ -105,9 +105,9 @@ test('older skills arrive after background scanning and date changes reuse the c
   const logs = await (await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method: 'diagnostics.get' }) })).json();
   const entries = logs.entries.filter(e => e.event === 'skills.report');
   const full = entries.filter(e => e.historyPhase === 'complete');
-  assert.equal(full.find(e => e.range === '90d').skillUses, 2);
+  assert.equal(full.find(e => e.range === '90d').skillUses, 3);
   assert.equal(full.find(e => e.range === '7d').skillUses, 1);
-  assert.ok(full.every(e => e.skills === 3 && e.omittedSkillUses === (e.range === '90d' ? 1 : 0) && e.omittedSkillFailures === 0));
+  assert.ok(full.every(e => e.skills === 3 && e.omittedSkillUses === 0 && e.unattributedUses === (e.range === '90d' ? 1 : 0) && e.omittedSkillFailures === 0));
   assert.deepEqual(parseRuntimeDiagnostics(entries.map(e => JSON.stringify(e)).join('\n')), entries, 'saved and downloaded logs retain safe skill counts');
   assert.ok(!JSON.stringify(entries).includes(root));
 });
@@ -205,8 +205,8 @@ test('skill failures follow attempt dates, project/session and provider rules, b
   assert.equal(report(snapshot, { project: 'project-two' }).skills.failures, 1);
   assert.equal(report(snapshot, { session: 'missing' }).skills.failures, 0);
   assert.equal(report(snapshot, { models: ['missing'], includeCache: false }).skills.failures, 2);
-  for (const accounting of [[], [usage({ isByok: true })], [usage(), usage({ provider: { kind: 'custom' } }, 'mixed')],
-    [usage(), usage({ provider: undefined }, 'unknown')], [{ ...usage(), timestamp: future }]]) {
+  for (const accounting of [[usage({ isByok: true })], [usage(), usage({ provider: { kind: 'custom' } }, 'mixed')],
+    [usage(), usage({ provider: undefined }, 'unknown')]]) {
     const result = report(parse([...accounting, loadStart('failure'), loadEnd('failure')])).skills;
     assert.equal(result.failures, 0);
     assert.equal(result.omittedFailures, 1);
@@ -354,8 +354,26 @@ test('skill project rows reconcile uses, triggers and failures with distinct ses
   assert.equal(report({ ...snapshot, skillExcludedSessions: ['s1', 's2'] }).skills.rows.length, 0);
 });
 
-test('unattributed and mixed-provider skill sessions are omitted with coverage counts', () => {
-  assert.equal(report(parse([skill()])).skills.omitted, 1);
+test('saved activity without billing receipts is counted without claiming provider attribution', () => {
+  const snapshot = parse([skill('manual', { trigger: 'user-invoked' }), skillRef('agent', { trigger: 'agent-invoked' }),
+    skillRef('agent', { trigger: 'agent-invoked' }), { ...skill('context'), type: 'skill.context_delivered_ref' },
+    loadStart('missing'), loadEnd('missing'),
+    { type: 'session.shutdown', timestamp, data: { totalNanoAiu: 45e9, modelMetrics: { example: { requests: 2 } } } }]);
+  for (const range of ['1d', '7d', 'mtd', '30d', '90d', 'all']) {
+    const result = report(snapshot, { range });
+    assert.equal(result.skills.invocations, 2, range); assert.equal(result.skills.failures, 1);
+    assert.equal(result.skills.unattributedUses, 2); assert.equal(result.skills.unattributedFailures, 1);
+    assert.equal(result.skills.omitted, 0); assert.equal(result.skills.rows[0].unattributedUses, 2);
+    assert.equal(result.skills.rows[0].projectRows[0].unattributedFailures, 1);
+    assert.equal(result.totals.requests, 0, 'activity never invents a model call or summary charge');
+    assert.equal(result.totals.credits, 0);
+    assert.ok(result.options.sessions.some(s => s.id === 's1'), 'activity-only sessions remain filterable');
+  }
+  assert.equal(report(snapshot, { project: 'project-one', session: 's1', models: ['missing'] }).skills.invocations, 2);
+  assert.equal(report(snapshot, { range: 'custom', startDate: '2026-11-01', endDate: '2026-11-12' }).skills.invocations, 0);
+});
+
+test('sessions with conflicting or non-Copilot billing evidence remain excluded', () => {
   const mixed = report(parse([usage(), usage({ isByok: true }, 'byok'), skill()]));
   assert.equal(mixed.skills.invocations, 0);
   assert.equal(mixed.skills.omitted, 1);
@@ -363,6 +381,18 @@ test('unattributed and mixed-provider skill sessions are omitted with coverage c
   assert.equal(unknown.skills.invocations, 0);
   assert.equal(unknown.skills.omitted, 1);
   assert.equal(report(parse([usage(), skill()]), { includeCache: false }).skills.invocations, 1);
+});
+
+test('environment filtering retains activity-only rows and cannot erase provider exclusions', () => {
+  for (const accounting of [[], [usage({ isByok: true })]]) {
+    const snapshot = parse([...accounting, skill()]);
+    snapshot.skills = snapshot.skills.map(s => ({ ...s, environment: 'wsl:test' }));
+    const result = report(snapshot, { environment: 'wsl:test' }).skills;
+    assert.equal(result.invocations, accounting.length ? 0 : 1);
+    assert.equal(result.omitted, accounting.length ? 1 : 0);
+    assert.equal(result.unattributedUses, accounting.length ? 0 : 1);
+    assert.equal(report(snapshot, { environment: 'windows' }).skills.invocations, 0);
+  }
 });
 
 test('scanner deduplicates copied skill logs, tails complete lines, and drops deleted events', async t => {

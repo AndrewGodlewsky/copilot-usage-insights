@@ -102,9 +102,11 @@ test('a streak counts the days before the calendar that is drawn', () => {
 test('activity of a session whose only usage is dated later is not attributed until it is due', () => {
   const s = parse([begin(), skill('skill-1', at(9)), toolStart('call-1', at(9)), prompt('ask-1', at(9)), usage('late', at(18))]);
   const early = report(s);
-  assert.deepEqual([early.totals.requests, early.skills.invocations, early.tools.calls, early.efficiency.interactions.prompts], [0, 0, 0, 0]);
+  assert.deepEqual([early.totals.requests, early.skills.invocations, early.tools.calls, early.efficiency.interactions.prompts], [0, 1, 0, 0]);
+  assert.equal(early.skills.unattributedUses, 1, 'saved skill activity is visible without using a future receipt as provider evidence');
   const due = report(s, new Date(2026, 10, 13, 20));
   assert.deepEqual([due.totals.requests, due.skills.invocations, due.tools.calls, due.efficiency.interactions.prompts], [1, 1, 1, 1]);
+  assert.equal(due.skills.unattributedUses, 0);
 });
 
 test('a call started in one journal and finished only in a copy of it reports that outcome', async t => {

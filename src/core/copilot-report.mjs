@@ -60,7 +60,7 @@ const skillIdentity = skill => JSON.stringify([skill.name, skill.plugin, skill.v
 function skillReport(copilotSessions, activity, input, start, end, now) {
   const nowMs = now.getTime();
   const excluded = new Set(activity.skillExcludedSessions || []), groups = new Map(), sessions = new Set(), projectOptions = new Set();
-  const candidates = new Map(), seenFailures = new Set();
+  const candidates = new Map(), seenFailures = new Set(), sessionOptions = new Map();
   const attributed = event => copilotSessions.has(event.sessionId) && !excluded.has(event.sessionId);
   const scope = (event, name) => JSON.stringify([event.sessionId, event.project, name]);
   const matching = event => {
@@ -80,14 +80,16 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
       if (event.ts > target.lastUsed) target.lastUsed = event.ts;
       if (failed) target.failures++;
       else { target.invocations++; target.triggers[trigger]++; }
+      if (!attributed(event)) { const field = failed ? 'unattributedFailures' : 'unattributedUses'; target[field] = (target[field] || 0) + 1; }
     }
     sessions.add(event.sessionId);
+    if (!sessionOptions.has(event.sessionId)) sessionOptions.set(event.sessionId, `${event.project} · ${new Date(event.ms).toLocaleString()}`);
   }
-  let invocations = 0, failures = 0, omitted = 0, omittedFailures = 0;
+  let invocations = 0, failures = 0, omitted = 0, omittedFailures = 0, unattributedUses = 0, unattributedFailures = 0;
   for (const skill of activity.skills || []) {
     if (skill.ms > nowMs) continue;
     const known = attributed(skill);
-    if (known) {
+    if (!excluded.has(skill.sessionId)) {
       projectOptions.add(skill.project);
       // Use all available identities, so narrowing dates cannot make an ambiguous name look unique.
       const key = scope(skill, skill.name);
@@ -95,27 +97,30 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
       candidates.get(key).set(skillIdentity(skill), skill);
     }
     if (!matching(skill)) continue;
-    // A skill event has no billing provider; mixed or unattributed sessions are not guessed.
-    if (!known) { omitted++; continue; }
+    // Recorded activity does not require detailed billing. Provider identity remains explicit.
+    if (excluded.has(skill.sessionId)) { omitted++; continue; }
     recordSkill(skill, skill);
+    if (!known) unattributedUses++;
     invocations++;
   }
   for (const tool of activity.tools || []) {
     if (tool.name !== 'skill' || tool.server || tool.mcpTool || tool.success !== false || tool.completedMs == null ||
       tool.completedMs < tool.ms || tool.completedMs > nowMs || tool.ms > nowMs || seenFailures.has(tool.key)) continue;
     seenFailures.add(tool.key);
-    if (attributed(tool)) projectOptions.add(tool.project);
+    if (!excluded.has(tool.sessionId)) projectOptions.add(tool.project);
     if (!matching(tool)) continue;
-    if (!attributed(tool)) { omittedFailures++; continue; }
+    if (excluded.has(tool.sessionId)) { omittedFailures++; continue; }
     const identities = candidates.get(scope(tool, tool.skillName));
     const skill = identities?.size === 1 ? identities.values().next().value : { name: tool.skillName || 'Unknown skill', unresolved: true };
     recordSkill(skill, tool, true);
+    if (!attributed(tool)) unattributedFailures++;
     failures++;
   }
   const ranked = (a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name);
   const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size,
     projectRows: [...row.projects.values()].map(project => ({ ...project, sessions: project.sessions.size })).sort(ranked) })).sort(ranked);
-  return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, projectOptions: [...projectOptions] };
+  return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, unattributedUses, unattributedFailures,
+    projectOptions: [...projectOptions], sessionOptions: [...sessionOptions] };
 }
 
 function toolReport(records, copilotSessions, activity, input, start, end, now) {
@@ -283,7 +288,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   ({ records, activity } = selectEnvironment(records, activity, input.environment));
   const { q, today, history, start, end } = usageScope(records, input, now);
   const includeCache = q.includeCache, nowMs = now.getTime();
-  const sessionLabels = sessionNames(records, activity.cache);
+  const sessionLabels = new Map(sessionNames(records, activity.cache));
   const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map(), sessionsByProject = new Map();
   const efficiency = createEfficiencyAccumulator();
   // Only the latest 182 days are drawn; older days matter solely for the length of the streak.
@@ -343,7 +348,8 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     if (modelWanted) add(projectChoice ??= get(projectChoices, project), r, includeCache);
   }
   for (const p of projectPrompts) if (p.count) get(projectChoices, p.name);
-  const { projectOptions, ...skills } = skillReport(copilotSessions, activity, input, activityStart, end, now);
+  const { projectOptions, sessionOptions, ...skills } = skillReport(copilotSessions, activity, input, activityStart, end, now);
+  for (const [id, name] of sessionOptions) if (!sessionLabels.has(id)) sessionLabels.set(id, name);
   const { projectOptions: toolProjects, ...tools } = toolReport(records, copilotSessions, activity, { ...input, models: q.models }, activityStart, end, now);
   for (const name of projectOptions) projectOptionSet.add(name);
   for (const name of toolProjects) projectOptionSet.add(name);

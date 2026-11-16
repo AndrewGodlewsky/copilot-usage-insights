@@ -5,6 +5,16 @@ import { reviewUsageHome } from '../src/node/settings.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 import { analyzeInsights } from '../src/node/review-insights.mjs';
 
+test('review distinguishes saved skill activity from verified billing attribution', async () => {
+  const f = reviewFixture();
+  f.push('skill.invoked', { name: 'PRIVATE SKILL', path: 'PRIVATE PATH', trigger: 'agent-invoked' });
+  const snapshot = await prepareInsightReview(f.scan(), { range: 'mtd' }, reviewNow);
+  const row = snapshot.payload.evidence.find(e => e.id === 'skill-1');
+  assert.equal(row.value, 1);
+  assert.match(row.limitation, /Provider unverified for 1 uses/);
+  assert.doesNotMatch(snapshot.preview, /PRIVATE/);
+});
+
 test('review evidence is frozen, numeric, aliased, with valid zero credits and all topic families', async () => {
   const f = reviewFixture(); f.user('one'); f.call('one', 'a');
   f.push('skill.invoked', { name: 'PRIVATE SKILL', path: 'PRIVATE PATH', trigger: 'user-invoked' });

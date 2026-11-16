@@ -101,7 +101,7 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
       metric('Failed skill loads', skills?.failures ?? null, 'Explicit failed load attempts'))
       + contextStamp() + (current ? sources(['skill'], 'Largest attributed skill sources') + inspect : inspect)
       + section('Most-used skills in selected history', rows.length ? table(['Skill', 'Source plugin', 'Uses', 'Load failures'], rows.map(r => [r.name, r.plugin || '—', number(r.invocations), number(r.failures ?? 0)])) : empty('No skill uses or failed loads match these filters.'))
-      + note(`Skill activity ignores the model filter, matching Breakdown → Skills. ${number(skills?.omitted ?? 0)} uses and ${number(skills?.omittedFailures ?? 0)} failed loads were omitted for missing or mixed provider attribution. Context sources are not joined to uses by display name.`)
+      + note(`Skill activity ignores the model filter, matching Breakdown → Skills. ${number(skills?.unattributedUses ?? 0)} uses and ${number(skills?.unattributedFailures ?? 0)} failures are included with provider unverified. ${number(skills?.omitted ?? 0)} uses and ${number(skills?.omittedFailures ?? 0)} failed loads were omitted for rejected or mixed billing-provider evidence. Context sources are not joined to uses by display name.`)
       + insight('A loaded skill has a footprint; an installed skill may have none.',
         'Review large instruction or skill sources for detail that could be loaded only when needed. Keep reusable guidance that helps the agent do the task correctly.',
         'current context after one change and whether the workflow still succeeds. Uses and failures do not price a skill or identify unused skills polluting context.');

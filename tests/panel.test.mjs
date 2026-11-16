@@ -152,6 +152,18 @@ test('Skills rerenders dated rows when switching between 7 and 90 days', async (
   assert.match(get('skills-summary').title, /Model filters do not apply/);
 });
 
+test('Skills shows unverified-provider activity visibly in the selected month without requiring charges', async () => {
+  const now = new Date(2026, 10, 13, 12), parser = createReceiptParser({ sessionId: 'activity-only', source: 'fixture' });
+  parser.push(JSON.stringify({ type: 'skill.invoked', id: 'skill', timestamp: now.toISOString(), data: { name: 'saved-skill', trigger: 'agent-invoked' } }));
+  const snapshot = parser.snapshot(), report = { ...buildReport(snapshot.records, { range: 'mtd' }, now, snapshot), sources: [], coverage: {} };
+  const { get } = await mountPanel(report);
+  assert.equal(get('content').hidden, false);
+  assert.match(get('skills-summary').textContent, /1 use.*Rolling 30.*1 included with provider unverified/);
+  assert.match(get('skills').innerHTML, /saved-skill.*provider unverified/);
+  assert.match(get('skills-coverage').textContent, /No charges are inferred/);
+  assert.match(get('session').innerHTML, /activity-only/);
+});
+
 test('diagnostic Markdown download uses the displayed snapshot offline and releases its blob', async () => {
   const { get, server, requests, document, timeouts, objectUrls, revoked } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
   await get('logs-open').onclick();
