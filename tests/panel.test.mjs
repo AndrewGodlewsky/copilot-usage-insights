@@ -5,7 +5,7 @@ import { Script, createContext } from 'node:vm';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
-import { TOKEN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory, initial = {}) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -27,13 +27,13 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
   const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
   get('initial-diagnostics').textContent = initial.diagnostics ? JSON.stringify(initial.diagnostics) : 'null';
   // Model the persistent navigation children without running a browser.
-  for (const id of ['token-topic-stops', 'token-track-nodes', 'token-overview-insight']) {
+  for (const id of ['token-topic-stops', 'token-track-nodes', 'token-overview-insight', 'pattern-topic-stops', 'pattern-track-nodes']) {
     let markup = '', children = [];
     Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) {
       markup = value;
-      children = [...value.matchAll(/<(?:button|span) data-token-(stop|node|jump)="([^"]+)"([^>]*)>/g)].map(([, kind, topic, rest]) => {
+      children = [...value.matchAll(/<(?:button|span) data-(token|pattern)-(stop|node|jump)="([^"]+)"([^>]*)>/g)].map(([, prefix, kind, topic, rest]) => {
         const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-        return { dataset: { [{ stop: 'tokenStop', node: 'tokenNode', jump: 'tokenJump' }[kind]]: topic },
+        return { dataset: { [prefix + { stop: 'Stop', node: 'Node', jump: 'Jump' }[kind]]: topic },
           focus() { document.activeElement = this; },
           setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
           classList: { toggle(key, on) { this[key] = on; } },
@@ -2099,6 +2099,10 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(report.totals.credits, 12.345678901);
 });
 
+function jumpPatternTopic(get, id) {
+  get('pattern-topic-stops').onclick({ target: { closest: () => ({ dataset: { patternStop: id } }) } });
+}
+
 function jumpTokenTopic(get, id) {
   get('token-topic-stops').onclick({ target: { closest: () => ({ dataset: { tokenStop: id } }) } });
 }
@@ -2235,14 +2239,14 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   const patternTopics = ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models'];
   const choose = (picker, id) => {
     if (picker === 'efficiency-topic') jumpTokenTopic(get, id);
-    else { get(picker).value = id; get(picker).onchange(); }
+    else jumpPatternTopic(get, id);
   };
   const visible = (prefix, panels) => panels.filter(id => !get(prefix + '-' + id + '-panel').hidden);
   const switchTab = efficiencySection => get('efficiency-sections').onclick({ target: { dataset: { efficiencySection } } });
   assert.deepEqual(visible('token', tokenPanels), ['overview']);
   assert.deepEqual(visible('pattern', patternPanels), ['findings']);
   assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]').length, 10);
-  assert.equal((get('efficiency-pattern-topic').innerHTML.match(/<option /g) || []).length, 8);
+  assert.equal(get('pattern-topic-stops').querySelectorAll('[data-pattern-stop]').length, 8);
   const before = requests.length;
   for (const topic of tokenTopics) {
     choose('efficiency-topic', topic);
@@ -2255,14 +2259,14 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   for (const topic of patternTopics) {
     choose('efficiency-pattern-topic', topic);
     assert.deepEqual(visible('pattern', patternPanels), [patternPanels.includes(topic) ? topic : 'detail']);
-    assert.equal(get('efficiency-pattern-topic').value, topic);
+    assert.equal(get('efficiency-pattern-topic').value, String(patternTopics.indexOf(topic)));
     if (!patternPanels.includes(topic)) assert.ok(get('pattern-topic-body').innerHTML.length > 0);
     assert.equal(get('efficiency-topic').value, '9');
   }
   choose('efficiency-topic', 'growth');
   choose('efficiency-pattern-topic', 'cache');
   assert.equal(get('efficiency-topic').value, '9', 'wrong dashboard topic is ignored');
-  assert.equal(get('efficiency-pattern-topic').value, 'models');
+  assert.equal(get('efficiency-pattern-topic').value, '7');
   assert.equal(requests.length, before, 'navigation never loads logs, inspects context, or invokes AI');
   switchTab('review');
   assert.equal(get('efficiency-patterns-panel').hidden, true);
@@ -2270,28 +2274,28 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   switchTab('patterns');
   get('efficiency-pattern-topic').focus();
   await get('refresh').onclick();
-  assert.equal(get('efficiency-pattern-topic').value, 'models');
+  assert.equal(get('efficiency-pattern-topic').value, '7');
   assert.equal(document.activeElement, get('efficiency-pattern-topic'));
   choose('efficiency-pattern-topic', 'growth');
   const oldGrowth = get('pattern-topic-body').innerHTML;
   get('model').value = 'Alpha';
   await get('model').onchange();
-  assert.equal(get('efficiency-pattern-topic').value, 'growth');
+  assert.equal(get('efficiency-pattern-topic').value, '2');
   assert.equal(get('efficiency-topic').value, '9');
   assert.ok(oldGrowth.length && get('pattern-topic-body').innerHTML.length);
   windowListeners.get('resize')();
   timeouts.at(-1).callback();
-  assert.equal(get('efficiency-pattern-topic').value, 'growth');
+  assert.equal(get('efficiency-pattern-topic').value, '2');
   await get('settings-open').onclick();
   get('text-size').value = 'large';
   await get('settings-save').onclick();
-  assert.equal(get('efficiency-pattern-topic').value, 'growth');
+  assert.equal(get('efficiency-pattern-topic').value, '2');
   const contextBefore = requests.length;
   choose('efficiency-pattern-topic', 'habits');
   get('efficiency-inspect-instructions').onclick();
   assert.equal(get('efficiency-tokens-panel').hidden, false);
   assert.equal(get('efficiency-topic').value, '1');
-  assert.equal(get('efficiency-pattern-topic').value, 'habits');
+  assert.equal(get('efficiency-pattern-topic').value, '1');
   assert.equal(document.activeElement, get('efficiency-context-read'));
   assert.equal(requests.length, contextBefore, 'opening the inspector does not run it');
   assert.equal(get('token-selected-title').textContent, 'Always-loaded context');
@@ -2348,25 +2352,29 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
   assert.equal(get('token-topic-stops').querySelectorAll('[data-token-stop]')[0], stops[0], 'stop nodes are never rebuilt');
 });
 
-test('token explorer keeps the viewport steady when a warning pushes it down and topic heights change', async () => {
+for (const { prefix, rangeId, topics, heights, jump } of [
+  { prefix: 'token', rangeId: 'efficiency-topic', topics: TOKEN_TOPICS, heights: { overview: 1100, context: 180, cache: 460, detail: 900 }, jump: jumpTokenTopic },
+  { prefix: 'pattern', rangeId: 'efficiency-pattern-topic', topics: PATTERN_TOPICS, heights: { findings: 1100, habits: 180, recovery: 460, models: 400, detail: 900 }, jump: jumpPatternTopic },
+]) {
+test(`${prefix} explorer keeps the viewport steady when a warning pushes it down and topic heights change`, async () => {
   const { get, requests, document, viewport } = await requestPanel();
   get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   assert.equal(get('coverage').hidden, false, 'fixture includes the orange coverage notice');
-  const content = get('token-topic-content'), lens = get('efficiency-topic');
-  const heights = { overview: 1100, context: 180, cache: 460, detail: 900 };
+  const content = get(prefix + '-topic-content'), lens = get(rangeId);
+
   const contentTop = 980, footerHeight = 100;
   let scrollY = 640;
   viewport.innerHeight = 800;
   content.getBoundingClientRect = () => ({ top: contentTop - scrollY });
   const layout = () => {
-    const name = Object.keys(heights).find(name => !get(`token-${name}-panel`).hidden);
+    const name = Object.keys(heights).find(name => !get(`${prefix}-${name}-panel`).hidden);
     const height = Math.max(heights[name], parseFloat(content.style.minHeight) || 0);
     // A browser clamps its scroll offset when the replacement panel shortens the document.
     scrollY = Math.min(scrollY, Math.max(0, contentTop + height + footerHeight - viewport.innerHeight));
   };
   const before = requests.length;
   lens.focus();
-  for (const index of [1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1]) {
+  for (const index of [...topics.map((_, i) => i).slice(1), 0, 1]) {
     lens.value = String(index); lens.oninput(); layout();
     assert.equal(scrollY, 640, 'switching to a shorter topic must not pull the slider away from the pointer');
     assert.equal(content.getBoundingClientRect().top, 340);
@@ -2377,7 +2385,7 @@ test('token explorer keeps the viewport steady when a warning pushes it down and
   get('coverage').hidden = true;
   viewport.innerHeight = 900;
   lens.onkeydown({ key: 'End', preventDefault() {} }); layout();
-  jumpTokenTopic(get, 'context'); layout();
+  jump(get, topics[1].id); layout();
   assert.equal(scrollY, 640);
   // At the top of the document, content below the fold needs no reserved space.
   scrollY = 0;
@@ -2385,12 +2393,14 @@ test('token explorer keeps the viewport steady when a warning pushes it down and
   assert.equal(scrollY, 0);
   assert.equal(parseFloat(content.style.minHeight), 0);
   scrollY = 1300;
-  jumpTokenTopic(get, 'context');
+  jump(get, topics[1].id);
   assert.equal(parseFloat(content.style.minHeight), 900, 'jumps from deep content reserve at most one viewport');
   assert.equal(requests.length, before, 'layout stabilization does not load usage or inspect context');
   const css = await fs.readFile(new URL('../src/panel/panel.css', import.meta.url), 'utf8');
-  assert.match(css, /#token-topic-content\{overflow-anchor:none\}/, 'changing content must not become the scroll anchor');
+  assert.match(css, /#token-topic-content,#pattern-topic-content\{overflow-anchor:none\}/, 'changing content must not become the scroll anchor');
 });
+
+}
 
 test('compact token explorer retains keyboard, direct jumps, and endpoint focus', async () => {
   const { get, requests, document } = await requestPanel();
@@ -2432,6 +2442,75 @@ test('compact token explorer retains keyboard, direct jumps, and endpoint focus'
   get('token-topic-next').onclick();
   assert.equal(lens.value, '9');
   assert.equal(requests.length, before);
+});
+
+test('pattern explorer shares the compact lens, maps every topic and preserves navigation through refresh', async () => {
+  const { get, requests, document } = await requestPanel();
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'patterns' } } });
+  const lens = get('efficiency-pattern-topic');
+  assert.equal(lens.getAttribute('type'), 'range');
+  assert.equal(lens.getAttribute('class'), 'topic-lens');
+  assert.equal(lens.getAttribute('min'), '0');
+  assert.equal(lens.getAttribute('step'), '1');
+  assert.equal(lens.max, '7');
+  assert.equal(lens.getAttribute('aria-label'), 'Usage pattern section');
+  assert.equal(lens.value, '0');
+  assert.equal(get('pattern-topic-prev').disabled, true);
+  const stops = get('pattern-topic-stops').querySelectorAll('[data-pattern-stop]');
+  const nodes = get('pattern-track-nodes').querySelectorAll('[data-pattern-node]');
+  const before = requests.length;
+  lens.focus();
+  for (const [index, topic] of PATTERN_TOPICS.entries()) {
+    lens.value = String(index); lens.oninput();
+    assert.equal(document.activeElement, lens);
+    assert.equal(get('pattern-selected-title').textContent, topic.label);
+    assert.equal(lens.title, topic.label);
+    assert.equal(lens.getAttribute('aria-valuetext'), `${topic.label}, section ${index + 1} of 8`);
+    assert.equal(lens.style['--lens-icon'], `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
+    assert.equal(stops[index].getAttribute('aria-label'), topic.label);
+    assert.equal(stops[index].getAttribute('title'), topic.label);
+    assert.equal(stops.filter(b => b.getAttribute('aria-current') === 'true').length, 1);
+    assert.equal(stops[index].getAttribute('aria-current'), 'true');
+    assert.deepEqual(nodes.map(n => n.classList.current), PATTERN_TOPICS.map((_, i) => i === index));
+    const panel = ['findings', 'habits', 'recovery', 'models'].includes(topic.id) ? topic.id : 'detail';
+    assert.equal(get(`pattern-${panel}-panel`).hidden, false);
+    if (panel === 'detail') assert.equal(get('pattern-topic-title').textContent, topic.label);
+  }
+  assert.equal(get('pattern-topic-next').disabled, true);
+  const key = (name, expected) => {
+    let prevented = false;
+    lens.onkeydown({ key: name, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+    assert.equal(lens.value, String(expected));
+    assert.equal(document.activeElement, lens);
+  };
+  key('ArrowRight', 7); key('ArrowUp', 7); key('Home', 0); key('ArrowLeft', 0); key('ArrowDown', 0);
+  key('ArrowRight', 1); key('ArrowUp', 2); key('ArrowLeft', 1); key('ArrowDown', 0); key('End', 7);
+  lens.onkeydown({ key: 'Tab', preventDefault() { assert.fail('Tab keeps native focus navigation'); } });
+  get('pattern-topic-prev').onclick();
+  assert.equal(lens.value, '6');
+  get('pattern-topic-next').focus(); get('pattern-topic-next').onclick();
+  assert.equal(lens.value, '7');
+  assert.equal(document.activeElement, lens);
+  jumpPatternTopic(get, 'habits');
+  get('pattern-topic-prev').focus(); get('pattern-topic-prev').onclick();
+  assert.equal(lens.value, '0');
+  assert.equal(document.activeElement, lens);
+  jumpPatternTopic(get, 'growth');
+  assert.equal(get('pattern-topic-announcement').textContent, 'Showing Context growth');
+  let renders = 0, body = get('pattern-topic-body').innerHTML;
+  Object.defineProperty(get('pattern-topic-body'), 'innerHTML', { get: () => body, set(value) { renders++; body = value; } });
+  lens.oninput(); lens.oninput(); jumpPatternTopic(get, 'growth');
+  assert.equal(renders, 0);
+  jumpPatternTopic(get, 'compaction');
+  assert.equal(renders, 1);
+  assert.equal(requests.length, before, 'navigation never fetches or inspects context');
+  await get('refresh').onclick();
+  get('model').value = 'Alpha'; await get('model').onchange();
+  assert.equal(lens.value, '3');
+  assert.equal(document.activeElement, lens);
+  assert.equal(renders, 3, 'fresh reports update selected content');
+  assert.equal(get('pattern-topic-stops').querySelectorAll('[data-pattern-stop]')[0], stops[0]);
 });
 
 test('Efficiency panels live only in their assigned dashboard and AI review stays separate', async () => {

@@ -18,7 +18,8 @@ test('efficiency catalogs separate consumption from workflow findings without du
 
 test('each topic has a distinct decorative icon shared by its stop and framed lens', () => {
   assert.equal(new Set(TOKEN_TOPICS.map(t => t.iconPath)).size, 10);
-  for (const topic of TOKEN_TOPICS) {
+  assert.equal(new Set(PATTERN_TOPICS.map(t => t.iconPath)).size, 8);
+  for (const topic of [...TOKEN_TOPICS, ...PATTERN_TOPICS]) {
     const icon = tokenTopicIcon(topic), lens = tokenTopicIcon(topic, true);
     assert.ok(icon.includes(`<path d="${topic.iconPath}"/>`));
     assert.ok(lens.includes(`<path d="${topic.iconPath}"/>`));

@@ -49,10 +49,10 @@
       <div class="token-explorer">
         <p id="token-explorer-instructions" class="sr-only">Drag the blue lens or click a section icon. With the lens focused, use arrow keys or Home/End.</p>
         <div class="token-track-inner" id="token-track-inner">
-          <div class="token-track"><div class="token-track-nodes" id="token-track-nodes" aria-hidden="true"></div><input id="efficiency-topic" type="range" min="0" step="1" value="0" aria-label="Token usage section" aria-controls="token-topic-content" aria-describedby="token-explorer-instructions token-topic-hint"></div>
+          <div class="token-track"><div class="token-track-nodes" id="token-track-nodes" aria-hidden="true"></div><input id="efficiency-topic" class="topic-lens" type="range" min="0" step="1" value="0" aria-label="Token usage section" aria-controls="token-topic-content" aria-describedby="token-explorer-instructions token-topic-hint"></div>
           <nav class="token-topic-stops" id="token-topic-stops" aria-label="Jump to a token usage section"></nav>
         </div>
-        <div class="token-explorer-current"><div><span id="token-topic-position" class="footnote"></span><strong id="token-selected-title"></strong></div><div class="token-step-buttons"><button id="token-topic-prev" aria-label="Previous token usage section" title="Previous section" aria-controls="token-topic-content" disabled>←</button><button id="token-topic-next" aria-label="Next token usage section" title="Next section" aria-controls="token-topic-content">→</button></div></div>
+        <div class="token-explorer-current"><div><span id="token-topic-position" class="footnote"></span><strong id="token-selected-title" class="token-selected-title"></strong></div><div class="token-step-buttons"><button id="token-topic-prev" aria-label="Previous token usage section" title="Previous section" aria-controls="token-topic-content" disabled>←</button><button id="token-topic-next" aria-label="Next token usage section" title="Next section" aria-controls="token-topic-content">→</button></div></div>
         <p id="token-topic-hint" class="footnote">These views overlap; do not add their token counts together.</p>
         <span id="token-topic-announcement" class="sr-only" role="status"></span>
       </div>
@@ -64,7 +64,16 @@
       </div>
       </section>
       <section id="efficiency-patterns-panel" aria-label="Worth a closer look" hidden>
-      <div class="token-topic-navigation"><label for="efficiency-pattern-topic">Section<select id="efficiency-pattern-topic" aria-controls="pattern-topic-content" aria-describedby="pattern-topic-hint"><option value="findings">Findings</option></select></label><p id="pattern-topic-hint" class="footnote">Explore usage patterns and practical changes to try, one section at a time.</p></div>
+      <div class="token-explorer">
+        <p id="pattern-explorer-instructions" class="sr-only">Drag the blue lens or click a section icon. With the lens focused, use arrow keys or Home/End.</p>
+        <div class="token-track-inner" id="pattern-track-inner">
+          <div class="token-track"><div class="token-track-nodes" id="pattern-track-nodes" aria-hidden="true"></div><input id="efficiency-pattern-topic" class="topic-lens" type="range" min="0" step="1" value="0" aria-label="Usage pattern section" aria-controls="pattern-topic-content" aria-describedby="pattern-explorer-instructions pattern-topic-hint"></div>
+          <nav class="token-topic-stops" id="pattern-topic-stops" aria-label="Jump to a usage pattern section"></nav>
+        </div>
+        <div class="token-explorer-current"><div><span id="pattern-topic-position" class="footnote"></span><strong id="pattern-selected-title" class="token-selected-title"></strong></div><div class="token-step-buttons"><button id="pattern-topic-prev" aria-label="Previous usage pattern section" title="Previous section" aria-controls="pattern-topic-content" disabled>←</button><button id="pattern-topic-next" aria-label="Next usage pattern section" title="Next section" aria-controls="pattern-topic-content">→</button></div></div>
+        <p id="pattern-topic-hint" class="footnote">Explore usage patterns and practical changes to try, one section at a time.</p>
+        <span id="pattern-topic-announcement" class="sr-only" role="status"></span>
+      </div>
       <div id="pattern-topic-content">
       <article id="pattern-findings-panel" class="card efficiency-actions" aria-labelledby="pattern-findings-heading"><header><div><h2 id="pattern-findings-heading">Findings</h2><p class="footnote">Measured patterns, with one small experiment for each.</p></div><span id="efficiency-insight-count" class="muted"></span></header><div id="efficiency-insights"></div></article>
       <article id="pattern-habits-panel" class="card" aria-labelledby="pattern-habits-heading" hidden><header><div><h2 id="pattern-habits-heading">Conversation habits</h2><p class="footnote">How you use each conversation and the agent work that follows your prompts</p></div></header><div id="efficiency-conversations"></div><div id="efficiency-habits"></div><div id="efficiency-instructions" class="efficiency-cache"></div><button id="efficiency-inspect-instructions">Inspect current instructions</button></article>

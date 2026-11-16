@@ -21,14 +21,14 @@ export function tokenTopicIcon(topic, framed = false) {
 }
 
 export const PATTERN_TOPICS = [
-  { id: 'findings', label: 'Findings', group: '', question: 'Review measured patterns and practical experiments.' },
-  { id: 'habits', label: 'Conversation habits', group: '', question: 'How do your prompts and conversations relate to the work that follows?' },
-  { id: 'growth', label: 'Context growth', group: '', question: 'Why do later calls in a conversation process more input?' },
-  { id: 'compaction', label: 'Context reduction', group: '', question: 'What changes when a conversation is compacted?' },
-  { id: 'recovery', label: 'Calls and recovery', group: '', question: 'Which operations have recorded failures that deserve attention?' },
-  { id: 'transitions', label: 'Model changes and fresh starts', group: '', question: 'What happens to input and cache reuse around a model change or resumed session?' },
-  { id: 'repetition', label: 'Repeated exploration', group: '', question: 'Is the agent repeatedly searching or reading the same material?' },
-  { id: 'models', label: 'Model comparisons', group: '', question: 'Compare recorded charges and context use across models.' },
+  { id: 'findings', label: 'Findings', iconPath: 'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0Zm-1 5 6 6M7 10l2 2 4-4', group: '', question: 'Review measured patterns and practical experiments.' },
+  { id: 'habits', label: 'Conversation habits', iconPath: 'M3 3h13v10H7l-4 4ZM10 17h7l4 4V9h-2M6 7h7m-7 3h4', group: '', question: 'How do your prompts and conversations relate to the work that follows?' },
+  { id: 'growth', label: 'Context growth', iconPath: 'M3 3v18h18M6 16l5-5 4 2 6-8m-5 0h5v5', group: '', question: 'Why do later calls in a conversation process more input?' },
+  { id: 'compaction', label: 'Context reduction', iconPath: 'M3 4h18M3 20h18M12 6v4m-3-3 3 3 3-3M12 18v-4m-3 3 3-3 3 3M7 12h10', group: '', question: 'What changes when a conversation is compacted?' },
+  { id: 'recovery', label: 'Calls and recovery', iconPath: 'M3 10a9 9 0 1 1 2 8M3 4v6h6m0 3 3 3 5-6', group: '', question: 'Which operations have recorded failures that deserve attention?' },
+  { id: 'transitions', label: 'Model changes and fresh starts', iconPath: 'M3 7h18m-4-4 4 4-4 4M21 17H3m4-4-4 4 4 4', group: '', question: 'What happens to input and cache reuse around a model change or resumed session?' },
+  { id: 'repetition', label: 'Repeated exploration', iconPath: 'M8 7h12v14H8ZM16 7V3H4v14h4m3-6h6m-6 4h6', group: '', question: 'Is the agent repeatedly searching or reading the same material?' },
+  { id: 'models', label: 'Model comparisons', iconPath: 'M4 4v16h16M7 6h7v3H7Zm0 6h13v3H7Z', group: '', question: 'Compare recorded charges and context use across models.' },
 ];
 
 export function renderTokenTopic(id, report, formats) {

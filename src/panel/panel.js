@@ -939,36 +939,62 @@ function showEfficiencySection(section) {
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
 const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
-const topicOption = topic => `<option value="${topic.id}">${esc(topic.label)}</option>`;
-$('efficiency-topic').max = String(TOKEN_TOPICS.length - 1);
-$('token-track-inner').style.setProperty('--token-topic-count', TOKEN_TOPICS.length);
-$('token-track-nodes').innerHTML = TOKEN_TOPICS.map(topic => `<span data-token-node="${topic.id}"></span>`).join('');
-$('token-topic-stops').innerHTML = TOKEN_TOPICS.map(topic => `<button data-token-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="token-topic-content">${tokenTopicIcon(topic)}</button>`).join('');
-function syncTokenNavigation() {
-  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic), topic = TOKEN_TOPICS[index];
-  $('efficiency-topic').value = String(index);
-  $('efficiency-topic').title = topic.label;
-  $('efficiency-topic').style.setProperty('--lens-icon', `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
-  $('efficiency-topic').setAttribute('aria-valuetext', `${topic.label}, section ${index + 1} of ${TOKEN_TOPICS.length}`);
-  for (const button of $('token-topic-stops').querySelectorAll('[data-token-stop]')) button.setAttribute('aria-current', String(button.dataset.tokenStop === tokenTopic));
-  for (const node of $('token-track-nodes').querySelectorAll('[data-token-node]')) node.classList.toggle('current', node.dataset.tokenNode === tokenTopic);
-  $('token-topic-position').textContent = `${topic.group || 'Summary'} · ${index + 1} of ${TOKEN_TOPICS.length}`;
-  $('token-selected-title').textContent = topic.label;
-  $('token-topic-prev').disabled = index === 0;
-  $('token-topic-next').disabled = index === TOKEN_TOPICS.length - 1;
-}
-function showTokenTopic(id, announce = false) {
-  if (!TOKEN_TOPICS.some(topic => topic.id === id)) return;
-  if (tokenTopic !== id) {
-    tokenTopic = id;
-    syncTokenNavigation();
-    // Keep short panels from shrinking the document past the current viewport during navigation.
-    const content = $('token-topic-content');
-    content.style.minHeight = `${Math.max(0, (document.documentElement.clientHeight || innerHeight) - Math.max(0, content.getBoundingClientRect().top))}px`;
-    renderSelectedTokenTopic();
-    if (announce) $('token-topic-announcement').textContent = `Showing ${TOKEN_TOPICS.find(topic => topic.id === id).label}`;
+function createTopicExplorer(prefix, rangeId, topics, initial, onSelect) {
+  let selected = initial;
+  const lens = $(rangeId), stops = $(`${prefix}-topic-stops`), nodes = $(`${prefix}-track-nodes`);
+  lens.max = String(topics.length - 1);
+  $(`${prefix}-track-inner`).style.setProperty('--token-topic-count', topics.length);
+  nodes.innerHTML = topics.map(topic => `<span data-${prefix}-node="${topic.id}"></span>`).join('');
+  stops.innerHTML = topics.map(topic => `<button data-${prefix}-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="${prefix}-topic-content">${tokenTopicIcon(topic)}</button>`).join('');
+  function sync() {
+    const index = topics.findIndex(topic => topic.id === selected), topic = topics[index];
+    lens.value = String(index);
+    lens.title = topic.label;
+    lens.style.setProperty('--lens-icon', `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
+    lens.setAttribute('aria-valuetext', `${topic.label}, section ${index + 1} of ${topics.length}`);
+    for (const button of stops.querySelectorAll(`[data-${prefix}-stop]`)) button.setAttribute('aria-current', String(button.dataset[`${prefix}Stop`] === selected));
+    for (const node of nodes.querySelectorAll(`[data-${prefix}-node]`)) node.classList.toggle('current', node.dataset[`${prefix}Node`] === selected);
+    $(`${prefix}-topic-position`).textContent = `${topic.group || (prefix === 'token' ? 'Summary' : 'Patterns')} · ${index + 1} of ${topics.length}`;
+    $(`${prefix}-selected-title`).textContent = topic.label;
+    $(`${prefix}-topic-prev`).disabled = index === 0;
+    $(`${prefix}-topic-next`).disabled = index === topics.length - 1;
   }
+  function select(id, announce = false) {
+    const topic = topics.find(topic => topic.id === id);
+    if (!topic || selected === id) return;
+    selected = id;
+    sync();
+    // Keep short panels from shrinking the document past the current viewport during navigation.
+    const content = $(`${prefix}-topic-content`);
+    content.style.minHeight = `${Math.max(0, (document.documentElement.clientHeight || innerHeight) - Math.max(0, content.getBoundingClientRect().top))}px`;
+    onSelect(id);
+    if (announce) $(`${prefix}-topic-announcement`).textContent = `Showing ${topic.label}`;
+  }
+  lens.oninput = () => select(topics[Number(lens.value)]?.id);
+  lens.onkeydown = event => {
+    const index = topics.findIndex(topic => topic.id === selected);
+    const keys = { ArrowRight: index + 1, ArrowUp: index + 1, ArrowLeft: index - 1, ArrowDown: index - 1, Home: 0, End: topics.length - 1 };
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    select(topics[Math.max(0, Math.min(topics.length - 1, keys[event.key]))].id);
+  };
+  stops.onclick = event => select(event.target.closest(`[data-${prefix}-stop]`)?.dataset[`${prefix}Stop`], true);
+  for (const [direction, step] of [['prev', -1], ['next', 1]]) {
+    const button = $(`${prefix}-topic-${direction}`);
+    button.onclick = () => {
+      const focused = document.activeElement === button;
+      const index = topics.findIndex(topic => topic.id === selected);
+      select(topics[index + step]?.id, true);
+      if (button.disabled && focused) lens.focus({ preventScroll: true });
+    };
+  }
+  sync();
+  return select;
 }
+const showTokenTopic = createTopicExplorer('token', 'efficiency-topic', TOKEN_TOPICS, tokenTopic, id => {
+  tokenTopic = id;
+  renderSelectedTokenTopic();
+});
 function renderSelectedTokenTopic() {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
@@ -986,29 +1012,13 @@ function renderSelectedTokenTopic() {
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
-$('efficiency-topic').oninput = () => showTokenTopic(TOKEN_TOPICS[Number($('efficiency-topic').value)]?.id);
-$('efficiency-topic').onkeydown = event => {
-  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic);
-  const keys = { ArrowRight: index + 1, ArrowUp: index + 1, ArrowLeft: index - 1, ArrowDown: index - 1, Home: 0, End: TOKEN_TOPICS.length - 1 };
-  if (!(event.key in keys)) return;
-  event.preventDefault();
-  showTokenTopic(TOKEN_TOPICS[Math.max(0, Math.min(TOKEN_TOPICS.length - 1, keys[event.key]))].id);
-};
-$('token-topic-stops').onclick = event => showTokenTopic(event.target.closest('[data-token-stop]')?.dataset.tokenStop, true);
-for (const [id, step] of [['token-topic-prev', -1], ['token-topic-next', 1]]) $(id).onclick = () => {
-  const focused = document.activeElement === $(id);
-  const index = TOKEN_TOPICS.findIndex(topic => topic.id === tokenTopic);
-  showTokenTopic(TOKEN_TOPICS[index + step]?.id, true);
-  if ($(id).disabled && focused) $('efficiency-topic').focus({ preventScroll: true });
-};
-syncTokenNavigation();
 let patternTopic = 'findings';
 const patternPanelNames = ['findings', 'habits', 'recovery', 'models', 'detail'];
-$('efficiency-pattern-topic').innerHTML = PATTERN_TOPICS.map(topicOption).join('');
-$('efficiency-pattern-topic').value = patternTopic;
-function showPatternTopic(id) {
-  if (PATTERN_TOPICS.some(topic => topic.id === id)) patternTopic = id;
-  $('efficiency-pattern-topic').value = patternTopic;
+const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topic', PATTERN_TOPICS, patternTopic, id => {
+  patternTopic = id;
+  renderSelectedPatternTopic();
+});
+function renderSelectedPatternTopic() {
   const panel = patternPanelNames.includes(patternTopic) ? patternTopic : 'detail';
   for (const name of patternPanelNames) $(`pattern-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') return;
@@ -1018,7 +1028,6 @@ function showPatternTopic(id) {
   $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
   $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
 }
-$('efficiency-pattern-topic').onchange = () => showPatternTopic($('efficiency-pattern-topic').value);
 function openTokenContext() {
   showEfficiencySection('tokens');
   showTokenTopic('context');
@@ -1044,7 +1053,7 @@ function renderEfficiency() {
   renderEfficiencyHabits();
   renderEfficiencyReliability();
   renderSelectedTokenTopic();
-  showPatternTopic(patternTopic);
+  renderSelectedPatternTopic();
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
     const copy = efficiencyDirection(insight);

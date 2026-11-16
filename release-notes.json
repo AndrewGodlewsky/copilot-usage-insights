@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.98",
+    "summary": "Worth a closer look now uses the same compact draggable selector as the token explorer, with an icon for each section. Drag, click or use the keyboard to explore patterns while keeping your selection through refreshes."
+  },
+  {
     "version": "0.1.97",
     "summary": "Conversation habits now shows steering, queued prompts and recorded user stops, with unknown data clearly marked. AI reviews can use these patterns while distinguishing collaboration from possible corrections."
   },
