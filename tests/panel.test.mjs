@@ -6,6 +6,7 @@ import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
+import { buildEfficiencyReview } from '../src/panel/efficiency.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory, initial = {}) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -80,7 +81,7 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     Date: class extends Date { static now() { return server.now; } },
     innerWidth: 1200, innerHeight: 800,
     document,
-    Blob, URL: { createObjectURL(blob) { const url = `blob:synthetic-${objectUrls.size}`; objectUrls.set(url, blob); return url; }, revokeObjectURL(url) { revoked.push(url); objectUrls.delete(url); } },
+    Blob, URL: class extends URL { static createObjectURL(blob) { const url = `blob:synthetic-${objectUrls.size}`; objectUrls.set(url, blob); return url; } static revokeObjectURL(url) { revoked.push(url); objectUrls.delete(url); } },
     window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: query => query.includes('prefers-reduced-motion') ? motion : ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
@@ -3002,6 +3003,24 @@ test('one explicit Create action reviews the date range across all filters and s
   await get('refresh').onclick();
   assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
   assert.match(get('review-result-context').textContent, /Later filter changes/);
+});
+
+test('bundled benchmark preview and copied text remain identical after refresh and filter changes', async () => {
+  const { report } = await requestPanel();
+  const preview = buildEfficiencyReview({ ...report, efficiency: { ...report.efficiency, models: [{ name: 'PRIVATE', modelId: 'gpt-4.1' }] } }, null);
+  const { get, server, requests } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  server.prepare = () => ({ id: 'benchmark-snapshot', preview, model: 'fixture-model', reasoningEffort: 'default', hasEvidence: true, allowSamples: true, referenceStatus: 'Bundled Aider evidence <untrusted>' });
+  server.review = () => ({ cards: [], emptyReason: 'Limited evidence', model: 'fixture-model' });
+  await get('efficiency-review-open').onclick();
+  assert.equal(get('efficiency-review-output').value, preview);
+  assert.equal(get('review-reference-status').textContent, 'Bundled Aider evidence <untrusted>');
+  assert.doesNotMatch(get('review-reference-status').innerHTML, /<untrusted>/);
+  await get('efficiency-review-copy').onclick(); assert.equal(server.copied.at(-1), preview);
+  get('range').value = '90d'; await get('range').onchange(); await get('refresh').onclick();
+  assert.equal(get('efficiency-review-output').value, preview);
+  assert.equal(requests.filter(r => r.method === 'review.prepare').length, 1);
+  assert.equal(requests.filter(r => r.method === 'review.analyze').length, 1);
+  assert.equal(requests.filter(r => r.method === 'review.catalog').length, 0);
 });
 
 test('failed or cancelled preparation preserves the previous review and its details', async () => {

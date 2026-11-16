@@ -4,8 +4,8 @@ import { startServer } from '../src/node/canvas-server.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 import { normalizeModelCatalog } from '../src/core/model-reference.mjs';
 
-async function setup(t) {
-  const f = reviewFixture(); f.user('p'); f.call('p', 'a');
+async function setup(t, usage = {}) {
+  const f = reviewFixture(); f.user('p'); f.call('p', 'a', usage);
   const state = { scans: 0, sent: [], config: { reviewModel: 'opus-fixture', reviewReasoning: 'medium', extraHomes: [], disabledHomes: [] } };
   const server = await startServer({ html: '<title>Fixture</title>', now: () => reviewNow, settings: { get: async () => state.config }, scanner: { scan: async () => { state.scans++; return f.scan(); } }, reviewService: {
     catalog: async () => { state.catalogCalls = (state.catalogCalls || 0) + 1; state.entered?.(); if (state.hold) await state.hold; if (state.catalogFailure) throw new Error('PRIVATE'); return { models: [{ id: 'opus-fixture', reasoningEfforts: ['medium', 'high'] }], reference: state.reference }; },
@@ -38,6 +38,21 @@ test('preparation reuses loaded history, freezes filters, and analysis consumes 
   assert.equal(state.catalogCalls, 1, 'usage loads and filter changes do not read the catalog');
   assert.equal(result.body.scope.range, '7d'); assert.equal(state.scans, 1);
   assert.equal((await request('review.analyze', input)).status, 500); assert.equal(state.sent.length, 1);
+});
+
+test('bundled evidence survives catalog failure and reaches analysis unchanged without new history reads', async t => {
+  const { state, request } = await setup(t, { model: 'gpt-5', reasoningEffort: 'medium' });
+  state.catalogFailure = true; state.config.reviewAllowSamples = false;
+  await request('usage.report', { range: 'all' });
+  const prepared = await request('review.prepare', { filters: { range: '7d' } });
+  assert.equal(prepared.status, 200); assert.match(prepared.body.referenceStatus, /Bundled Aider evidence/);
+  assert.match(prepared.body.preview, /aider-gpt5-medium-20250825/);
+  assert.match(prepared.body.preview, /"configurationMatch": "incompatible"/);
+  await request('usage.report', { range: 'all' });
+  await request('usage.report', { range: '90d' });
+  assert.equal(state.catalogCalls, 1); assert.equal(state.scans, 1);
+  const result = await request('review.analyze', { snapshotId: prepared.body.id, expectedModel: 'opus-fixture', expectedReasoning: 'medium', allowSamples: false });
+  assert.equal(result.status, 200); assert.equal(state.sent[0].analysis.preview, prepared.body.preview);
 });
 
 test('reference failure produces a labelled statistics-only preview and does not prevent explicit review', async t => {

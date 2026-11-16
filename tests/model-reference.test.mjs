@@ -1,3 +1,4 @@
+import { bundledBenchmarkLookup } from '../src/core/benchmark-reference.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeModelCatalog, normalizeTokenPricing, buildModelReference, verifiedHistoricalModelId, serializeReviewEvidence } from '../src/core/model-reference.mjs';
@@ -79,21 +80,23 @@ test('historical identity uses unanimous raw IDs, never display labels or suffix
   const report = { efficiency: e, query: { range: 'all' }, generatedAt: capturedAt };
   const plain = buildEfficiencyReview(report, null), enriched = buildEfficiencyReview(report, null, {}, { catalog: catalog([model()]) });
   assert.doesNotMatch(enriched, /SECRET|"name": "mixed"|"name": "missing"/);
-  assert.deepEqual(JSON.parse(plain.slice(plain.indexOf('{'))).modelReference, { schemaVersion: 1, catalog: null, benchmarks: null });
+  const plainReference = JSON.parse(plain.slice(plain.indexOf('{'))).modelReference;
+  assert.equal(plainReference.catalog, null); assert.deepEqual(plainReference.benchmarks.entries, []); assert.equal(plainReference.benchmarks.coverage.unmatchedHistoricalGroups, 4);
   assert.equal(JSON.parse(enriched.slice(enriched.indexOf('{'))).history.models.find(m => m.modelId)?.modelId, 'gpt-5.3-codex');
 });
 
 test('deterministic bounded reference coexists with bundled benchmarks and never copies arbitrary fields', () => {
   const ids = ['gpt-5.3-codex', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4.5', 'gpt-5.6-sol', 'gpt-5.6-luna'];
   const c = catalog([...ids.map(id => model(id)), ...Array.from({ length: 10000 }, (_, i) => model('SECRET-' + i, { name: '😀'.repeat(1000) }))]);
-  const b = { schemaVersion: 1, source: 'bundled', capturedAt, SECRET: 'SECRET', entries: [{ modelId: ids[0], benchmark: 'swe-bench-verified', score: 80, unit: 'percent', prompt: 'SECRET' }] };
-  const a = buildModelReference({ catalog: c, benchmarks: b, SECRET: 'SECRET' });
-  const reverse = buildModelReference({ catalog: { ...c, models: [...c.models].reverse() }, benchmarks: b });
+  const b = bundledBenchmarkLookup.select([{ modelId: 'gpt-4.1' }]); b.SECRET = 'SECRET'; b.entries[0].prompt = 'SECRET';
+  const historical = [{ modelId: 'gpt-4.1' }];
+  const a = buildModelReference({ catalog: c, benchmarks: b, SECRET: 'SECRET' }, historical);
+  const reverse = buildModelReference({ catalog: { ...c, models: [...c.models].reverse() }, benchmarks: b }, historical);
   assert.deepEqual(a, reverse); assert.equal(a.catalog.models.length, 4); assert.equal(a.catalog.omitted.selection, 2); assert.equal(a.catalog.omitted.unverified, 10000);
-  assert.equal(a.benchmarks.entries[0].score, 80); assert.doesNotMatch(JSON.stringify(a), /SECRET|😀/);
+  assert.equal(a.benchmarks.entries[0].score, 52.4); assert.doesNotMatch(JSON.stringify(a), /SECRET|😀/);
   const data = { modelReference: a, label: '😀'.repeat(50) };
-  const json = serializeReviewEvidence(data, 1500);
-  assert.ok(Buffer.byteLength(json) <= 1500); assert.ok(JSON.parse(json).modelReference.catalog.omitted.selection > 2);
+  const json = serializeReviewEvidence(data, 2200);
+  assert.ok(Buffer.byteLength(json) <= 2200); assert.ok(JSON.parse(json).modelReference.catalog.omitted.selection > 2);
 });
 
 test('actual card review freezes catalog, guide and sampling policy into the exact first-pass preview', async () => {

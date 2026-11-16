@@ -1,3 +1,4 @@
+import { describeModelReference } from '../core/model-reference.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -197,7 +198,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               preparedReview = snapshot;
               result = { id: snapshot.id, preview: snapshot.preview, scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt,
                 model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, allowSamples: snapshot.allowSamples, guidanceVersion: snapshot.guide.version, hasEvidence: snapshot.payload.evidence.length > 0,
-                referenceStatus: snapshot.payload.modelReference.catalog?.models.length ? `Copilot model reference captured ${snapshot.payload.modelReference.catalog.capturedAt}. ${snapshot.payload.modelReference.catalog.coverage.verifiedHistoricalGroups} of ${snapshot.payload.modelReference.catalog.coverage.historicalGroups} historical model groups identified. Token pricing units unavailable in this host.` : 'Statistics-only review: verified public model reference unavailable.' };
+                referenceStatus: describeModelReference(snapshot.payload.modelReference) };
             } else if (message.method === 'review.analyze') {
               const snapshot = preparedReview;
               if (!snapshot || snapshot.id !== input.snapshotId) throw new ReviewError('snapshot');

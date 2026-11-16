@@ -1,4 +1,5 @@
 import { buildModelReference, verifiedHistoricalModelId, modelReferenceInstructions, serializeReviewEvidence } from '../core/model-reference.mjs';
+import { benchmarkHistory } from '../core/benchmark-reference.mjs';
 const reviewMetricKeys = ['requests', 'inputRequests', 'inputTokens', 'outputRequests', 'outputTokens', 'cacheRequests', 'cacheInput', 'cacheRead', 'creditRequests', 'credits', 'averageInput', 'averageOutput', 'cacheHitRate', 'averageCredits', 'pairedRequests', 'pairedInput', 'pairedOutput', 'toolRequests', 'toolTokens', 'toolInput', 'averageToolTokens', 'toolShare', 'reasoningRequests', 'reasoningTokens'];
 const reviewNumbers = (row, keys) => Object.fromEntries(keys.map(key => [key, Number.isFinite(row?.[key]) && row[key] >= 0 ? row[key] : null]));
 const reviewDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z)?$/.test(value) ? value : null;
@@ -15,7 +16,7 @@ export function toolOutcomeSummary(tools) {
 
 export function buildEfficiencyReview(report, context, scope = {}, modelReference = {}) {
   const e = report.efficiency, models = e.models.slice(0, 20);
-  const reference = buildModelReference(modelReference, models);
+  const reference = buildModelReference(modelReference, benchmarkHistory(models, e.efforts));
   const modelAlias = name => { const index = models.findIndex(row => row.name === name); return index < 0 ? 'Other model' : `Model ${index + 1}`; };
   const mcp = (report.mcp?.rows || []).filter(row => row.calls > 0).sort((a, b) => b.calls - a.calls);
   const data = {

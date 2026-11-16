@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "revision": "2026-11-16.1",
+  "reviewedAt": "2026-11-16",
+  "notes": [
+    "Historical coding-exercise results, not Copilot evaluations. Newer models have no covered result; successors never inherit scores.",
+    "Only GPT-5 medium/high share a clean Aider revision. Different harness versions or unknown settings prevent controlled cross-model rankings.",
+    "Public API alias mapping does not verify a dated backend snapshot, Copilot tools, context or reasoning configuration. Benchmark presence does not establish availability.",
+    "Manual updates only, shipped with plugin releases. Source URLs are inert provenance; no benchmark data is downloaded."
+  ],
+  "models": [
+    {
+      "id": "gpt41",
+      "provider": "OpenAI",
+      "evaluatedModel": "gpt-4.1",
+      "copilotId": "gpt-4.1",
+      "identitySources": [
+        "https://github.com/github/copilot-cli/issues/400#issuecomment-3700514846"
+      ],
+      "mapping": "exact-public-alias",
+      "mappingLimitation": "Exact public alias only. Dated backend and Copilot agent configuration are unverified; historical model retired from Copilot."
+    },
+    {
+      "id": "gpt5",
+      "provider": "OpenAI",
+      "evaluatedModel": "openai/gpt-5",
+      "copilotId": "gpt-5",
+      "identitySources": [
+        "https://github.com/github/copilot-cli/issues/400#issuecomment-3700514846",
+        "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/aider/website/_data/polyglot_leaderboard.yml"
+      ],
+      "mapping": "exact-public-alias",
+      "mappingLimitation": "Aider's explicit provider-qualified OpenAI GPT-5 identifier and public Copilot GPT-5 alias. Backend snapshot and Copilot environment unverified; historical model retired."
+    },
+    {
+      "id": "sonnet4",
+      "provider": "Anthropic",
+      "evaluatedModel": "claude-sonnet-4-20250514",
+      "copilotId": null,
+      "identitySources": [],
+      "mapping": "unknown",
+      "mappingLimitation": "Copilot's Sonnet 4 alias is public, but no source establishes its equivalence to this dated API snapshot. Do not join by family or display label."
+    }
+  ],
+  "results": [
+    {
+      "id": "aider-gpt41-20250414",
+      "model": "gpt41",
+      "benchmark": {
+        "name": "aider-polyglot",
+        "version": "polyglot-225",
+        "subset": "225 selected Exercism exercises in six languages",
+        "suiteRevision": null,
+        "category": "coding-exercises",
+        "measurement": "Percentage of exercises with tests passing cumulatively within two attempts, with failed-test feedback. Not pass@1 or independent-sample pass@2."
+      },
+      "environment": {
+        "agent": "Aider",
+        "version": "0.81.4.dev",
+        "revision": "7a87db5-dirty",
+        "editFormat": "diff",
+        "reasoning": null,
+        "thinking": null,
+        "attempts": 2,
+        "tokenBudget": null,
+        "settings": "Edit source files, run local tests, feed failures back for one retry; stop on success. Remaining inference settings not fully reported."
+      },
+      "score": 52.4,
+      "unit": "percent",
+      "direction": "higher",
+      "samples": 225,
+      "passed": 118,
+      "uncertainty": null,
+      "unknowns": [
+        "No confidence interval or repeated-run uncertainty published.",
+        "Exact suite revision, token/dollar budget, temperature and backend snapshot not reported.",
+        "Reasoning effort not reported; this is not evidence of zero reasoning.",
+        "Separate thinking budget not reported."
+      ],
+      "evaluatedAt": "2025-04-14",
+      "publishedAt": "2025-04-14",
+      "verifiedAt": "2026-11-16",
+      "source": {
+        "url": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/aider/website/_data/polyglot_leaderboard.yml",
+        "revision": "cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a",
+        "row": "2025-04-14-21-05-54--gpt41-diff-exuser",
+        "evaluator": "Aider and contributors",
+        "kind": "independent",
+        "license": "Apache-2.0",
+        "licenseUrl": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/LICENSE.txt",
+        "attribution": "Selected and transformed from Aider's published leaderboard; no endorsement.",
+        "notes": "Publication date is the first source commit, not the website deployment date: 8cf18744534385e8033a6ae3850467884babbfa1"
+      },
+      "limitations": [
+        "Selected coding exercises do not establish performance on planning, general work or this user's tasks.",
+        "Copilot's tools, prompts, retries, backend and tokenization can differ; API costs and speed are not Copilot prices or latency.",
+        "Dirty harness revision: local changes were not published, reducing reproducibility."
+      ]
+    },
+    {
+      "id": "aider-sonnet4-20250524",
+      "model": "sonnet4",
+      "benchmark": {
+        "name": "aider-polyglot",
+        "version": "polyglot-225",
+        "subset": "225 selected Exercism exercises in six languages",
+        "suiteRevision": null,
+        "category": "coding-exercises",
+        "measurement": "Percentage of exercises with tests passing cumulatively within two attempts, with failed-test feedback. Not pass@1 or independent-sample pass@2."
+      },
+      "environment": {
+        "agent": "Aider",
+        "version": "0.83.3.dev",
+        "revision": "ef3f8bb-dirty",
+        "editFormat": "diff",
+        "reasoning": null,
+        "thinking": "disabled",
+        "attempts": 2,
+        "tokenBudget": null,
+        "settings": "Edit source files, run local tests, feed failures back for one retry; stop on success. Remaining inference settings not fully reported."
+      },
+      "score": 56.4,
+      "unit": "percent",
+      "direction": "higher",
+      "samples": 225,
+      "passed": 127,
+      "uncertainty": null,
+      "unknowns": [
+        "No confidence interval or repeated-run uncertainty published.",
+        "Exact suite revision, token/dollar budget, temperature and backend snapshot not reported.",
+        "Reasoning effort not reported; this is not evidence of zero reasoning."
+      ],
+      "evaluatedAt": "2025-05-24",
+      "publishedAt": "2025-05-25",
+      "verifiedAt": "2026-11-16",
+      "source": {
+        "url": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/aider/website/_data/polyglot_leaderboard.yml",
+        "revision": "cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a",
+        "row": "2025-05-24-21-17-54--sonnet4-diff-exuser",
+        "evaluator": "Aider and contributors",
+        "kind": "independent",
+        "license": "Apache-2.0",
+        "licenseUrl": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/LICENSE.txt",
+        "attribution": "Selected and transformed from Aider's published leaderboard; no endorsement.",
+        "notes": "Publication date is the first source commit, not the website deployment date: 79edb0e1e04a66fa831f5a03bc8dc50ddff1b6ab"
+      },
+      "limitations": [
+        "Selected coding exercises do not establish performance on planning, general work or this user's tasks.",
+        "Copilot's tools, prompts, retries, backend and tokenization can differ; API costs and speed are not Copilot prices or latency.",
+        "Dirty harness revision: local changes were not published, reducing reproducibility."
+      ]
+    },
+    {
+      "id": "aider-gpt5-high-20250823",
+      "model": "gpt5",
+      "benchmark": {
+        "name": "aider-polyglot",
+        "version": "polyglot-225",
+        "subset": "225 selected Exercism exercises in six languages",
+        "suiteRevision": null,
+        "category": "coding-exercises",
+        "measurement": "Percentage of exercises with tests passing cumulatively within two attempts, with failed-test feedback. Not pass@1 or independent-sample pass@2."
+      },
+      "environment": {
+        "agent": "Aider",
+        "version": "0.86.2.dev",
+        "revision": "32faf82b31c54d6f19c5c3d63bc294f748bd3e72",
+        "editFormat": "diff",
+        "reasoning": "high",
+        "thinking": null,
+        "attempts": 2,
+        "tokenBudget": null,
+        "settings": "Edit source files, run local tests, feed failures back for one retry; stop on success. Remaining inference settings not fully reported."
+      },
+      "score": 88,
+      "unit": "percent",
+      "direction": "higher",
+      "samples": 225,
+      "passed": 198,
+      "uncertainty": null,
+      "unknowns": [
+        "No confidence interval or repeated-run uncertainty published.",
+        "Exact suite revision, token/dollar budget, temperature and backend snapshot not reported.",
+        "Separate thinking budget not reported."
+      ],
+      "evaluatedAt": "2025-08-23",
+      "publishedAt": "2025-08-23",
+      "verifiedAt": "2026-11-16",
+      "source": {
+        "url": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/aider/website/_data/polyglot_leaderboard.yml",
+        "revision": "cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a",
+        "row": "2025-08-23-15-47-21--gpt-5-high",
+        "evaluator": "Aider and contributors",
+        "kind": "independent",
+        "license": "Apache-2.0",
+        "licenseUrl": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/LICENSE.txt",
+        "attribution": "Selected and transformed from Aider's published leaderboard; no endorsement.",
+        "notes": "Publication date is the first source commit, not the website deployment date: bfef1906bb036f7db0d618e789e299dffdc493ca"
+      },
+      "limitations": [
+        "Selected coding exercises do not establish performance on planning, general work or this user's tasks.",
+        "Copilot's tools, prompts, retries, backend and tokenization can differ; API costs and speed are not Copilot prices or latency.",
+        "Clean agent revision; reasoning configurations and run dates remain separate evaluations."
+      ]
+    },
+    {
+      "id": "aider-gpt5-medium-20250825",
+      "model": "gpt5",
+      "benchmark": {
+        "name": "aider-polyglot",
+        "version": "polyglot-225",
+        "subset": "225 selected Exercism exercises in six languages",
+        "suiteRevision": null,
+        "category": "coding-exercises",
+        "measurement": "Percentage of exercises with tests passing cumulatively within two attempts, with failed-test feedback. Not pass@1 or independent-sample pass@2."
+      },
+      "environment": {
+        "agent": "Aider",
+        "version": "0.86.2.dev",
+        "revision": "32faf82b31c54d6f19c5c3d63bc294f748bd3e72",
+        "editFormat": "diff",
+        "reasoning": "medium",
+        "thinking": null,
+        "attempts": 2,
+        "tokenBudget": null,
+        "settings": "Edit source files, run local tests, feed failures back for one retry; stop on success. Remaining inference settings not fully reported."
+      },
+      "score": 86.7,
+      "unit": "percent",
+      "direction": "higher",
+      "samples": 225,
+      "passed": 195,
+      "uncertainty": null,
+      "unknowns": [
+        "No confidence interval or repeated-run uncertainty published.",
+        "Exact suite revision, token/dollar budget, temperature and backend snapshot not reported.",
+        "Separate thinking budget not reported."
+      ],
+      "evaluatedAt": "2025-08-25",
+      "publishedAt": "2025-08-25",
+      "verifiedAt": "2026-11-16",
+      "source": {
+        "url": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/aider/website/_data/polyglot_leaderboard.yml",
+        "revision": "cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a",
+        "row": "2025-08-25-13-23-27--gpt-5-medium",
+        "evaluator": "Aider and contributors",
+        "kind": "independent",
+        "license": "Apache-2.0",
+        "licenseUrl": "https://github.com/Aider-AI/aider/blob/cb6a152e5ee27fbc77ac499d5e628ccd74a5fa2a/LICENSE.txt",
+        "attribution": "Selected and transformed from Aider's published leaderboard; no endorsement.",
+        "notes": "Publication date is the first source commit, not the website deployment date: 54b266f2895c5023470d712ad7d51df1b545560c"
+      },
+      "limitations": [
+        "Selected coding exercises do not establish performance on planning, general work or this user's tasks.",
+        "Copilot's tools, prompts, retries, backend and tokenization can differ; API costs and speed are not Copilot prices or latency.",
+        "Clean agent revision; reasoning configurations and run dates remain separate evaluations."
+      ]
+    }
+  ]
+}

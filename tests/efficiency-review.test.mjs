@@ -25,7 +25,7 @@ test('AI review exports bounded, aliased measurements with scope and no identify
   assert.equal(data.history.tools[0].successRate, 75);
   report.efficiency.summary.requests = 100;
   assert.equal(data.history.summary.requests, 12, 'export is a frozen snapshot');
-  assert.ok(result.length < 16000);
+  assert.ok(Buffer.byteLength(result) < 48 * 1024);
 });
 
 test('tool outcome summaries distinguish unknown results and preserve zero success rates', () => {

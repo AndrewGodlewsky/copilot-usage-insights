@@ -1,15 +1,6 @@
-// Public identity allowlist, not a price list. Exact IDs only; no suffix removal or label matching.
-// Sources and extension procedure: docs/model-reference.md.
-const publicModelLabels = Object.freeze({
-  'gpt-5.3-codex': 'GPT-5.3-Codex', 'gpt-5.4-nano': 'GPT-5.4 nano',
-  'gpt-5.6-luna': 'GPT-5.6 Luna', 'gpt-5.6-sol': 'GPT-5.6 Sol', 'gpt-5.6-terra': 'GPT-5.6 Terra',
-  'gpt-6-astra': 'GPT-6 Astra', 'gpt-6-luna': 'GPT-6 Luna', 'gpt-6-sol': 'GPT-6 Sol',
-  'claude-haiku-4.5': 'Claude Haiku 4.5', 'claude-haiku-5.5': 'Claude Haiku 5.5',
-  'claude-sonnet-4.5': 'Claude Sonnet 4.5', 'claude-sonnet-4.6': 'Claude Sonnet 4.6',
-  'claude-sonnet-5': 'Claude Sonnet 5', 'claude-sonnet-5.5': 'Claude Sonnet 5.5',
-  'claude-opus-4.6': 'Claude Opus 4.6', 'claude-opus-4.7': 'Claude Opus 4.7', 'claude-opus-4.8': 'Claude Opus 4.8',
-  'claude-opus-5': 'Claude Opus 5', 'claude-opus-5.5': 'Claude Opus 5.5',
-});
+import { publicModelLabels, publicModelId } from './public-models.mjs';
+export { publicModelId } from './public-models.mjs';
+import { bundledBenchmarkLookup, benchmarkInstructions, describeBenchmarkReference } from './benchmark-reference.mjs';
 const referenceObject = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const referenceDate = v => typeof v === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(v) && Number.isFinite(Date.parse(v)) ? new Date(v).toISOString() : null;
 const referenceCount = v => Number.isSafeInteger(v) && v >= 0 ? v : 0;
@@ -17,8 +8,7 @@ const referenceLimit = v => Number.isSafeInteger(v) && v > 0 && v <= 100_000_000
 const referenceRate = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 const referenceEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const referenceRateFields = { input: 'inputPrice', output: 'outputPrice', cacheRead: 'cacheReadPrice', cacheWrite: 'cacheWritePrice', cacheWrite1h: 'cacheWrite1hPrice' };
-export const modelReferenceInstructions = 'Use only verified public model IDs and supplied modelReference facts for model-specific claims. Availability is a captured observation, not a promise. Current rates are not historical charges; request multipliers are not token prices. Pricing does not establish task capability or success. Do not calculate savings or hypothetical costs from aggregates, infer tiers from averages, or assume cache-write billing semantics. Suggest a bounded experiment with outcome checks, never call the cheapest model the best. Missing reference facts stay unknown.';
-export function publicModelId(id) { return typeof id === 'string' && Object.hasOwn(publicModelLabels, id) ? id : null; }
+export const modelReferenceInstructions = 'Use only verified public model IDs and supplied modelReference facts for model-specific claims. Availability is a captured observation, not a promise. Current rates are not historical charges; request multipliers are not token prices. Pricing does not establish task capability or success. Do not calculate savings or hypothetical costs from aggregates, infer tiers from averages, or assume cache-write billing semantics. Suggest a bounded experiment with outcome checks, never call the cheapest model the best. Missing reference facts stay unknown.' + ' ' + benchmarkInstructions;
 
 // The unit must come from the separate models.listTokenPriceUnits RPC, never a guessed currency.
 export function normalizeTokenPricing(billing, unit) {
@@ -110,20 +100,15 @@ function validateReferenceCatalog(input) {
   return safe;
 }
 
-// Separate bundled-evidence contract; no runtime benchmark retrieval. Extend in the benchmark task.
-function validateReferenceBenchmarks(input) {
-  if (input?.schemaVersion !== 1 || input.source !== 'bundled' || !referenceDate(input.capturedAt) || !Array.isArray(input.entries)) return null;
-  const entries = input.entries.filter(e => publicModelId(e?.modelId) && ['swe-bench-verified', 'terminal-bench', 'aider-polyglot'].includes(e.benchmark) && referenceRate(e.score) && e.score <= 100 && e.unit === 'percent')
-    .map(e => ({ modelId: e.modelId, benchmark: e.benchmark, score: e.score, unit: 'percent' }))
-    .sort((a, b) => a.modelId.localeCompare(b.modelId) || a.benchmark.localeCompare(b.benchmark) || a.score - b.score);
-  return { schemaVersion: 1, source: 'bundled', capturedAt: referenceDate(input.capturedAt), entries: entries.slice(0, 8), omitted: referenceCount(input.omitted) + input.entries.length - Math.min(entries.length, 8) };
-}
 export function buildModelReference(input = {}, historical = []) {
-  const catalog = validateReferenceCatalog(input?.catalog), benchmarks = validateReferenceBenchmarks(input?.benchmarks);
+  const catalog = validateReferenceCatalog(input?.catalog);
+  const benchmarks = bundledBenchmarkLookup.select(historical, catalog, input?.benchmarks);
   if (catalog) {
     const wanted = new Set(historical.map(r => r.modelId).filter(publicModelId));
     const used = catalog.models.filter(m => wanted.has(m.id)).slice(0, 20);
-    const alternatives = catalog.models.filter(m => !wanted.has(m.id) && m.availability === 'available').slice(0, 4);
+    const benchmarkAlternatives = new Set(benchmarks?.entries.filter(e => e.role === 'alternative').map(e => e.model.copilotId));
+    const alternatives = catalog.models.filter(m => !wanted.has(m.id) && m.availability === 'available')
+      .sort((a, b) => Number(benchmarkAlternatives.has(b.id)) - Number(benchmarkAlternatives.has(a.id)) || (a.id < b.id ? -1 : 1)).slice(0, 4);
     catalog.omitted.selection += catalog.models.length - used.length - alternatives.length;
     catalog.models = [...used, ...alternatives];
     catalog.coverage = { historicalGroups: historical.length, verifiedHistoricalGroups: historical.filter(r => used.some(m => m.id === r.modelId)).length, alternatives: alternatives.length };
@@ -131,7 +116,7 @@ export function buildModelReference(input = {}, historical = []) {
   return { schemaVersion: 1, catalog, benchmarks };
 }
 export function verifiedHistoricalModelId(row, reference) {
-  return publicModelId(row?.modelId) && reference?.catalog?.models.some(m => m.id === row.modelId) ? row.modelId : null;
+  return publicModelId(row?.modelId) && (reference?.catalog?.models.some(m => m.id === row.modelId) || reference?.benchmarks?.entries.some(e => e.model.copilotId === row.modelId)) ? row.modelId : null;
 }
 
 export function serializeReviewEvidence(data, maxBytes, spacing = 2) {
@@ -140,15 +125,31 @@ export function serializeReviewEvidence(data, maxBytes, spacing = 2) {
   while (encoder.encode(json).byteLength > maxBytes) {
     const ref = data.modelReference;
     if (ref?.catalog?.models.length) { ref.catalog.models.pop(); ref.catalog.omitted.selection++; }
-    else if (ref?.benchmarks?.entries.length) { ref.benchmarks.entries.pop(); ref.benchmarks.omitted++; }
+    else if (ref?.benchmarks?.entries.length) { ref.benchmarks.entries.pop(); ref.benchmarks.omitted.budget++; }
     else throw new Error('Review evidence is too large. Narrow the filters.');
     const historical = data.history?.models || data.models || [];
-    for (const row of historical) if (!ref.catalog?.models.some(m => m.id === row.modelId)) row.modelId = null;
+    for (const row of historical) if (!verifiedHistoricalModelId(row, ref)) row.modelId = null;
     if (ref.catalog?.coverage) {
       ref.catalog.coverage.verifiedHistoricalGroups = historical.filter(r => r.modelId !== null && ref.catalog.models.some(m => m.id === r.modelId)).length;
       ref.catalog.coverage.alternatives = ref.catalog.models.filter(m => !historical.some(r => r.modelId === m.id)).length;
     }
+    if (ref?.benchmarks) {
+      const b = ref.benchmarks;
+      b.sources = [...new Set(b.entries.map(e => e.source.url))].sort();
+      b.coverage.matchedHistoricalGroups = historical.filter(r => b.entries.some(e => e.role === 'historical' && e.model.copilotId === r.modelId)).length;
+      b.coverage.omittedHistoricalGroups = Math.max(0, b.coverage.historicalGroups - b.coverage.unmatchedHistoricalGroups - b.coverage.matchedHistoricalGroups);
+      // Removing a catalog entry also removes the evidence that a benchmark alternative is available.
+      for (const entry of b.entries) if (entry.availability === 'available' && !ref.catalog?.models.some(m => m.id === entry.model.copilotId && m.availability === 'available')) entry.availability = 'unknown';
+    }
     json = JSON.stringify(data, null, spacing);
   }
   return json;
+}
+
+export function describeModelReference(ref) {
+  const c = ref?.catalog;
+  const pricing = c?.models.some(m => ['available', 'partial'].includes(m.pricing.status)) ? 'Verified token rates included where supplied; coverage varies.' : 'Verified token rates unavailable in this host.';
+  const catalogText = c?.models.length ? `Copilot model reference captured ${c.capturedAt}. ${c.coverage.verifiedHistoricalGroups} of ${c.coverage.historicalGroups} historical model groups identified. ${pricing}` : 'Copilot catalog unavailable.';
+  const prefix = !c?.models.length && !ref?.benchmarks?.entries.length ? 'Statistics-only review. ' : '';
+  return prefix + catalogText + ' ' + describeBenchmarkReference(ref?.benchmarks);
 }
