@@ -121,7 +121,16 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   for (const [n, row] of report.mcp.rows.slice(0, 6).entries()) {
     add(`mcp-${n + 1}`, 'tools-mcp', `Server ${n + 1}: known failure rate`, row.successes + row.failures ? row.failures / (row.successes + row.failures) * 100 : null, '%', row.successes + row.failures, row.calls, 'Unknown outcomes excluded; tool failure does not diagnose connectivity.', `${row.name}: known failure rate`);
   }
-  for (const insight of e.insights) if (insight.kind === 'growth') {
+  const growth = e.contextGrowth;
+  if (growth?.sessions) {
+    evidence.push({ id: 'context-growth-shapes', topic: 'context-cache', label: 'Conversation input shapes', template: 'comparison', unit: 'sessions',
+      values: [['growing', 'Builds up'], ['steady', 'Stays level'], ['spike', 'Spike and settle'], ['falling', 'Smaller later'], ['mixed', 'Mixed or unclear']]
+        .map(([key, label]) => ({ label, value: growth.patterns[key].sessions })), samples: growth.sessions - growth.patterns.mixed.sessions, total: growth.sessions,
+      limitation: 'First reliably linked main-agent call per human prompt, including cache. Shapes need six fully measured, ordered prompts using one exact model identity. Selected submission dates; not necessarily session beginnings. Mixed/unknown includes short, incomplete and model-filtered partial sessions. Descriptive thresholds are not efficiency benchmarks; growth does not prove waste, retained contents, fullness, task success or cause.' });
+    add('context-growth-cache', 'context-cache', 'Input reuse at user prompts', growth.cacheInput ? growth.cacheRead / growth.cacheInput * 100 : null,
+      '%', growth.cacheRequests, growth.prompts, 'First main-agent call per human prompt; matched cache splits only. Later continuations are excluded. Input includes cache once. This is not a savings estimate.');
+  }
+  for (const insight of e.insights) if (!growth && insight.kind === 'growth') {
     evidence.push({ id: 'context-growth', topic: 'context-cache', label: 'Input growth', template: 'comparison', unit: 'tokens', samples: insight.samples, total: insight.requests,
       values: [{ label: 'Early median', value: insight.early }, { label: 'Late median', value: insight.late }], limitation: 'First/last three measured turns within one project, session, model and initiator. Context growth does not prove waste.' });
   }

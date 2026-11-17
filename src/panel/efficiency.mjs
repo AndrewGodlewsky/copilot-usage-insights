@@ -27,7 +27,7 @@ export function buildEfficiencyReview(report, context, scope = {}, modelReferenc
       modelFiltered: Boolean(scope.models?.length), projectFiltered: Boolean(scope.project), sessionFiltered: Boolean(scope.session) },
     history: { summary: reviewNumbers(e.summary, reviewMetricKeys),
       models: models.map(row => ({ name: modelAlias(row.name), ...reviewNumbers(row, ['requests', 'inputRequests', 'averageInput', 'outputRequests', 'averageOutput', 'cacheRequests', 'cacheInput', 'cacheRead', 'cacheHitRate', 'toolRequests', 'averageToolTokens', 'toolShare', 'creditRequests', 'credits', 'averageCredits']) })), modelsOmitted: Math.max(0, e.models.length - models.length),
-      patterns: e.insights.filter(i => ['growth', 'cache', 'spend', 'tools'].includes(i.kind)).slice(0, 4).map(i => ({ kind: i.kind, model: modelAlias(i.model),
+      patterns: e.insights.filter(i => ['growth', 'cache', 'spend', 'tools'].includes(i.kind) && (i.kind !== 'growth' || !e.contextGrowth)).slice(0, 4).map(i => ({ kind: i.kind, model: modelAlias(i.model),
         ...reviewNumbers(i, ['early', 'late', 'multiple', 'rate', 'input', 'cached', 'credits', 'share', 'average', 'samples', 'requests']) })),
       mcp: mcp.slice(0, 20).map((row, i) => ({ name: `Server ${i + 1}`, ...reviewNumbers(row, ['calls', 'successes', 'failures', 'unknown', 'successRate']) })), mcpServersOmitted: Math.max(0, mcp.length - 20) },
     currentContext: context?.available ? { checkedAt: reviewDate(context.checkedAt), ...reviewNumbers(context, ['totalTokens', 'limit']),
@@ -48,6 +48,13 @@ export function buildEfficiencyReview(report, context, scope = {}, modelReferenc
   data.history.interactions = e.interactions?.reason === 'model-filter' ? { available: false, reason: 'model-filter' }
     : reviewNumbers(e.interactions, ['prompts', 'promptSamples', 'promptSessions', 'averagePromptChars', 'averagePromptsPerSession', 'turns', 'turnSessions', 'averageTurnsPerSession', 'sessionErrors', 'observedSessions', 'omitted']);
   data.history.tools = toolOutcomeSummary(report.tools);
+  const growth = e.contextGrowth;
+  data.history.contextGrowth = growth ? {
+    ...reviewNumbers(growth, ['sessions', 'comparable', 'prompts', 'inputRequests', 'cacheRequests', 'cacheInput', 'cacheRead', 'unconfirmedPrompts']),
+    medianChange: Number.isFinite(growth.medianChange) ? growth.medianChange : null,
+    shapes: ['growing', 'steady', 'spike', 'falling', 'mixed'].map(kind => ({ kind, ...reviewNumbers(growth.patterns?.[kind], ['sessions', 'comparable', 'cacheRequests', 'cacheInput', 'cacheRead']) })),
+    definitions: 'First reliably linked main-agent call per human prompt, including cache. Selected submission dates. Complete, ordered, single exact-model histories need 6 prompts for shapes; mixed and incomplete histories are unclassified. First/last 3 medians describe change; shape thresholds are descriptive, not efficiency benchmarks. No task success, waste, retained contents, fullness or causal inference. Local names and timelines are excluded.'
+  } : null;
   const conversation = e.conversations;
   data.history.conversations = !conversation || conversation.reason ? null : {
     ...reviewNumbers(conversation, ['sessions', 'countedSessions', 'uncertainSessions', 'withoutPrompts', 'prompts', 'medianPrompts', 'averagePrompts', 'multiDaySessions', 'priorSessions']),

@@ -7,6 +7,7 @@ import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProject
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 import { buildEfficiencyReview } from '../src/panel/efficiency.mjs';
+import { createContextGrowthAccumulator } from '../src/core/context-growth.mjs';
 
 async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory, initial = {}) {
   let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
@@ -2491,7 +2492,7 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   const { get, requests, windowListeners, timeouts, document } = await requestPanel();
   const tokenPanels = ['overview', 'context', 'cache', 'detail'];
   const tokenTopics = TOKEN_TOPICS.map(topic => topic.id);
-  const patternPanels = ['findings', 'habits', 'recovery', 'models', 'detail'];
+  const patternPanels = ['findings', 'habits', 'growth', 'recovery', 'models', 'detail'];
   const patternTopics = ['findings', 'habits', 'growth', 'compaction', 'recovery', 'transitions', 'repetition', 'models'];
   const choose = (picker, id) => {
     if (picker === 'efficiency-topic') jumpTokenTopic(get, id);
@@ -2610,7 +2611,7 @@ test('token explorer maps every stop, preserves its focused lens, and only reren
 
 for (const { prefix, rangeId, topics, heights, jump } of [
   { prefix: 'token', rangeId: 'efficiency-topic', topics: TOKEN_TOPICS, heights: { overview: 1100, context: 180, cache: 460, detail: 900 }, jump: jumpTokenTopic },
-  { prefix: 'pattern', rangeId: 'efficiency-pattern-topic', topics: PATTERN_TOPICS, heights: { findings: 1100, habits: 180, recovery: 460, models: 400, detail: 900 }, jump: jumpPatternTopic },
+  { prefix: 'pattern', rangeId: 'efficiency-pattern-topic', topics: PATTERN_TOPICS, heights: { findings: 1100, habits: 180, growth: 980, recovery: 460, models: 400, detail: 900 }, jump: jumpPatternTopic },
 ]) {
 test(`${prefix} explorer keeps the viewport steady when a warning pushes it down and topic heights change`, async () => {
   const { get, requests, document, viewport } = await requestPanel();
@@ -2728,7 +2729,7 @@ test('pattern explorer shares the compact lens, maps every topic and preserves n
     assert.equal(stops.filter(b => b.getAttribute('aria-current') === 'true').length, 1);
     assert.equal(stops[index].getAttribute('aria-current'), 'true');
     assert.deepEqual(nodes.map(n => n.classList.current), PATTERN_TOPICS.map((_, i) => i === index));
-    const panel = ['findings', 'habits', 'recovery', 'models'].includes(topic.id) ? topic.id : 'detail';
+    const panel = ['findings', 'habits', 'growth', 'recovery', 'models'].includes(topic.id) ? topic.id : 'detail';
     assert.equal(get(`pattern-${panel}-panel`).hidden, false);
     if (panel === 'detail') assert.equal(get('pattern-topic-title').textContent, topic.label);
   }
@@ -3372,4 +3373,33 @@ test('focused conversation disclosure summaries retain focus and open state afte
     assert.equal(document.activeElement, get(summaryId));
     assert.equal(get(id).open, true);
   }
+});
+
+test('Context Growth grouping and session controls stay local, keep the range mounted and survive refresh', async () => {
+  const { get, requests, report, document } = await requestPanel();
+  const a = createContextGrowthAccumulator({}, 1, 1, new Date());
+  for (let s = 0; s < 4; s++) for (let p = 0; p < 8; p++) a.add({ sessionId: `session${s}`, project: 'Project', day: 1,
+    sample: { ms: p }, identity: true, humanDelivery: true, provider: true, linksKnown: true,
+    contextRecord: { ms: p, inputTotal: (p + 1) * 20000, model: 'Alpha', modelId: 'raw', cacheRead: 0, cacheWrite: 0 } });
+  report.efficiency.contextGrowth = a.finish(); jumpPatternTopic(get, 'growth');
+  const root = get('efficiency-growth'), before = requests.length;
+  assert.equal(get('pattern-growth-panel').hidden, false); assert.match(root.innerHTML, /shaded middle 50%/);
+  const click = data => root.onclick({ target: { closest: () => ({ dataset: data }) } });
+  click({ growthPattern: 'growing' }); click({ growthMode: 'change' });
+  assert.match(root.innerHTML, /id="growth-mode-change" aria-pressed="true"/);
+  assert.equal(requests.length, before);
+  root.onchange({ target: { id: 'growth-session', value: 'session0' } });
+  const slider = get('growth-prompt'); slider.id = 'growth-prompt'; slider.value = '4'; slider.focus();
+  const bodyBefore = root.innerHTML;
+  root.oninput({ target: slider });
+  assert.equal(root.innerHTML, bodyBefore, 'dragging updates chart/readout, never the focused input');
+  assert.equal(document.activeElement, slider); assert.match(get('growth-prompt-readout').textContent, /Prompt 4/);
+  await get('refresh').onclick();
+  assert.match(root.innerHTML, /value="session0" selected/); assert.match(root.innerHTML, /value="4" aria-describedby/);
+  assert.equal(document.activeElement, slider);
+  const project = get('growth-project'); project.id = 'growth-project'; project.focus();
+  await project.onchange({ target: { value: 'Project' } });
+  assert.equal(get('project').value, 'Project'); assert.equal(document.activeElement, project);
+  assert.equal(requests.at(-1).input.project, 'Project'); assert.notEqual(requests.at(-1).refresh, true);
+  assert.doesNotMatch(root.innerHTML, /value="session0" selected/);
 });

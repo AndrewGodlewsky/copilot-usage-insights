@@ -1,5 +1,5 @@
 {
-  "version": "1.1.3",
+  "version": "1.1.4",
   "evidenceSchema": "usage-insights-evidence-v1",
   "responseSchema": "usage-insights-cards-v2",
   "core": "core.md",

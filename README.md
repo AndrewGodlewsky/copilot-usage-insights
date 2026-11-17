@@ -50,7 +50,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.109** adds the focused Conversation Habits views, reduces canvas startup work, and makes Sonnet 5.5 with high reasoning the default for new reviewer setups. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.110** adds grouped Context Growth charts, project/model filters and individual session inspection, with aggregate patterns available to AI review. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -327,6 +327,8 @@ Comparable preceding periods appear only with adequate samples and similar obser
 
 The AI reviewer receives the aggregate distributions, coverage and eligible comparisons, never these local example timelines. Current instruction inspection remains in **Skills and instruction footprint** and the explicit context inspector. Prompt length remains an expandable detail and measures displayed-text characters, not completeness or quality. [Conversation Habits measurements and limits](docs/conversation-habits.md) documents the denominators, comparison rules, privacy and performance check.
 
+**Context growth** groups sessions into input shapes with median lines and shaded middle-50% ranges. This reduces overlapping lines without distorting token counts with a logarithmic scale. Select a shape, switch between input size and change, or inspect a bounded session example. Project/model selectors mirror dashboard filters. Measurements use the first reliably linked main-agent call per confirmed user prompt, including cache once; incomplete or changing-model histories remain unclassified. AI review receives aggregate patterns and coverage, without local names or trajectories. See [Context Growth measurements and limits](docs/context-growth.md).
+
 Each qualifying observation pairs evidence with an alternative explanation, one experiment, and a follow-up comparison. At most one finding of each kind is shown:
 
 | Pattern | Review threshold | Experiment |
@@ -361,7 +363,7 @@ The approved faces describe the finding: **🙂 working well**, **🙁 worth imp
 
 ### How the reviewer works
 
-The reviewer has a **plugin-owned, versioned guidance bundle**, rather than a user-installed skill. [src/review-guides/v1/manifest.json](src/review-guides/v1/manifest.json) identifies the active revision (currently 1.1.3); [core.md](src/review-guides/v1/core.md) defines evidence standards, uncertainty, output format, and sample-handling rules. Six topic files cover context/cache, tools/MCP, skills/instructions, prompts/sessions, delegation, and model spending. Conversation evidence includes depth, multi-day and earlier use, joint prompt/call counts, idle/steering/queued/unknown delivery, session steering rates and recorded user stops. Session rates require complete delivery labels; unknown origins and unsupported sources stay outside the measured sample. Stops are separate from prompts. The guide explores repeated steering without assuming poor prompting, wasted spend or failure. The guide treats workflow interpretations as hypotheses, not task classifications. The app loads only topics represented by the evidence. [examples.json](src/review-guides/v1/examples.json) contains authoring counterexamples; it is not sent to the model. Future releases can improve this bundle without giving the helper access to installed user skills or repositories.
+The reviewer has a **plugin-owned, versioned guidance bundle**, rather than a user-installed skill. [src/review-guides/v1/manifest.json](src/review-guides/v1/manifest.json) identifies the active revision (currently 1.1.4); [core.md](src/review-guides/v1/core.md) defines evidence standards, uncertainty, output format, and sample-handling rules. Six topic files cover context/cache, tools/MCP, skills/instructions, prompts/sessions, delegation, and model spending. Conversation evidence includes depth, multi-day and earlier use, joint prompt/call counts, idle/steering/queued/unknown delivery, session steering rates and recorded user stops. Session rates require complete delivery labels; unknown origins and unsupported sources stay outside the measured sample. Stops are separate from prompts. The guide explores repeated steering without assuming poor prompting, wasted spend or failure. The guide treats workflow interpretations as hypotheses, not task classifications. The app loads only topics represented by the evidence. [examples.json](src/review-guides/v1/examples.json) contains authoring counterexamples; it is not sent to the model. Future releases can improve this bundle without giving the helper access to installed user skills or repositories.
 
 ```mermaid
 flowchart TD

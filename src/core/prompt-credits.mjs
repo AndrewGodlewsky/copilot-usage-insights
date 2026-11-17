@@ -1,5 +1,6 @@
 import { dayOfMs } from './query.mjs';
 import { createConversationAccumulator } from './conversations.mjs';
+import { createContextGrowthAccumulator } from './context-growth.mjs';
 
 // IDs must remain exact: truncating long API call IDs can alias unrelated calls.
 export const linkId = value => typeof value === 'string' && value.length <= 8192 ? value : '';
@@ -28,7 +29,8 @@ export function promptEvent(e, { sessionId, project, receipt, receiptKey } = {})
   const agent = link(e.agentId), parentTool = link(kind === 'receipt' ? u.parentToolCallId : d.parentToolCallId);
   // Each kind is written out whole, so its fields are stored in the object itself.
   if (kind === 'receipt') return { kind, id, sessionId, ms, agent, parentTool, receiptKey, api: link(u.apiCallId), model: receipt?.model || '',
-    nano: receipt?.nanoAiu ?? null, status: receipt?.creditStatus || 'unavailable', copilot: !!receipt, initiator: receipt?.initiator || '' };
+    nano: receipt?.nanoAiu ?? null, status: receipt?.creditStatus || 'unavailable', copilot: !!receipt, initiator: receipt?.initiator || '',
+    context: [receipt?.modelId || '', receipt?.inputTotal ?? null, receipt?.cacheRead ?? null, receipt?.cacheWrite ?? null, receipt?.cacheDetailsReported ?? null] };
   const interaction = link(d.interactionId), turn = link(d.turnId);
   if (kind === 'abort') return { kind, id, sessionId, ms, agent, parentTool, project, interaction, turn, cancelled: d.reason === 'user_initiated' };
   if (kind === 'agent-start' || kind === 'agent-end' || kind === 'tool-start' || kind === 'tool-end') return { kind, id, sessionId, ms, agent, parentTool, tool: link(d.toolCallId), interaction, turn };
@@ -51,13 +53,13 @@ export function samePromptEvent(a, b, accounting = false) {
   if (a === b) return true;
   const abortProject = accounting && a.kind === 'abort' && b.kind === 'abort';
   for (const k in a) {
-    // Delivery and stop-location disagreements affect habits, not financial accounting.
-    if (k === 'environment' || accounting && k === 'delivery' || abortProject && k === 'project') continue;
+    // Context/delivery and stop-location disagreements do not change financial accounting.
+    if (k === 'environment' || accounting && (k === 'delivery' || k === 'context') || abortProject && k === 'project') continue;
     const x = a[k], y = b[k];
     if (x === y) continue;
     if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.some((v, i) => v !== y[i])) return false;
   }
-  for (const k in b) if (k !== 'environment' && !(accounting && k === 'delivery' || abortProject && k === 'project') && !(k in a)) return false;
+  for (const k in b) if (k !== 'environment' && !(accounting && (k === 'delivery' || k === 'context') || abortProject && k === 'project') && !(k in a)) return false;
   return true;
 }
 export function createPromptEventSet() {
@@ -97,7 +99,7 @@ const ELIGIBLE = 0, ATTRIBUTION = 1, ACCOUNTING = 2, UNFINISHED = 3;
 // Links every model call to the prompt that caused it. `all` is one closed set of sessions in
 // time order: nothing outside it shares a receipt with it, so sets can be solved independently.
 function attributeSessions(all, records, recordByKey) {
-  const spaces = new Map(), nodes = [], eventNode = new Map(), receipts = new Map(), uncertain = new Set(), conflictingReceipts = new Set();
+  const spaces = new Map(), nodes = [], eventNode = new Map(), receipts = new Map(), uncertain = new Set(), conflictingReceipts = new Set(), conflictingContext = new Set();
   let spaceId, spaceRef;
   // Identifiers are scoped by session. Nested maps avoid building a composite key per lookup.
   const space = id => {
@@ -227,6 +229,7 @@ function attributeSessions(all, records, recordByKey) {
       if (candidates?.size) for (const node of candidates) linked.add(node);
       else uncertain.add(e.sessionId);
       if (e.api !== first.api || e.nano !== first.nano || e.status !== first.status || e.copilot !== first.copilot || e.model !== first.model || e.initiator !== first.initiator) conflicting = true;
+      if (e.ms !== first.ms || !sameList(e.context || EMPTY, first.context || EMPTY)) conflictingContext.add(id);
     }
     if (conflicting || linked.size > 1) conflictingReceipts.add(id);
     if (!linked.size) continue;
@@ -363,14 +366,32 @@ function attributeSessions(all, records, recordByKey) {
     const interrupted = !doubtful && unfinished && !group.nodes.some(n => n.accounting || n.scope || n.unfinished &&
       (!n.interruption || n.messages.some(m => m.ms > n.interruption.ms) || n.turns.some(t => t.start.ms > n.interruption.ms)));
     const limitation = interrupted ? group.nodes.some(n => n.interruption?.kind === 'abort') ? 'cancelledPrompts' : 'interruptedPrompts' : '';
+    const contextScopes = new Map();
+    for (const node of group.nodes) {
+      let c = contextScopes.get(node.scope);
+      if (!c) contextScopes.set(node.scope, c = { first: null, firstCount: 0, models: new Set(), conflict: false });
+      for (const m of node.messages) {
+        if (!c.first || m.ms < c.first.ms) { c.first = m; c.firstCount = 1; }
+        else if (m.ms === c.first.ms) c.firstCount++;
+      }
+      for (const key of node.receipts.keys()) {
+        if (conflictingContext.has(key)) c.conflict = true;
+        const r = recordByKey.get(key);
+        if (r && r.origin !== 'compaction' && r.initiator !== 'sub-agent') c.models.add(r.modelId || '');
+      }
+    }
     for (const prompt of group.prompts) {
       const origin = eventNode.get(prompt);
-      let firstCall;
-      for (const node of group.nodes) if (node.scope === origin.scope) for (const m of node.messages) if (!firstCall || m.ms < firstCall.ms) firstCall = m;
+      const contextScope = contextScopes.get(origin.scope), firstCall = contextScope.first;
       const initial = receiptEvents.some(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId && r.initiator === 'user');
       let identity = prompt.origin === 'user' || linksKnown && initial;
       if (identity) for (const e of origin.space.userEvents.get(prompt.promptId)) if (e.project !== prompt.project || e.origin !== prompt.origin || eventNode.get(e).scope) { identity = false; break; }
       const sampleReceipt = receiptEvents.find(r => r.api === firstCall?.api && r.sessionId === prompt.sessionId);
+      // Context input is independent of bill completeness, but needs one unambiguous root call.
+      const contextRecord = linksKnown && contextScope.firstCount === 1 && firstCall?.ms >= prompt.ms && sampleReceipt?.ms >= prompt.ms &&
+        !conflictingReceipts.has(sampleReceipt?.receiptKey) && !conflictingContext.has(sampleReceipt?.receiptKey)
+        ? recordByKey.get(sampleReceipt?.receiptKey) : null;
+      const contextBoundary = contextScope.conflict || contextScope.models.size !== 1 || !contextRecord?.modelId || !contextScope.models.has(contextRecord.modelId);
       // Delivery describes a submission even when several submissions share a billing group.
       // An omitted source still requires a user-initiated root call; conflicting copies cannot establish its date or origin.
       let humanDelivery = prompt.origin === 'user' || prompt.origin === 'unspecified' && initial && !conflictingReceipts.has(sampleReceipt?.receiptKey);
@@ -378,7 +399,8 @@ function attributeSessions(all, records, recordByKey) {
         if (e.project !== prompt.project || e.origin !== prompt.origin || e.ms !== prompt.ms || e.interaction !== prompt.interaction || eventNode.get(e).scope) { humanDelivery = false; break; }
       let delivery = prompt.delivery || 'unknown';
       for (const e of origin.space.userEvents.get(prompt.promptId)) if ((e.delivery || 'unknown') !== delivery) { delivery = 'unknown'; break; }
-      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, humanDelivery, limitation, delivery,
+      prompts.push({ sessionId: prompt.sessionId, project: prompt.project, day: dayOfMs(prompt.ms), charges, linksKnown, identity, humanDelivery, limitation, delivery, contextBoundary,
+        contextRecord: contextRecord?.origin !== 'compaction' && !contextRecord?.reviewOrigin && !contextRecord?.backgroundActivity && contextRecord?.initiator !== 'sub-agent' ? contextRecord : null,
         sample: { promptId: prompt.promptId, interaction: prompt.interaction, recordKey: sampleReceipt?.receiptKey, ms: prompt.ms, delivery },
         provider: linksKnown && charges.length ? receiptEvents.every(r => r.copilot) : attributed(prompt.sessionId),
         state: doubtful || prompt.origin === 'unspecified' && !initial ? ATTRIBUTION : incomplete ? ACCOUNTING : unfinished ? UNFINISHED : ELIGIBLE });
@@ -480,6 +502,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
   const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const conversations = createConversationAccumulator(records, query, start, end, now);
+  const contextGrowth = createContextGrowthAccumulator(query, start, end, now);
   const projectCount = name => projectPrompts.get(name) || projectPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
   const sessionCount = (project, id) => {
     const key = JSON.stringify([project, id]);
@@ -494,6 +517,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     }
     for (const prompt of outcome.prompts) {
       conversations.add(prompt, prompt.state === ELIGIBLE);
+      contextGrowth.add(prompt);
       if (query.session && query.session !== prompt.sessionId) continue;
       const charges = prompt.charges, selected = models ? charges.filter(r => models.includes(r.model)) : charges;
       const dated = prompt.day >= start && prompt.day <= end;
@@ -536,6 +560,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   }
   result.projectPrompts = [...projectPrompts.values()];
   result.conversations = conversations.finish();
+  result.contextGrowth = contextGrowth.finish(options?.sessionLabels);
   result.modelPrompts = [...modelPrompts.values()];
   result.sessionPrompts = [...sessionPrompts.values()];
   if (result.eligiblePrompts) { result.credits = nano.number() / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }

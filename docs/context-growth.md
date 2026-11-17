@@ -1,0 +1,21 @@
+# Context growth
+
+Efficiency → Worth a closer look → Context growth shows recurring input patterns. The default chart groups sessions by shape: a median line and a shaded 25th–75th percentile range. This reduces overlapping lines while keeping token counts on a linear scale, including zero and negative changes. The shading is a distribution, not a confidence interval. An expandable table provides exact values and contributor counts for keyboard and screen-reader access.
+
+Each observation is the input on the first reliably linked main-agent call after a confirmed user prompt. It includes cache once. It does not sum agent continuations, establish what content was retained, or measure context-window fullness. Later calls within a prompt may be larger. Missing charges do not erase known input; missing/ambiguous attribution does not become a guessed input point.
+
+The project and model dropdowns mirror the dashboard filters. Date, session and environment filters also apply. Prompts are dated by submission; the first position is the first observed prompt inside the selected dates, not necessarily the beginning of a new session. A model filter keeps original prompt positions. Partially filtered, changing-model, unordered or incomplete sessions cannot establish a whole-session shape. Copied events use the existing attribution/deduplication pipeline.
+
+Six complete, strictly ordered prompts under one exact raw model identity are needed for classification. Medians of the first/last three inputs establish change. A rise/fall exceeds both 8K tokens and 25% of the early median. A spike is at least 60% and 20K above both end medians, and ends at no more than 65% of its peak. A broadly level series spans no more than the larger of 16K or 40% of its median. Other histories remain mixed/unclear. These provisional descriptive thresholds are not validated efficiency or task-quality benchmarks.
+
+Grouped curves show the first 40 prompt positions, requiring three classified sessions at each position. Short sessions drop out of later positions; the contributor count and distribution can therefore change without representing a single session's trajectory. Individual inspection shows at most the first 80 consecutive positions with gaps/model boundaries preserved. Up to 25 examples are selected newest-first within each shape, rotating between shapes. Omissions are explicit. Counts, cache summaries, peak and earlier/later statistics use all qualifying selected history, not the displayed examples.
+
+The implementation reuses cached prompt attribution and the existing report pass. No additional file scan, inference, catalog fetch, dependency or prompt-text storage is added. Group/measurement controls are local. Changing a dashboard filter rebuilds from the existing history cache. AI review gets allowlisted aggregate counts, coverage and input/cache measurements; local names, projects, session identifiers and trajectories are not exported.
+
+Conflicting copied raw-model/input/cache metadata invalidates a context comparison without changing recorded financial totals. A receipt dated before its prompt cannot establish an input observation. Unconfirmed submissions do not inflate confirmed prompt counts, but they break continuity and make that session unclassified.
+
+## Performance and verification
+
+On Node 24.22.1 on Windows, a synthetic 100,000-record / 500,000-event history (1,000 sessions with 100 prompts each) took 592 ms to build a cold report versus 594 ms at the v0.1.109 base. Median cached-attribution report times across three runs were 159 ms versus 165 ms. These differences are within run-to-run noise, not a claimed speedup. Recorded totals matched. The bounded context section added 215,610 JSON bytes (about 211 KiB) to that report. This measures in-memory reporting, not log discovery, transfer or browser paint.
+
+Synthetic regression coverage includes quantiles, classification, copies, chronological contradictions, unknown submissions, raw-model changes, shared prompts, missing inputs, filters, output bounds, focus-preserving prompt inspection and private-name exclusion from AI evidence. Browser appearance, touch interaction and narrow-panel fit still require manual checks; no browser automation or personal-history validation was performed for this release.

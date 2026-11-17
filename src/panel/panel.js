@@ -5,6 +5,7 @@ import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTiming
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
+import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
@@ -1113,8 +1114,51 @@ function renderSelectedTokenTopic() {
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
 }
+let growthMode = 'input', growthPattern = '', growthSession = '', growthPrompt = 1;
+function growthOptions() { return { number, width: $('efficiency-growth').clientWidth, mode: growthMode, pattern: growthPattern,
+  sessionKey: growthSession, prompt: growthPrompt, loading: !!historyLoading }; }
+function renderEfficiencyGrowth() {
+  const report = state.report, data = report?.efficiency?.contextGrowth, root = $('efficiency-growth');
+  const focus = document.activeElement?.id, open = [...root.querySelectorAll('details[open]')].map(d => d.id);
+  const example = data?.examples.find(e => e.key === growthSession);
+  if (!example) growthSession = ''; else growthPrompt = Math.min(growthPrompt, example.points.length);
+  if (growthPattern && !data?.patterns[growthPattern]?.sessions) growthPattern = '';
+  for (const [id, label, values] of [['project', 'projects', report?.options.projects], ['model', 'models', report?.options.models]]) {
+    const select = $('growth-' + id);
+    select.innerHTML = `<option value="">All ${label}</option>` + (values || []).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    select.value = $(id).value;
+  }
+  root.innerHTML = renderContextGrowth(data, growthOptions());
+  for (const id of open) { const detail = document.getElementById(id); if (detail) detail.open = true; }
+  if (focus?.startsWith('growth-')) document.getElementById(focus)?.focus({ preventScroll: true });
+}
+for (const id of ['project', 'model']) $('growth-' + id).onchange = event => {
+  $(id).value = event.target.value; growthSession = ''; growthPattern = ''; return load();
+};
+$('efficiency-growth').onclick = event => {
+  const button = event.target.closest('button'), data = button?.dataset;
+  if (!data || button.disabled) return;
+  if (['input', 'change'].includes(data.growthMode)) growthMode = data.growthMode;
+  else if (Object.hasOwn(CONTEXT_SHAPES, data.growthPattern)) { growthPattern = growthPattern === data.growthPattern ? '' : data.growthPattern; growthSession = ''; }
+  else return;
+  renderEfficiencyGrowth();
+};
+$('efficiency-growth').onchange = event => {
+  if (event.target.id !== 'growth-session') return;
+  growthSession = event.target.value; growthPrompt = 1; growthPattern = ''; renderEfficiencyGrowth();
+};
+$('efficiency-growth').oninput = event => {
+  if (event.target.id !== 'growth-prompt') return;
+  const data = state.report?.efficiency?.contextGrowth, example = data?.examples.find(e => e.key === growthSession), value = Number(event.target.value);
+  if (!example || !Number.isInteger(value) || value < 1 || value > example.points.length) return;
+  growthPrompt = value;
+  // Keep the native range mounted while dragging or using its keyboard controls.
+  $('growth-plot').innerHTML = contextGrowthChart(data, growthOptions());
+  const text = contextGrowthPrompt(data, growthOptions());
+  $('growth-prompt-readout').textContent = text; event.target.setAttribute('aria-valuetext', text);
+};
 let patternTopic = 'findings';
-const patternPanelNames = ['findings', 'habits', 'recovery', 'models', 'detail'];
+const patternPanelNames = ['findings', 'habits', 'growth', 'recovery', 'models', 'detail'];
 const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topic', PATTERN_TOPICS, patternTopic, id => {
   patternTopic = id;
   renderSelectedPatternTopic();
@@ -1122,6 +1166,7 @@ const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topi
 function renderSelectedPatternTopic() {
   const panel = patternPanelNames.includes(patternTopic) ? patternTopic : 'detail';
   for (const name of patternPanelNames) $(`pattern-${name}-panel`).hidden = name !== panel;
+  if (panel === 'growth') renderEfficiencyGrowth();
   if (panel !== 'detail') return;
   const topic = PATTERN_TOPICS.find(item => item.id === patternTopic);
   $('pattern-topic-title').textContent = topic.label;

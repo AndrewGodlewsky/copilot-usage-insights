@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.110",
+    "summary": "Context Growth now groups conversation patterns into clear trend lines with shaded ranges. Filter by project or model, inspect individual sessions, and include these patterns in AI reviews with explicit measurement limits."
+  },
+  {
     "version": "0.1.109",
     "summary": "Conversation Habits now has four focused views with larger charts, expandable examples and clearer coverage, with aggregate insights available to AI review. This update also reduces canvas startup work and defaults new reviewer setups to Sonnet 5.5 with high reasoning."
   },
