@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 import { normalizeModelCatalog } from '../src/core/model-reference.mjs';
+import { createSettings } from '../src/node/settings.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 async function setup(t, usage = {}) {
   const f = reviewFixture(); f.user('p'); f.call('p', 'a', usage);
   const state = { scans: 0, sent: [], config: { reviewModel: 'opus-fixture', reviewReasoning: 'medium', extraHomes: [], disabledHomes: [] } };
   const server = await startServer({ html: '<title>Fixture</title>', now: () => reviewNow, settings: { get: async () => state.config }, scanner: { scan: async () => { state.scans++; return f.scan(); } }, reviewService: {
-    catalog: async () => { state.catalogCalls = (state.catalogCalls || 0) + 1; state.entered?.(); if (state.hold) await state.hold; if (state.catalogFailure) throw new Error('PRIVATE'); return { models: [{ id: 'opus-fixture', reasoningEfforts: ['medium', 'high'] }], reference: state.reference }; },
+    catalog: async () => { state.catalogCalls = (state.catalogCalls || 0) + 1; state.entered?.(); if (state.hold) await state.hold; if (state.catalogFailure) throw new Error('PRIVATE'); return { models: [{ id: state.config.reviewModel, reasoningEfforts: ['medium', 'high'] }], reference: state.reference }; },
     review: async input => { state.sent.push(input); return { cards: [], emptyReason: 'Limited data', passes: 1, samples: 0 }; },
     cancel() {}, close: async () => {},
   } });
@@ -19,6 +23,19 @@ async function setup(t, usage = {}) {
   };
   return { state, request };
 }
+
+test('default Sonnet High is frozen into preparation and sent unchanged to the reviewer', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'review-default-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const { state, request } = await setup(t);
+  state.config = await createSettings(dir).get();
+  await request('usage.report', { range: 'all' });
+  const { status, body } = await request('review.prepare', { filters: { range: 'all' } });
+  assert.equal(status, 200);
+  assert.equal(body.model, 'claude-sonnet-5.5'); assert.equal(body.reasoningEffort, 'high');
+  assert.equal((await request('review.analyze', { snapshotId: body.id, expectedModel: body.model, expectedReasoning: body.reasoningEffort, allowSamples: body.allowSamples })).status, 200);
+  assert.equal(state.sent[0].model, 'claude-sonnet-5.5'); assert.equal(state.sent[0].reasoningEffort, 'high');
+});
 
 test('preparation reuses loaded history, freezes filters, and analysis consumes one server-owned snapshot', async t => {
   const { state, request } = await setup(t); state.config.reviewAllowSamples = false;

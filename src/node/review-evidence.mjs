@@ -8,6 +8,7 @@ import { reviewUsageHome } from './settings.mjs';
 import { readRequestPrompts } from './request-prompts.mjs';
 import { buildModelReference, verifiedHistoricalModelId, serializeReviewEvidence } from '../core/model-reference.mjs';
 import { benchmarkHistory } from '../core/benchmark-reference.mjs';
+import { conversationComparison } from '../core/conversation-summary.mjs';
 
 const measured = value => Number.isFinite(value) && value >= 0;
 const sourceKey = source => { const p = path.resolve(source || '.'); return process.platform === 'win32' ? p.toLowerCase() : p; };
@@ -58,6 +59,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
       if (samples) evidence.push({ id, topic, label, template: 'comparison', unit: 'sessions', values, samples, total, limitation: note });
     };
     comparison('conversation-depth', 'User prompts per session', c.distribution.map(b => ({ label: b.label, value: b.count })), c.countedSessions, c.sessions, limitation);
+    comparison('conversation-days', 'Dates with user messages per conversation', c.dayDistribution.map(b => ({ label: b.label, value: b.count })), c.countedSessions, c.sessions, 'Selected local dates, not continuous duration or task count. ' + limitation);
     add('session-length', topic, 'Average conversation depth', c.averagePrompts, 'prompts/session', c.countedSessions, c.sessions, limitation);
     add('conversation-median', topic, 'Median conversation depth', c.medianPrompts, 'prompts/session', c.countedSessions, c.sessions, limitation);
     add('conversation-multiday', topic, 'Sessions used on multiple days', c.multiDaySessions / c.countedSessions * 100, '% of counted sessions', c.countedSessions, c.sessions, 'Confirmed prompts on at least two selected calendar dates. Does not establish continuous work or one task. ' + limitation);
@@ -68,6 +70,26 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
       const values = ['1 call/prompt', '>1–5 calls/prompt', '>5 calls/prompt'].map((label, row) => ({ label, value: c.workMatrix[row][column] }));
       comparison(`conversation-work-${column + 1}`, `${label} per session: agent activity`, values, values.reduce((n, v) => n + v.value, 0), column < 2 ? c.distribution[column].count : c.distribution[2].count + c.distribution[3].count, workNote);
     }
+  }
+  if (conversations?.promptWork?.prompts) {
+    const w = conversations.promptWork, limitation = 'Complete, finished, reliably linked prompt work only, including continuations and subagents across date boundaries. Separate from whole-session coverage. Calls do not measure success or task duration.';
+    evidence.push({ id: 'conversation-call-distribution', topic: 'prompts-sessions', label: 'Model calls per user prompt', template: 'comparison', unit: 'prompts',
+      values: w.distribution.map(b => ({ label: b.label, value: b.count })), samples: w.prompts, total: w.totalPrompts, limitation });
+    add('conversation-call-median', 'prompts-sessions', 'Typical model calls per user prompt', w.medianCalls, 'calls/prompt', w.prompts, w.totalPrompts, limitation);
+  }
+  if (conversations?.delivery?.steering) {
+    const c = conversations;
+    add('conversation-steering-concentration', 'prompts-sessions', 'Steering in the three most-steered conversations', c.steering.topMessages / c.delivery.steering * 100,
+      '% of recorded steering', c.delivery.steering, c.delivery.prompts,
+      `Observed steering in ${c.steering.topSessions} of ${c.steering.sessions} conversations with recorded steering. Unknown delivery can hide other steering. Concentration is not evidence of poor prompting or failure.`);
+  }
+  for (const topic of ['interaction', 'work', 'guidance', 'returning']) {
+    const comparison = conversationComparison(conversations, topic);
+    if (comparison.reason) continue;
+    evidence.push({ id: `conversation-change-${topic}`, topic: 'prompts-sessions', label: `Conversation habits: ${topic} comparison`, template: 'comparison', unit: comparison.unit,
+      values: [{ label: `${comparison.startDate} to ${comparison.endDate}`, value: comparison.previous }, { label: 'Selected dates', value: comparison.current }],
+      samples: comparison.samples, total: comparison.total, previousSamples: comparison.previousSamples, previousTotal: comparison.previousTotal,
+      limitation: `${comparison.previousSamples} of ${comparison.previousTotal} previous observations and ${comparison.samples} of ${comparison.total} current observations. Equal-length calendar periods with observed coverage within 10 percentage points. Missing logs, workload mix and a partial current day can affect comparisons; no causal or quality claim.` });
   }
   if (conversations?.delivery?.prompts) {
     const d = conversations.delivery, topic = 'prompts-sessions';

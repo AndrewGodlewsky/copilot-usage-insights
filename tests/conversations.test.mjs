@@ -124,7 +124,7 @@ test('ordinary steering and queued messages retain delivery when their shared bi
   assert.deepEqual([d.idle, d.steering, d.queued, d.unknown], [1, 1, 1, 0]);
   assert.equal(d.prompts, 3); assert.equal(d.sessions, 1); assert.equal(d.classifiedSessions, 1);
   assert.equal(d.steeredSessions, 1); assert.equal(d.averageSteering, 1);
-  assert.equal(c.countedSessions, 0); assert.equal(c.uncertainSessions, 1); assert.equal(c.prompts, 0);
+  assert.equal(c.countedSessions, 1); assert.equal(c.uncertainSessions, 0); assert.equal(c.prompts, 3);
   assert.equal(report.promptCredits.eligiblePrompts, 0); assert.equal(report.promptCredits.excluded.attribution, 3);
   assert.equal(report.promptCredits.averageCredits, null); assert.equal(report.totals.credits, 6);
   f.events.push(...structuredClone(f.events));

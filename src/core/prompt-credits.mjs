@@ -388,7 +388,7 @@ function attributeSessions(all, records, recordByKey) {
   for (const [id, s] of spaces) if (attributed(id)) for (const variant of s.byEvent.values()) {
     // Conflicting copies cannot establish a stop's date, project or origin.
     if (!Array.isArray(variant) && variant.kind === 'abort' && variant.cancelled && !variant.agent && !variant.parentTool)
-      stops.push({ sessionId: id, project: variant.project, day: dayOfMs(variant.ms) });
+      stops.push({ sessionId: id, project: variant.project, day: dayOfMs(variant.ms), ms: variant.ms });
   }
   return { prompts, seeds, stops, unassigned: records.filter(r => !assigned.has(r.key)), conflictingReceipts };
 }

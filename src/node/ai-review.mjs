@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createUsageRecorder, reconcileUsageJournal } from './review-usage.mjs';
 import { analyzeInsights } from './review-insights.mjs';
 import { normalizeModelCatalog, modelReferenceInstructions } from '../core/model-reference.mjs';
+import { DEFAULT_REVIEW_MODEL } from './settings.mjs';
 
 const messages = {
   runtime: 'AI review needs the supported GitHub Copilot desktop extension runtime. Update or restart Copilot and reopen this canvas.',
@@ -114,7 +115,7 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
       const confirmedAuth = await deadline(Promise.resolve().then(() => parent?.rpc.gitHubAuth.getStatus()), 10_000, signal);
       if (!sameAccount(auth, confirmedAuth)) throw fail('account');
       signal.throwIfAborted();
-      const value = { models, reference, token: randomUUID(), recommendedModel: models.find(m => /opus/i.test(m.id + ' ' + m.label))?.id || '' };
+      const value = { models, reference, token: randomUUID(), recommendedModel: models.find(m => m.id === DEFAULT_REVIEW_MODEL)?.id || '' };
       cachedCatalog = { auth: { isAuthenticated: true, login: auth.login, host: auth.host }, at: clock(), value };
       return structuredClone(value);
     } catch (error) { cachedCatalog = undefined; record(stage, 'failed', started, error); throw error; }

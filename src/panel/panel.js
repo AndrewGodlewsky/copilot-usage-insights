@@ -4,10 +4,11 @@ import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
-import { renderConversations } from './conversations.mjs';
+import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
+import { publicModelLabels } from '../core/public-models.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -142,8 +143,9 @@ function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   for (const entry of [...(server?.persisted?.entries || []), ...(importedRuntimeLogs?.entries || [])]) runtime.set(JSON.stringify(entry), entry);
   const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...[...runtime.values()].map(entry => ({ ...entry, source: 'runtime' }))];
   entries.sort((a, b) => a.at.localeCompare(b.at));
-  // Avoid treating older-process runtime snapshots as stages of this dashboard's load.
-  lines.push(loadTimingSummary(entries.filter(entry => entry.source !== 'runtime')), '', 'Structured events', '');
+  // Retain startup evidence from failed opens, labelled by process; older history timings
+  // must not be presented as stages of this dashboard's current usage load.
+  lines.push(loadTimingSummary(entries.filter(entry => entry.source !== 'runtime' || /^(extension\.(sdk|join)|canvas\.(open|queue)|server\.(start|import|assets|bind|page|endpointRead))$/.test(entry.event))), '', 'Structured events', '');
   return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
 }
 const releaseFamily = version => version.split('.').slice(0, 2).join('.');
@@ -970,28 +972,53 @@ function efficiencyDirection(insight) {
     compare: 'Compare credits per completed task and the quality of the result, including any retries you needed.',
   };
 }
+let conversationTopic = 'interaction', conversationExamplesOpen = false, conversationExampleIndex = 0, conversationBucketSelection = null;
 function renderEfficiencyHabits() {
-  const habits = state.report?.efficiency?.interactions;
-  const summary = state.report?.efficiency?.summary;
-  $('efficiency-conversations').innerHTML = renderConversations(state.report?.efficiency?.conversations, { number });
-  const metrics = [
-    ['Characters / prompt', habits?.averagePromptChars, `${number(habits?.promptSamples ?? 0)} messages with text lengths`, habits?.promptSamples < habits?.prompts],
-    ['Input tokens / call', summary?.averageInput, `${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls`, summary?.inputRequests < summary?.requests],
-    ['Agent turns / session', habits?.averageTurnsPerSession, `${number(habits?.turns ?? 0)} turns across ${number(habits?.turnSessions ?? 0)} sessions`],
-  ];
-  $('efficiency-habits').innerHTML = habits?.reason === 'model-filter'
-    ? '<p class="muted">Clear the model filter to see conversation habits. User messages cannot reliably be assigned to one model when a session uses several.</p>'
-    : !habits?.observedSessions ? `<p class="muted">${habits?.omitted ? 'No interaction metadata could be attributed exclusively to Copilot.' : 'No matching message or turn metadata was recorded. Usage receipts alone cannot tell us how many times you chatted.'}</p>`
-      : `<div class="efficiency-metrics">${metrics.map(([label, value, detail, incomplete]) => `<div><span class="label">${label}</span><strong class="value">${markedValue(value, incomplete)}</strong><span class="sub">${detail}</span></div>`).join('')}</div><p class="footnote">Message and turn averages cover sessions with recorded activity within the selected dates, project, and session. These are not lifetime session lengths. Input per call includes all filtered calls with input measurements, including sessions without message metadata. One message can cause several turns and model requests.</p><p class="footnote">Prompt length measures displayed text, excluding attachments and injected content. Characters per prompt and input tokens per call are separate averages, not a matched ratio; characters are not tokens. A short prompt can be precise; a long one can be unclear. Review a few requests for a clear goal, relevant context, constraints, and a way to check the result.</p>`;
-  if (!habits?.observedSessions && habits?.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">Input tokens / call: ${markedValue(summary?.averageInput, summary?.inputRequests < summary?.requests)}. Measured on ${number(summary?.inputRequests ?? 0)} of ${number(summary?.requests ?? 0)} model calls; prompt measurements are unavailable.</p>`;
-  if (habits?.omitted && habits.reason !== 'model-filter') $('efficiency-habits').innerHTML += `<p class="footnote">${number(habits.omitted)} events excluded because Copilot attribution was missing or mixed.</p>`;
-  const instructions = efficiencyContextSnapshot?.available ? efficiencyContextSnapshot.categories?.customInstructions : null;
-  $('efficiency-instructions').innerHTML = instructions == null
-    ? '<strong>Are instructions part of your context?</strong><p>Inspect current context to see whether Copilot reports custom instructions for this conversation.</p>'
-    : instructions > 0
-      ? `<strong>Custom instructions are present in the inspected context</strong><p>${number(instructions)} estimated tokens. This confirms context presence, not whether the instructions were followed or were present in earlier sessions. Keep durable project guidance concise and task-specific detail available on demand.</p>`
-      : '<strong>No custom-instruction tokens in this snapshot</strong><p>This does not prove your repository lacks instructions. Conditional instructions may not apply yet. Check that the agent can find project commands, conventions, and validation steps.</p>';
+  const root = $('efficiency-conversations'), focus = document.activeElement?.id;
+  const open = [...root.querySelectorAll('details[open]')].map(d => d.id);
+  root.innerHTML = renderConversations(state.report?.efficiency?.conversations, { number, topic: conversationTopic,
+    loading: !!historyLoading, examplesOpen: conversationExamplesOpen, exampleIndex: conversationExampleIndex,
+    bucket: conversationBucketSelection, interactions: state.report?.efficiency?.interactions });
+  for (const id of open) { const detail = $(id); if (detail) detail.open = true; }
+  for (const id of CONVERSATION_TOPICS) $('conversation-tab-' + id).setAttribute('aria-pressed', String(id === conversationTopic));
+  if (focus?.startsWith('conversation-')) $(focus)?.focus({ preventScroll: true });
 }
+function selectConversationTopic(topic) {
+  if (!CONVERSATION_TOPICS.includes(topic) || topic === conversationTopic) return;
+  conversationTopic = topic; conversationBucketSelection = null; conversationExampleIndex = 0; conversationExamplesOpen = false;
+  renderEfficiencyHabits();
+}
+$('conversation-topics').onclick = event => {
+  const topic = event.target.closest('[data-conversation-topic]')?.dataset.conversationTopic;
+  if (topic) selectConversationTopic(topic);
+};
+$('conversation-topics').onkeydown = event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  const focused = event.target?.closest('[data-conversation-topic]')?.dataset.conversationTopic;
+  const index = CONVERSATION_TOPICS.indexOf(CONVERSATION_TOPICS.includes(focused) ? focused : conversationTopic);
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? 3 : Math.max(0, Math.min(3, index + (event.key === 'ArrowRight' ? 1 : -1)));
+  event.preventDefault(); selectConversationTopic(CONVERSATION_TOPICS[next]);
+  $('conversation-tab-' + CONVERSATION_TOPICS[next]).focus({ preventScroll: true });
+};
+$('efficiency-conversations').onclick = event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const data = button.dataset;
+  if (data.conversationBucket !== undefined) {
+    const bucket = Number(data.conversationBucket);
+    if (!Number.isInteger(bucket) || bucket < 0 || bucket > (conversationTopic === 'returning' ? 2 : 3)) return;
+    conversationBucketSelection = conversationBucketSelection === bucket ? null : bucket;
+    conversationExamplesOpen = true; conversationExampleIndex = 0;
+  } else if (data.conversationExample !== undefined) {
+    conversationExampleIndex = Number(data.conversationExample);
+  } else if (data.conversationExplore !== undefined) {
+    conversationExamplesOpen = !conversationExamplesOpen; conversationBucketSelection = null;
+  } else if (data.conversationClear !== undefined) conversationBucketSelection = null;
+  else if (data.conversationClose !== undefined) conversationExamplesOpen = false;
+  else return;
+  renderEfficiencyHabits();
+  if (data.conversationClose !== undefined || data.conversationClear !== undefined) $('conversation-explore')?.focus({ preventScroll: true });
+};
 function renderEfficiencyReliability() {
   const report = state.report, rows = toolOutcomeSummary(report.tools), habits = report.efficiency.interactions;
   const failed = (report.tools?.rows || []).filter(row => row.failures > 0).sort((a, b) => b.failures - a.failures).slice(0, 5);
@@ -1108,7 +1135,6 @@ function openTokenContext() {
   $('efficiency-context-read').focus({ preventScroll: false });
 }
 $('token-detail-panel').onclick = event => { if (event.target.closest('[data-token-context]')) openTokenContext(); };
-$('efficiency-inspect-instructions').onclick = openTokenContext;
 $('token-overview-panel').onclick = event => {
   const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;
   if (!topic) return;
@@ -1539,19 +1565,23 @@ function reviewReasoningOptions(preferred = savedReviewReasoning) {
   const model = reviewModels.find(m => m.id === $('review-model').value);
   const choices = model ? ['default', ...(model.reasoningEfforts || [])] : ['default', 'medium', 'high'];
   const selected = preferred || (model?.reasoningEfforts?.includes('medium') ? 'medium' : 'default');
-  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${effort}">${effort === 'default' ? 'Model default' : effort === 'medium' ? 'Medium (recommended)' : 'High'}</option>`).join('');
+  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${effort}">${effort === 'default' ? 'Model default' : effort === 'medium' ? 'Medium' : 'High'}</option>`).join('');
   $('review-reasoning').value = selected;
-  $('review-reasoning-help').textContent = !model ? 'Refresh models to verify supported reasoning levels.' : !choices.includes(selected) ? 'The saved level is unsupported. Choose a supported level before analyzing.' : model.reasoningEfforts?.length ? 'High may use more credits. Medium is recommended for routine reviews.' : 'This model does not advertise configurable Medium or High reasoning. Model default is used.';
+  $('review-reasoning-help').textContent = !model ? 'Refresh models to verify supported reasoning levels.' : !choices.includes(selected) ? 'The selected level is unsupported. Choose a supported level before analyzing.' : model.reasoningEfforts?.length ? 'High allows more reasoning and may use more credits. Choose Medium for a lighter review.' : 'This model does not advertise configurable Medium or High reasoning. Model default is used.';
 }
-function reviewModelOptions(models, selected) {
+function reviewModelOptions(models, selected, preferred = savedReviewReasoning) {
   reviewModels = models;
   $('review-model').innerHTML = '<option value="">Choose a model</option>' +
-    (selected && !models.some(m => m.id === selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unavailable until verified)</option>` : '') +
+    (selected && !models.some(m => m.id === selected) ? `<option value="${esc(selected)}">${esc(publicModelLabels[selected] || selected)} (unavailable until verified)</option>` : '') +
     models.map(model => `<option value="${esc(model.id)}">${esc(model.label)}</option>`).join('');
   $('review-model').value = selected || '';
-  reviewReasoningOptions();
+  reviewReasoningOptions(preferred);
 }
-$('review-model').onchange = () => { reviewReasoningTouched = true; reviewReasoningOptions(null); };
+$('review-model').onchange = () => {
+  reviewReasoningTouched = true;
+  const model = reviewModels.find(m => m.id === $('review-model').value);
+  reviewReasoningOptions(model?.reasoningEfforts?.includes('high') ? 'high' : null);
+};
 $('review-reasoning').onchange = () => { reviewReasoningTouched = true; };
 async function refreshReviewConnection(reconnect) {
   if (reviewConnectionPending || reviewRunning) return;
@@ -1561,7 +1591,7 @@ async function refreshReviewConnection(reconnect) {
   $('review-connection-status').textContent = reconnect ? 'Verifying a fresh Copilot connection…' : 'Loading models from Copilot…';
   try {
     const result = await request(reconnect ? 'review.reconnect' : 'review.catalog');
-    reviewModelOptions(result.models, $('review-model').value || result.recommendedModel);
+    reviewModelOptions(result.models, $('review-model').value || result.recommendedModel, reviewReasoningTouched ? $('review-reasoning').value : savedReviewReasoning);
     $('review-connection-status').textContent = reconnect ? 'Connection verified with the same GitHub account. No prompt was sent. Choose a model and save settings.' : 'Models refreshed. Choose a model and save settings. The helper account is verified again before each review.';
   } catch (error) { $('review-connection-status').textContent = error.message; }
   finally {
@@ -1587,7 +1617,7 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('extra-vscode-homes').value = (config.extraVSCodeHomes || []).join('\n');
     savedReviewReasoning = config.reviewReasoning;
     reviewReasoningTouched = false;
-    reviewModelOptions([], config.reviewModel);
+    reviewModelOptions(reviewModels, config.reviewModel);
     settingsSources = JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]);
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
@@ -1643,7 +1673,7 @@ document.addEventListener('visibilitychange', () => {
   syncReviewAnimation();
   clientDiagnostics.record('info', 'ui.visibility', connectionState());
   clearTimeout(historyPoll); historyPoll = null;
-  if (!document.hidden && !state.pending) {
+  if (dashboardReady && !document.hidden && !state.pending) {
     if (historyLoading && !loadError) load(false, false, true);
     else if (lastSuccessfulScanAt === undefined || Date.now() - lastSuccessfulScanAt >= AUTO_REFRESH_MS) load(false, true);
   }
@@ -1651,4 +1681,14 @@ document.addEventListener('visibilitychange', () => {
 setInterval(() => { if (!document.hidden && !state.pending && !historyLoading) load(false, true); }, AUTO_REFRESH_MS);
 $('start-date').value = dayKey(localDay() - 6); $('end-date').value = dayKey(localDay());
 $('end-date').max = $('start-date').max = dayKey(localDay());
-load(false, true);
+// Let the self-contained document finish loading before starting potentially large scans.
+// Keep the page load event independent of history becoming available.
+let dashboardReady = false;
+function startDashboard() {
+  if (dashboardReady) return;
+  dashboardReady = true;
+  clientDiagnostics.record('info', 'ui.ready', { phase: 'finished', durationMs: globalThis.performance?.now() });
+  setTimeout(() => load(false, true), 0);
+}
+if (document.readyState === 'complete') startDashboard();
+else window.addEventListener('load', startDashboard, { once: true });

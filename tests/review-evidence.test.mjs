@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { prepareInsightReview } from '../src/node/review-evidence.mjs';
 import { reviewUsageHome } from '../src/node/settings.mjs';
 import { reviewFixture, steeringFixture, reviewNow } from './fixtures/review.mjs';
-import { analyzeInsights } from '../src/node/review-insights.mjs';
+import { analyzeInsights, validateInsightResponse } from '../src/node/review-insights.mjs';
 
 test('review distinguishes saved skill activity from verified billing attribution', async () => {
   const f = reviewFixture();
@@ -82,7 +82,7 @@ test('review receives delivery coverage, session steering and separate stops wit
   assert.ok(!filtered.payload.evidence.some(e => e.id === 'conversation-delivery' || e.id === 'conversation-user-stops'));
 });
 
-test('AI review receives steering and queued evidence even when no session qualifies for depth or cost averages', async () => {
+test('AI review receives confirmed shared-run depth without claiming separately attributable costs', async () => {
   const snapshot = await prepareInsightReview(steeringFixture().scan(), { range: '7d' }, reviewNow);
   const byId = new Map(snapshot.payload.evidence.map(e => [e.id, e]));
   const d = byId.get('conversation-delivery');
@@ -90,9 +90,33 @@ test('AI review receives steering and queued evidence even when no session quali
   assert.deepEqual(d.values.map(v => v.value), [1, 1, 1, 0]);
   assert.equal(byId.get('conversation-steering-sessions').value, 100);
   assert.equal(byId.get('conversation-steering-sessions').total, 1);
-  assert.ok(!byId.has('conversation-depth')); assert.ok(!byId.has('credit-prompt'));
+  assert.deepEqual(byId.get('conversation-depth').values.map(v => v.value), [0, 1, 0, 0]); assert.ok(!byId.has('credit-prompt'));
   assert.match(d.limitation, /separate.*depth/i);
   assert.doesNotMatch(snapshot.preview, /PRIVATE|originatingMessageId|session-a/);
+});
+
+test('conversation comparisons retain both coverage denominators and never export local example timelines', async () => {
+  const fixtures = [];
+  for (const day of [5, 15]) for (let n = 0; n < 100; n++) {
+    const f = reviewFixture({ sessionId: `PRIVATE-${day}-${n}` });
+    f.time(new Date(2026, 10, day, 10));
+    if (n < 5) f.user('p', { delivery: 'idle' });
+    f.call('p', 'a'); fixtures.push(f.scan());
+  }
+  const scan = Object.fromEntries(['records', 'promptEvents', 'interactions', 'skills', 'tools', 'sources'].map(key => [key, fixtures.flatMap(s => s[key] || [])]));
+  const snapshot = await prepareInsightReview(scan, { range: '7d' }, reviewNow);
+  const byId = new Map(snapshot.payload.evidence.map(e => [e.id, e]));
+  const change = byId.get('conversation-change-interaction');
+  assert.equal(change.samples, 5); assert.equal(change.total, 100);
+  assert.equal(change.previousSamples, 5); assert.equal(change.previousTotal, 100);
+  assert.equal(byId.get('conversation-call-distribution').samples, 5);
+  assert.equal(byId.get('conversation-days').samples, 5);
+  assert.match(change.limitation, /5 of 100 previous/);
+  assert.doesNotMatch(snapshot.preview, /PRIVATE|eventsOmitted|workBins|"ms"|"examples"/);
+  const result = validateInsightResponse(JSON.stringify({ cards: [{ evidenceId: change.id, supportingEvidence: [], title: 'Recorded depth', assessment: 'neutral',
+    confidence: 'high', confidenceReason: 'Both periods have observations.', observation: 'The recorded median is unchanged.', alternatives: 'Missing logs could hide activity.',
+    experiment: 'Compare similarly recorded conversations.', compare: 'Check the coverage in both periods.', missing: 'Many conversations lack messages.' }], followUp: null, emptyReason: '' }), snapshot);
+  assert.equal(result.cards[0].confidence, 'medium', 'sparse but matching coverage must not be presented as complete');
 });
 
 test('conversation evidence fits the existing submission budget alongside every other topic family', async () => {

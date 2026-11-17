@@ -23,10 +23,11 @@ const sameFile = (known, stat) => known.size === stat.size && known.mtime === st
 const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
 const sameFields = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true; };
 const chunks = [];
-async function hashPrefix(handle, length, metrics) {
+async function hashPrefix(handle, length, metrics, signal) {
   const hash = createHash('sha256'), buffer = chunks.pop() || Buffer.allocUnsafe(CHUNK);
   try {
     for (let position = 0; position < length;) {
+      signal?.throwIfAborted();
       const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, length - position), position);
       if (!bytesRead) throw new Error('Session log changed while reading; refresh to retry');
       if (metrics) metrics.bytesHashed += bytesRead;
@@ -100,8 +101,12 @@ function mergeJournals(snapshots) {
   return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, modelChanges, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
-export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, diagnostics, readDatabase = createUsageDatabaseReader() } = {}) {
-  const measure = (event, fields, work) => diagnostics ? diagnostics.measure(event, fields, work) : work();
+export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, diagnostics, readDatabase = createUsageDatabaseReader(), signal } = {}) {
+  const measure = (event, fields, work) => {
+    signal?.throwIfAborted();
+    const result = diagnostics ? diagnostics.measure(event, fields, work) : work();
+    return result?.then ? result.then(value => { signal?.throwIfAborted(); return value; }) : result;
+  };
   const readMetrics = () => ({ filesRead: 0, filesReused: 0, filesAppended: 0, bytesRead: 0, bytesHashed: 0 });
   const environmentType = source => source.environment?.startsWith('wsl:') ? 'wsl' : source.environment?.startsWith('remote:') ? 'remote' : 'local';
   // Journals and session names are reread only when their size or timestamps change.
@@ -145,6 +150,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
   }
 
   async function readJournal(file, stat, real, sessionId, force, context = {}, metrics, phase) {
+    signal?.throwIfAborted();
     if (phase) {
       phase.files++;
       if (Number.isFinite(stat.mtimeMs) && stat.mtimeMs < phase.sinceMs) {
@@ -162,7 +168,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     try {
       let prefixMatches = false, hash;
       if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino) {
-        hash = await hashPrefix(handle, entry.offset, metrics);
+        hash = await hashPrefix(handle, entry.offset, metrics, signal);
         prefixMatches = hash.copy().digest('hex') === entry.digest;
       }
       if (!prefixMatches) {
@@ -176,6 +182,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       let position = entry.offset, pending = [], pendingLength = 0, dropping = false, consumed = null;
       try {
         while (position < stat.size) {
+          signal?.throwIfAborted();
           const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - position), position);
           if (!bytesRead) break;
           if (metrics) metrics.bytesRead += bytesRead;
@@ -211,6 +218,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
   }
 
   async function readSession(stateDir, real, sessionId, force, context, metrics, phase) {
+    signal?.throwIfAborted();
     // A folder name has nothing to normalise, so its paths are put together directly.
     const dir = stateDir + path.sep + sessionId;
     const found = { id: sessionId, name: '', nameFile: dir + path.sep + 'workspace.yaml', file: '', snapshot: null, error: null };
@@ -220,11 +228,12 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (!stat.isFile()) return found;
       found.file = file;
       found.snapshot = await readJournal(file, stat, real, sessionId, force, context, metrics, phase);
-    } catch (e) { found.error = e; }
+    } catch (e) { signal?.throwIfAborted(); found.error = e; }
     return found;
   }
 
   async function scan(roots, { force = false, disabled = [], includeWsl = true, readWslDatabases = true, includeVSCode = true, extraVSCodeHomes = [], phase, discovery } = {}) {
+    signal?.throwIfAborted();
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
     const discovered = discovery || (includeWsl && discoverWsl ? await measure('history.discovery', { environmentType: 'wsl' }, () => discoverWsl({ disabled })) : { homes: [], sources: [] });
     if (phase) phase.discovery = discovered;
@@ -234,6 +243,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const setName = (home, id, name) => { let map = sessionNames.get(home); if (!map) sessionNames.set(home, map = new Map()); map.set(id, name); };
     await measure('history.copilot', { sourceKind: 'copilot', force }, async () => {
       for (const root of new Set([...roots, ...optionalHomes, ...discovered.homes])) {
+        signal?.throwIfAborted();
         const rootIdentity = sourceIdentity(root);
         if (seenRoots.has(rootIdentity)) continue;
         // Disabled UNC sources must not be contacted just to resolve their real path.

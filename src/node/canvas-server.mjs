@@ -1,21 +1,11 @@
-import { describeModelReference } from '../core/model-reference.mjs';
 import { createServer } from 'node:http';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { createScanner } from './copilot-source.mjs';
-import { createSettings, copilotHome, enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
-import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../core/copilot-report.mjs';
-import { readRequestPrompts } from './request-prompts.mjs';
-import { addInstalledSkillVersions } from './skill-version.mjs';
+import { createSettings, copilotHome } from './settings.mjs';
 import { createIntegrationReader } from './integrations.mjs';
 import { createDiagnostics, diagnosticError } from '../core/diagnostics.mjs';
 import { localDay, dayKey, parseDateDay, RANGE_DAYS } from '../core/query.mjs';
 import { createContextReader } from './context.mjs';
-import { createReviewService, safeReviewError, ReviewError } from './ai-review.mjs';
-import { prepareInsightReview } from './review-evidence.mjs';
-import { finalizeInsightReview } from './review-insights.mjs';
-import { createWslDiscovery } from './wsl-sources.mjs';
-import { createVSCodeSources } from './vscode-sources.mjs';
 import { validEndpoint } from './canvas-endpoint.mjs';
 
 const MAX_BODY = 64 * 1024, MAX_REPORTS = 12;
@@ -28,24 +18,27 @@ function latestTime(scan) {
   }
   return latest;
 }
-export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService = createReviewService(session, { diagnostics }), endpoint } = {}) {
+export async function startServer({ settings = createSettings(), scanner, defaultHome = copilotHome(), html, now = () => new Date(), readIntegrations = createIntegrationReader(() => undefined), readContext = createContextReader(() => undefined), diagnostics = createDiagnostics(), session, reviewService, endpoint } = {}) {
   if (endpoint !== undefined && !validEndpoint(endpoint)) throw new TypeError('Invalid dashboard endpoint');
-  scanner ??= createScanner({ optionalHomes: [enhancePromptUsageHome(), reviewUsageHome()], discoverWsl: createWslDiscovery({ diagnostics }), discoverVSCode: createVSCodeSources(), diagnostics });
-  html ??= await readFile(new URL('../../panel/index.html', import.meta.url), 'utf8');
+  const lifetime = new AbortController();
+  let usageModules, reviewModules, reviewAbortReason;
+  const loadUsage = () => usageModules ??= diagnostics.measure('server.usageModules', {}, () => import('./canvas-usage.mjs'));
+  const loadReview = () => reviewModules ??= diagnostics.measure('server.reviewModules', {}, () => import('./canvas-review.mjs'));
+  html ??= await diagnostics.measure('server.assets', {}, () => readFile(new URL('../../panel/index.html', import.meta.url), 'utf8'));
   const { version } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   diagnostics.record('info', 'runtime.started');
   const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch, processId: process.pid }, ...diagnostics.snapshot() });
   const savedDiagnosticSnapshot = () => ({ ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) });
   const token = endpoint?.token ?? randomBytes(32).toString('hex'), prefix = `/${token}/`;
   let origin;
-  const pending = new Set();
+  const settingsWrites = new Set();
   let history, reviewRequest, preparedReview, contextSnapshot;
   let scanId = 0;
   // Reports already built from the current scan, by filter. A scan is never altered once it is
   // returned, so a report stays right until the scan is replaced, the local day changes, or
   // something dated later than the report's own moment comes due.
   let reports = { scan: null, latest: -Infinity, built: new Map() };
-  function reportFor(scan, input, at) {
+  function reportFor(scan, input, at, buildReport) {
     if (reports.scan !== scan) reports = { scan, latest: latestTime(scan), built: new Map() };
     const key = JSON.stringify(input), day = localDay(at), ms = at.getTime();
     let entry = reports.built.get(key);
@@ -59,6 +52,9 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     return { entry, cached };
   }
   async function readHistory(config, { refresh = false, force = false, recent = false } = {}) {
+    const { createCanvasScanner } = await loadUsage();
+    lifetime.signal.throwIfAborted();
+    scanner ??= createCanvasScanner({ diagnostics, signal: lifetime.signal });
     const roots = [defaultHome, ...config.extraHomes], key = JSON.stringify([roots, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes]);
     if (!history || history.key !== key || (refresh || force) && (history.complete || history.error)) {
       const progressive = !history || history.key !== key || !!history.error;
@@ -67,12 +63,14 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       let ready;
       const entry = { key, complete: false, ready: new Promise(resolve => { ready = resolve; }) };
       entry.promise = diagnostics.measure('history.scan', fields, async () => {
-        const scan = await scanner.scan(roots, { disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, readWslDatabases: config.readWslDatabases !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [],
+        const scan = await scanner.scan(roots, { signal: lifetime.signal, disabled: config.disabledHomes, force, includeWsl: config.includeWsl !== false, readWslDatabases: config.readWslDatabases !== false, includeVSCode: config.includeVSCode !== false, extraVSCodeHomes: config.extraVSCodeHomes || [],
           ...(progressive ? { recentSince: since.getTime(), scanId: fields.scanId,
           onRecent: (scan, progress) => {
+            lifetime.signal.throwIfAborted();
             ready({ scan, scanId: fields.scanId, loading: { phase: 'recent', scanId: fields.scanId, since: dayKey(localDay(since)), ...progress } });
           } } : {}),
         });
+        lifetime.signal.throwIfAborted();
         Object.assign(fields, { records: scan.records.length, sources: scan.sources?.length ?? 0,
           compactions: scan.records.filter(r => r.origin === 'compaction').length,
           environments: new Set((scan.sources || []).map(s => s.environment).filter(Boolean)).size,
@@ -99,12 +97,12 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     return start >= parseDateDay(loading.since);
   }
   const server = createServer({ maxHeaderSize: 8192 }, (req, res) => {
-    const task = handle(req, res).catch(e => {
+    void handle(req, res).catch(e => {
+      if (lifetime.signal.aborted) return;
       diagnostics.record('error', 'server.response', diagnosticError(e));
       if (!res.headersSent) json(res, 500, { error: e.message });
       else res.end();
-    }).finally(() => pending.delete(task));
-    pending.add(task);
+    });
   });
   server.requestTimeout = 120000;
   server.headersTimeout = 10000;
@@ -119,8 +117,11 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'");
     if (req.headers.host !== new URL(origin).host || req.headers.origin && req.headers.origin !== origin) return json(res, 403, { error: 'Origin not allowed' });
     if (req.method === 'GET' && req.url === prefix) {
+      const started = performance.now();
+      diagnostics.record('info', 'server.page', { phase: 'started' });
       const page = html.replace('<script type="application/json" id="initial-diagnostics">null</script>',
         () => `<script type="application/json" id="initial-diagnostics">${JSON.stringify(savedDiagnosticSnapshot()).replaceAll('<', '\\u003c')}</script>`);
+      res.once('finish', () => diagnostics.record('info', 'server.page', { phase: 'finished', durationMs: performance.now() - started, responseBytes: Buffer.byteLength(page) }));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(page); return;
     }
     if (req.method !== 'POST' || req.url !== prefix + 'api') return json(res, 404, { error: 'Not found' });
@@ -136,6 +137,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     const started = performance.now(), fields = {};
     try {
       message = JSON.parse(body);
+      lifetime.signal.throwIfAborted();
       if (!message || typeof message !== 'object' || Array.isArray(message)) throw new TypeError('Expected an object');
       const input = message.input ?? {};
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('input must be an object');
@@ -148,6 +150,10 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
         result = savedDiagnosticSnapshot();
       } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel'].includes(message.method)) {
+        const { buildReport, createReviewService, safeReviewError, ReviewError, prepareInsightReview, finalizeInsightReview, describeModelReference } = await loadReview();
+        lifetime.signal.throwIfAborted();
+        reviewService ??= createReviewService(session, { diagnostics });
+        reviewAbortReason = new ReviewError('cancelled');
         const allowed = message.method === 'review.run' ? ['prompt', 'expectedModel'] : message.method === 'review.prepare' ? ['filters'] : message.method === 'review.analyze' ? ['snapshotId', 'expectedModel', 'expectedReasoning', 'allowSamples'] : [];
         if (Object.keys(input).some(key => !allowed.includes(key))) throw new TypeError('Unexpected review options.');
         if (message.method === 'review.prepare') {
@@ -232,8 +238,13 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         // loses its connection. No heartbeat, extra scan, or extra request is necessary.
         result = { ...result, diagnostics: savedDiagnosticSnapshot() };
       } else if (message.method === 'settings.get') result = { ...await settings.get(), defaultHome };
-      else if (message.method === 'settings.set') result = await settings.set(input);
+      else if (message.method === 'settings.set') {
+        const write = settings.set(input); settingsWrites.add(write);
+        try { result = await write; } finally { settingsWrites.delete(write); }
+      }
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
+        const { buildReport, addInstalledSkillVersions } = await loadUsage();
+        lifetime.signal.throwIfAborted();
         // Validate before opening any files.
         buildReport([], input, now());
         const config = await settings.get();
@@ -245,7 +256,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
           return;
         }
         const at = now(), buildFields = { records: scan.records.length, range: input.range, promptEvents: scan.promptEvents?.length ?? 0, tools: scan.tools?.length ?? 0, skills: scan.skills?.length ?? 0 };
-        const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at); buildFields.cacheHit = found.cached; return found; });
+        const { entry } = diagnostics.measure('report.build', buildFields, () => { const found = reportFor(scan, input, at, buildReport); buildFields.cacheHit = found.cached; return found; });
         const skills = entry.report.skills;
         diagnostics.record('info', 'skills.report', { range: entry.report.query.range, historyPhase: loading ? 'recent' : 'complete', scanId: currentScan,
           skills: scan.skills?.length ?? 0, rows: skills.rows.length, skillUses: skills.invocations, skillFailures: skills.failures,
@@ -282,6 +293,8 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
         return;
       } else if (['usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels'].includes(message.method)) {
+        const { buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels, readRequestPrompts } = await loadUsage();
+        lifetime.signal.throwIfAborted();
         const buildPage = message.method === 'usage.sessionModels' ? buildSessionModels : message.method === 'usage.modelProjects' ? buildModelProjectPage : message.method === 'usage.sessions' ? buildModelSessionPage : buildRequestPage;
         buildPage([], input, now());
         const config = await settings.get();
@@ -302,15 +315,16 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       json(res, 200, result);
       if (message.method !== 'diagnostics.get') diagnostics.record('info', 'api.request', { ...fields, phase: 'finished', httpStatus: 200, durationMs: performance.now() - started });
     } catch (e) {
+      if (lifetime.signal.aborted) return;
       const status = e instanceof TypeError || e instanceof RangeError || e instanceof SyntaxError ? 400 : 500;
       diagnostics.record('error', 'api.request', { ...fields, ...diagnosticError(e), phase: 'failed', httpStatus: status, durationMs: performance.now() - started });
       json(res, status, { error: e.message });
     }
   }
-  await new Promise((resolve, reject) => {
+  await diagnostics.measure('server.bind', {}, () => new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(endpoint?.port ?? 0, '127.0.0.1', () => { server.removeListener('error', reject); resolve(); });
-  });
+  }));
   origin = `http://127.0.0.1:${server.address().port}`;
   diagnostics.record('info', 'server.listening');
   let closing;
@@ -319,13 +333,15 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     close() {
       return closing ??= (async () => {
         diagnostics.record('info', 'server.closing');
+        lifetime.abort();
         const closed = new Promise((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
-        reviewRequest?.abort(new ReviewError('cancelled'));
-        preparedReview = contextSnapshot = undefined;
-        await reviewService.close();
-        server.closeIdleConnections();
-        await Promise.allSettled([...pending, history?.promise]);
+        // Stop HTTP immediately. An abandoned, potentially very large scan must not hold
+        // the canvas lifecycle queue (or its loopback port) until it finishes.
         server.closeAllConnections();
+        reviewRequest?.abort(reviewAbortReason);
+        preparedReview = contextSnapshot = undefined;
+        await reviewService?.close();
+        await Promise.allSettled([...settingsWrites]);
         await closed;
       })();
     },

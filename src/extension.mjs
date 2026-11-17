@@ -1,4 +1,3 @@
-import { createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import { registerCanvas } from './node/canvas.mjs';
 import { readFileSync } from 'node:fs';
 import { diagnosticError } from './core/diagnostics.mjs';
@@ -10,6 +9,7 @@ diagnostics.record('info', 'extension.started', { pluginVersion: version, nodeVe
 process.once('exit', exitCode => diagnostics.record('info', 'extension.exit', { exitCode }));
 // Observe crashes without suppressing Node's normal termination behavior.
 process.on('uncaughtExceptionMonitor', error => diagnostics.record('error', 'extension.crash', diagnosticError(error)));
+const { createCanvas, joinSession } = await diagnostics.measure('extension.sdk', {}, () => import('@github/copilot-sdk/extension'));
 const extension = await registerCanvas({ createCanvas, joinSession, diagnostics });
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
   diagnostics.record('info', 'extension.signal', { signal });

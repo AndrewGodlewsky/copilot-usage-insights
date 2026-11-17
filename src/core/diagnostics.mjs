@@ -1,5 +1,6 @@
 const errorTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'AggregateError', 'AbortError', 'TimeoutError']);
 export const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 'extension.signal', 'extension.exit', 'extension.crash',
+  'extension.sdk', 'extension.join', 'canvas.queue', 'server.start', 'server.import', 'server.assets', 'server.bind', 'server.page', 'server.endpointRead', 'server.usageModules', 'server.reviewModules',
   'canvas.open', 'canvas.close', 'canvas.dispose', 'runtime.started', 'server.listening', 'server.closing', 'server.closed', 'server.error', 'server.response', 'server.endpoint', 'server.endpointReset',
   'wsl.discovery', 'history.scan', 'history.source', 'history.discovery', 'history.copilot', 'history.journals', 'history.vscode', 'history.merge', 'history.database', 'history.names', 'history.finalize', 'report.build', 'report.serialize', 'skills.versions']);
 const errorCodes = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'EADDRINUSE', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
@@ -101,6 +102,11 @@ export function parseRuntimeDiagnostics(text) {
 // not an additive breakdown: stages can nest and can belong to different loads.
 export function loadTimingSummary(entries) {
   const labels = {
+    'extension.sdk': 'Copilot SDK loading', 'extension.join': 'Copilot extension registration', 'canvas.open': 'Canvas open callback', 'canvas.queue': 'Canvas lifecycle wait',
+    'server.start': 'Local server startup', 'server.import': 'Server module loading', 'server.endpointRead': 'Saved endpoint read',
+    'server.assets': 'Dashboard file read', 'server.bind': 'Loopback listener start', 'server.page': 'Dashboard HTML response',
+    'server.usageModules': 'Usage modules (after canvas startup)', 'server.reviewModules': 'AI review modules (explicit action)',
+    'ui.ready': 'Dashboard document loaded',
     'ui.load': 'Usage load', 'history.scan': 'All history', 'history.discovery': 'WSL source discovery',
     'history.recent': 'Recent journals ready', 'history.background': 'Remaining history verification', 'ui.history': 'History displayed',
     'history.copilot': 'Copilot source probing and journals', 'history.journals': 'Copilot journals',
@@ -112,7 +118,7 @@ export function loadTimingSummary(entries) {
   };
   const latest = new Map();
   for (const entry of entries) if (Object.hasOwn(labels, entry.event) && ['started', 'finished', 'failed'].includes(entry.phase)) {
-    const key = JSON.stringify([entry.source, entry.event, entry.sourceIndex, entry.loadKind, entry.historyPhase]);
+    const key = JSON.stringify([entry.source, entry.processId, entry.event, entry.sourceIndex, entry.loadKind, entry.historyPhase]);
     const previous = latest.get(key);
     if (!previous || entry.at >= previous.at) latest.set(key, entry);
   }
@@ -120,13 +126,13 @@ export function loadTimingSummary(entries) {
   if (!latest.size) lines.push('No load timings retained yet.');
   for (const entry of latest.values()) {
     const name = entry.event === 'ui.load' && entry.loadKind === 'initial' ? 'Initial usage load' : labels[entry.event];
-    const context = [entry.source, entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType, entry.historyPhase].filter(Boolean).join(', ');
+    const context = [entry.source, entry.processId ? `process ${entry.processId}` : '', entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType, entry.historyPhase].filter(Boolean).join(', ');
     const timing = Number.isFinite(entry.durationMs) ? `${entry.durationMs} ms` : 'no completion retained';
     const counts = ['scanId', 'records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'filesDeferred', 'databasesDeferred', 'bytesRead', 'bytesHashed', 'responseBytes', 'cacheHit', 'unchanged']
       .filter(key => typeof entry[key] === 'boolean' || Number.isFinite(entry[key])).map(key => `${key}=${entry[key]}`).join(', ');
     lines.push(`${entry.at} ${name}${context ? ` (${context})` : ''}: ${entry.phase}, ${timing}${counts ? '; ' + counts : ''}`);
   }
   lines.push('bytesRead = journal bytes parsed; bytesHashed = additional prefix-validation reads. Source numbers are anonymous and local to each scan.',
-    'Initial usage load starts after the dashboard script loads and excludes Copilot startup and final browser paint. Inventory loads separately.');
+    'Canvas startup timings are separate from usage scanning. Document loaded measures navigation through the page load event, not final browser paint. Host work before extension registration is not measured. Inventory loads separately.');
   return lines.join('\n');
 }

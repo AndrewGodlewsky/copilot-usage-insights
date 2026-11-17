@@ -35,6 +35,16 @@ test('validated cards get numbers from local evidence, not output; malformed or 
   assert.equal(validateInsightResponse(JSON.stringify(r), snapshot()).cards[0].observation, r.cards[0].observation, 'untrusted prose is preserved as text for escaped rendering');
 });
 
+test('comparison confidence uses the weaker period without replacing the displayed current coverage', () => {
+  const s = snapshot();
+  s.payload.evidence = [{ ...evidence, samples: 8, total: 10, previousSamples: 7, previousTotal: 10 }];
+  const r = response(); r.cards[0].confidence = 'high';
+  const result = validateInsightResponse(JSON.stringify(r), s);
+  assert.equal(result.cards[0].confidence, 'medium');
+  assert.equal(result.cards[0].evidence.samples, 8);
+  assert.equal(result.cards[0].evidence.total, 10);
+});
+
 test('card assessment is explicit and validated rather than inferred from its number', () => {
   for (const assessment of ['positive', 'opportunity', 'neutral']) {
     const r = response(); r.cards[0].assessment = assessment;

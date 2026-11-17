@@ -39,9 +39,10 @@ export function validateInsightResponse(content, snapshot) {
     if (!evidence || seen.has(card.evidenceId) || !['positive', 'opportunity', 'neutral'].includes(card.assessment) || !['high', 'medium', 'low'].includes(card.confidence)) throw new Error('Invalid review evidence');
     seen.add(card.evidenceId);
     if (!Array.isArray(card.supportingEvidence) || card.supportingEvidence.length > 3 || card.supportingEvidence.some(id => !known.has(id))) throw new Error('Invalid supporting evidence');
-    const cap = evidence.samples < 5 ? 'low' : evidence.total > 0 && evidence.samples / evidence.total < .8 ? 'medium' : 'high';
     const levels = ['low', 'medium', 'high'];
-    const confidence = levels[Math.min(levels.indexOf(cap), levels.indexOf(card.confidence))];
+    const coverage = [evidence, ...(Number.isFinite(evidence.previousSamples) ? [{ samples: evidence.previousSamples, total: evidence.previousTotal }] : [])];
+    const cap = Math.min(...coverage.map(e => e.samples < 5 ? 0 : e.total > 0 && e.samples / e.total < .8 ? 1 : 2));
+    const confidence = levels[Math.min(cap, levels.indexOf(card.confidence))];
     return { ...card, confidence, confidenceLimited: confidence !== card.confidence, evidence: { ...evidence, label: snapshot.labels?.[evidence.id] || evidence.label },
       supportingEvidence: card.supportingEvidence.map(id => ({ ...known.get(id), label: snapshot.labels?.[id] || known.get(id).label })) };
   });

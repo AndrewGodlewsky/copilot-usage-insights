@@ -3,6 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
+export const DEFAULT_REVIEW_MODEL = 'claude-sonnet-5.5';
+
 export const copilotHome = () => path.resolve(process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot'));
 export const enhancePromptUsageHome = () => path.resolve(process.env.ENHANCE_PROMPT_DATA_DIR
   || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'copilot-enhance-prompt'), 'usage');
@@ -51,9 +53,14 @@ function validate(input) {
 export function createSettings(dir = configDir()) {
   const file = path.join(dir, 'settings.json');
   let queue = Promise.resolve();
+  const defaults = (saved = {}) => ({ extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true,
+    includeWsl: true, readWslDatabases: true, includeVSCode: true, reviewAllowSamples: true,
+    // Keep the legacy effort selection for a previously chosen different model.
+    ...(!saved.reviewModel || saved.reviewModel === DEFAULT_REVIEW_MODEL ? { reviewReasoning: 'high' } : {}),
+    ...saved, reviewModel: saved.reviewModel || DEFAULT_REVIEW_MODEL });
   async function get() {
-    try { return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, reviewAllowSamples: true, ...validate(JSON.parse(await fs.readFile(file, 'utf8'))) }; }
-    catch (e) { if (e.code === 'ENOENT') return { extraHomes: [], disabledHomes: [], extraVSCodeHomes: [], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, reviewAllowSamples: true }; throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    try { return defaults(validate(JSON.parse(await fs.readFile(file, 'utf8')))); }
+    catch (e) { if (e.code === 'ENOENT') return defaults(); throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
   }
   return {
     get,

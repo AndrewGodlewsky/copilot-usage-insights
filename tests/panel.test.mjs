@@ -126,9 +126,26 @@ async function mountPanel(report, config = { textSize: 'small', extraHomes: [], 
     },
   });
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
+  if (!initial.beforeLoad) {
+    windowListeners.get('load')?.();
+    const startup = timeouts.find(timer => timer.ms === 0);
+    await startup?.callback();
+  }
   await new Promise(setImmediate);
   return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context, objectUrls, revoked };
 }
+
+test('dashboard waits for document load before requesting history, and starts only once', async () => {
+  const panel = await mountPanel(buildReport([], { range: 'mtd' }), undefined, undefined, undefined, { beforeLoad: true });
+  assert.equal(panel.requests.length, 0);
+  panel.windowListeners.get('load')();
+  panel.windowListeners.get('load')();
+  assert.equal(panel.requests.length, 0, 'loading is deferred out of the load event');
+  const timers = panel.timeouts.filter(timer => timer.ms === 0);
+  assert.equal(timers.length, 1);
+  await timers[0].callback();
+  assert.equal(panel.requests.filter(r => r.method === 'usage.report').length, 1);
+});
 
 test('Skills rerenders dated rows when switching between 7 and 90 days', async () => {
   const now = new Date(2026, 10, 13, 12);
@@ -662,8 +679,7 @@ test('optional prompt lengths and tool outcomes stay in coverage details without
   get('coverage-open').onclick();
   assert.match(get('coverage-limitations').innerHTML, /Some prompt lengths are not recorded/);
   assert.equal(requests.length, before);
-  assert.match(get('efficiency-habits').innerHTML, />14</);
-  assert.match(get('efficiency-habits').innerHTML, /1 messages with text lengths/);
+  assert.match(get('efficiency-conversations').innerHTML, /14 characters across 1 messages/);
 
   report.efficiency.interactions.promptSamples = 2;
   const row = { name: 'tool', server: 'server', calls: 2, successes: 1, failures: 0, unknown: 1, successRate: 100, lastUsed: null };
@@ -2532,7 +2548,7 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
   assert.equal(get('efficiency-pattern-topic').value, '2');
   const contextBefore = requests.length;
   choose('efficiency-pattern-topic', 'habits');
-  get('efficiency-inspect-instructions').onclick();
+  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { action: 'open-context' } }) } });
   assert.equal(get('efficiency-tokens-panel').hidden, false);
   assert.equal(get('efficiency-topic').value, '1');
   assert.equal(get('efficiency-pattern-topic').value, '1');
@@ -2760,7 +2776,7 @@ test('Efficiency panels live only in their assigned dashboard and AI review stay
   const review = html.split('<section id="efficiency-review-panel"')[1].split('<details class="efficiency-method"')[0];
   assert.match(tokens, /id="token-context-panel"/);
   assert.doesNotMatch(tokens, /id="efficiency-reliability"|id="efficiency-habits"|id="efficiency-models"/);
-  for (const id of ['efficiency-reliability', 'efficiency-habits', 'efficiency-models']) assert.match(patterns, new RegExp('id="' + id + '"'));
+  for (const id of ['efficiency-reliability', 'efficiency-conversations', 'conversation-topics', 'efficiency-models']) assert.match(patterns, new RegExp('id="' + id + '"'));
   assert.match(patterns, /<h2[^>]*>Findings<\/h2>/);
   assert.match(patterns, /<h2[^>]*>Model comparisons<\/h2>/);
   assert.match(review, /id="efficiency-review-open"/);
@@ -2817,36 +2833,30 @@ test('Efficiency subviews switch locally, retain selection on refresh, and expos
   await get('refresh').onclick();
   choose('patterns');
   assert.equal(get('efficiency-method').hidden, false);
-  assert.match(get('efficiency-habits').innerHTML, /1\.3K/);
-  assert.match(get('efficiency-conversations').innerHTML, /User prompts per session/);
-  assert.match(get('efficiency-conversations').innerHTML, /2 of 3 sessions/);
+  assert.match(get('efficiency-conversations').innerHTML, /1\.3K/);
+  assert.match(get('efficiency-conversations').innerHTML, /User prompts per conversation/);
+  assert.match(get('efficiency-conversations').innerHTML, /2 of 3 conversations/);
   assert.match(get('efficiency-conversations').innerHTML, /50%/);
-  assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call/);
-  assert.equal((get('efficiency-habits').innerHTML.match(/Characters \/ prompt/g) || []).length, 1);
-  assert.match(get('efficiency-habits').innerHTML, /separate averages, not a matched ratio/);
-  assert.match(get('efficiency-habits').innerHTML, /Messages \/ session|Agent turns \/ session/);
+  assert.doesNotMatch(get('efficiency-conversations').innerHTML, /Input tokens \/ call|Agent turns \/ session/);
+  assert.match(get('efficiency-conversations').innerHTML, /does not measure completeness or quality/);
   assert.match(get('efficiency-reliability').innerHTML, /66\.7%|0%/);
   assert.match(get('efficiency-reliability').innerHTML, /&lt;private tool&gt;|&lt;server&gt;/);
   assert.doesNotMatch(get('efficiency-reliability').innerHTML, /<private tool>|<server>/);
   assert.match(get('efficiency-reliability').innerHTML, /1 recorded root-session error/);
-  get('efficiency-inspect-instructions').onclick();
+  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
   assert.equal(get('efficiency-tokens-panel').hidden, false);
   server.contextSnapshot = { available: true, checkedAt: new Date().toISOString(), totalTokens: 1000, categories: { customInstructions: 500 }, entries: [], omitted: 0 };
   await get('efficiency-context-read').onclick();
-  assert.match(get('efficiency-instructions').innerHTML, /500 estimated tokens/);
-  assert.match(get('efficiency-instructions').innerHTML, /not whether the instructions were followed/);
+  assert.match(get('efficiency-context-result').innerHTML, /Custom instructions/);
+  assert.match(get('efficiency-context-result').innerHTML, /500/);
   report.efficiency.interactions = { observedSessions: 0, omitted: 3 };
   await get('refresh').onclick();
-  assert.match(get('efficiency-habits').innerHTML, /3 events excluded because Copilot attribution was missing or mixed/);
-  assert.match(get('efficiency-habits').innerHTML, /Input tokens \/ call:/);
-  assert.doesNotMatch(get('efficiency-habits').innerHTML, /No matching message or turn metadata was recorded/);
+  assert.doesNotMatch(get('efficiency-conversations').innerHTML, /Average displayed prompt length/);
   report.efficiency.interactions = { reason: 'model-filter' };
   report.efficiency.conversations = { reason: 'model-filter' };
   await get('refresh').onclick();
   assert.match(get('efficiency-conversations').innerHTML, /Clear the model filter/);
   assert.doesNotMatch(get('efficiency-conversations').innerHTML, /<table|conversation-bar/);
-  assert.match(get('efficiency-habits').innerHTML, /Clear the model filter/);
-  assert.doesNotMatch(get('efficiency-habits').innerHTML, /Characters \/ prompt|Input tokens \/ call/);
   assert.match(get('efficiency-reliability').innerHTML, /unavailable under a model filter/);
   choose('review'); await get('efficiency-review-open').onclick();
   assert.match(get('efficiency-review-output').value, /model filter/);
@@ -2966,6 +2976,37 @@ test('AI review uses saved excerpt preferences, ignoring unsaved Settings edits'
   await get('efficiency-review-open').onclick();
   assert.equal(get('review-result-note').hidden, false, 'failed optional work remains visible');
   assert.match(get('review-result-note').textContent, /follow-up failed/);
+});
+
+test('review settings show Sonnet High, retain choices, and save an explicitly changed model and effort', async () => {
+  const { report } = await requestPanel();
+  const { get, server, requests, document } = await mountPanel(report, { reviewModel: 'claude-sonnet-5.5', reviewReasoning: 'high', extraHomes: [], disabledHomes: [] });
+  server.review = () => ({ models: [
+    { id: 'claude-sonnet-5.5', label: 'Claude Sonnet 5.5', reasoningEfforts: ['medium', 'high'] },
+    { id: 'alternative', label: 'Alternative', reasoningEfforts: ['medium', 'high'] },
+  ] });
+  assert.ok(!requests.some(r => r.method === 'review.catalog'), 'startup does not load models');
+  await get('review-settings').onclick();
+  assert.equal(document.activeElement, get('review-model'));
+  assert.equal(get('review-model').value, 'claude-sonnet-5.5');
+  assert.match(get('review-model').innerHTML, /Claude Sonnet 5.5/);
+  assert.equal(get('review-reasoning').value, 'high');
+  await get('review-models-refresh').onclick();
+  assert.equal(get('review-reasoning').value, 'high');
+  get('review-model').value = 'alternative'; get('review-model').onchange();
+  assert.equal(get('review-reasoning').value, 'high');
+  get('review-reasoning').value = 'medium'; get('review-reasoning').onchange();
+  await get('review-models-refresh').onclick();
+  assert.equal(get('review-model').value, 'alternative');
+  assert.equal(get('review-reasoning').value, 'medium', 'refresh preserves unsaved effort selection');
+  await get('settings-save').onclick();
+  assert.equal(server.config.reviewModel, 'alternative'); assert.equal(server.config.reviewReasoning, 'medium');
+  const reads = requests.filter(r => r.method === 'review.catalog').length;
+  await get('settings-open').onclick();
+  assert.match(get('review-model').innerHTML, /Claude Sonnet 5.5/);
+  assert.equal(get('review-model').value, 'alternative'); assert.equal(get('review-reasoning').value, 'medium');
+  assert.equal(requests.filter(r => r.method === 'review.catalog').length, reads);
+  assert.ok(!requests.some(r => r.method === 'review.analyze'));
 });
 
 test('one explicit Create action reviews the date range across all filters and safely renders a frozen result', async () => {
@@ -3264,4 +3305,71 @@ test('a failed review restores focus when its animation control disappears', asy
   prepare({ id: 'ready', model: 'fixture-model', preview: '{}', reasoningEffort: 'default', hasEvidence: true }); await pending;
   assert.equal(get('review-progress').hidden, true);
   assert.equal(document.activeElement, get('efficiency-review-open'));
+});
+
+test('focused conversation navigation is local, keyboard accessible and survives refresh and filters', async () => {
+  const { get, requests, report, document } = await requestPanel();
+  const nav = get('conversation-topics'), body = get('efficiency-conversations');
+  const choose = topic => nav.onclick({ target: { closest: () => ({ dataset: { conversationTopic: topic } }) } });
+  const before = requests.length;
+  choose('work');
+  assert.equal(get('conversation-tab-work').getAttribute('aria-pressed'), 'true');
+  assert.match(body.innerHTML, /What happens between your messages/);
+  assert.doesNotMatch(body.innerHTML, /How much do you interact/);
+  choose('guidance'); assert.match(body.innerHTML, /When your messages arrive/);
+  let prevented = 0;
+  nav.onkeydown({ key: 'End', preventDefault() { prevented++; } });
+  assert.equal(get('conversation-tab-returning').getAttribute('aria-pressed'), 'true');
+  assert.equal(document.activeElement, get('conversation-tab-returning'));
+  assert.equal(prevented, 1);
+  assert.match(body.innerHTML, /Days with user messages/);
+  assert.equal(requests.length, before, 'topics never scan or invoke AI');
+  await get('refresh').onclick();
+  assert.equal(get('conversation-tab-returning').getAttribute('aria-pressed'), 'true');
+  assert.match(body.innerHTML, /Days with user messages/);
+  const loaded = report.efficiency.conversations;
+  report.efficiency.conversations = { reason: 'model-filter' };
+  await get('refresh').onclick(); assert.match(body.innerHTML, /Clear the model filter/);
+  assert.equal(get('conversation-tab-returning').getAttribute('aria-pressed'), 'true');
+  report.efficiency.conversations = loaded; await get('refresh').onclick();
+  assert.match(body.innerHTML, /Days with user messages/);
+  const updated = requests.length;
+  body.onclick({ target: { closest: () => ({ dataset: { conversationExplore: '' } }) } });
+  assert.match(body.innerHTML, /Recorded conversation examples/);
+  assert.equal(requests.length, updated, 'examples use only the loaded metadata');
+  nav.onkeydown({ key: 'Home', preventDefault() {} });
+  assert.equal(get('conversation-tab-interaction').getAttribute('aria-pressed'), 'true');
+  assert.doesNotMatch(body.innerHTML, /Recorded conversation examples/);
+  get('conversation-tab-returning').focus();
+  nav.onkeydown({ key: 'ArrowLeft', target: { closest: () => ({ dataset: { conversationTopic: 'returning' } }) }, preventDefault() {} });
+  assert.equal(document.activeElement, get('conversation-tab-guidance'), 'arrows start at the focused button, even when another topic was selected');
+  assert.equal(get('conversation-tab-guidance').getAttribute('aria-pressed'), 'true');
+});
+
+test('focused conversation disclosure summaries retain focus and open state after refresh', async () => {
+  const { get, nodes, document, report } = await requestPanel();
+  Object.assign(report.efficiency.conversations, { workSessions: 1, workPrompts: 1, workMatrix: [[1, 0, 0], [0, 0, 0], [0, 0, 0]] });
+  const root = get('efficiency-conversations');
+  get('conversation-topics').onclick({ target: { closest: () => ({ dataset: { conversationTopic: 'work' } }) } });
+  const pairs = [['conversation-coverage', 'conversation-coverage-toggle'], ['conversation-explanation', 'conversation-explanation-toggle'], ['conversation-work-detail', 'conversation-work-toggle']];
+  let markup = root.innerHTML;
+  root.querySelectorAll = () => pairs.map(([id]) => get(id)).filter(d => d.open);
+  Object.defineProperty(root, 'innerHTML', { get: () => markup, set(value) {
+    markup = value;
+    for (const [id, summaryId] of pairs) {
+      const old = get(summaryId);
+      if (document.activeElement === old) document.activeElement = null;
+      nodes.set(summaryId, { ...old, id: summaryId, focus() { document.activeElement = this; } });
+      get(id).open = false;
+    }
+  } });
+  for (const [id, summaryId] of pairs) {
+    assert.ok(markup.includes(`id="${summaryId}"`));
+    get(id).id = id; get(id).open = true;
+    const old = get(summaryId); old.id = summaryId; old.focus();
+    await get('refresh').onclick();
+    assert.notEqual(get(summaryId), old, 'a refresh replaces generated summaries');
+    assert.equal(document.activeElement, get(summaryId));
+    assert.equal(get(id).open, true);
+  }
 });

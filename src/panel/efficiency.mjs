@@ -48,6 +48,17 @@ export function buildEfficiencyReview(report, context, scope = {}, modelReferenc
   data.history.interactions = e.interactions?.reason === 'model-filter' ? { available: false, reason: 'model-filter' }
     : reviewNumbers(e.interactions, ['prompts', 'promptSamples', 'promptSessions', 'averagePromptChars', 'averagePromptsPerSession', 'turns', 'turnSessions', 'averageTurnsPerSession', 'sessionErrors', 'observedSessions', 'omitted']);
   data.history.tools = toolOutcomeSummary(report.tools);
+  const conversation = e.conversations;
+  data.history.conversations = !conversation || conversation.reason ? null : {
+    ...reviewNumbers(conversation, ['sessions', 'countedSessions', 'uncertainSessions', 'withoutPrompts', 'prompts', 'medianPrompts', 'averagePrompts', 'multiDaySessions', 'priorSessions']),
+    depthCounts: (conversation.distribution || []).slice(0, 4).map(row => reviewNumbers(row, ['count'])),
+    activeDateCounts: (conversation.dayDistribution || []).slice(0, 3).map(row => reviewNumbers(row, ['count'])),
+    promptWork: { ...reviewNumbers(conversation.promptWork, ['prompts', 'totalPrompts', 'medianCalls', 'averageCalls']),
+      distributionCounts: (conversation.promptWork?.distribution || []).slice(0, 4).map(row => reviewNumbers(row, ['count'])) },
+    delivery: reviewNumbers(conversation.delivery, ['idle', 'steering', 'queued', 'unknown', 'known', 'prompts', 'unconfirmedPrompts', 'classifiedSessions', 'userStops']),
+    steeringConcentration: reviewNumbers(conversation.steering, ['sessions', 'topSessions', 'topMessages']),
+    definitions: 'Depth bins: 1, 2–5, 6–15, 16+ human prompts. Active date bins: 1, 2–3, 4+. Call bins: 1, 2–5, 6–15, 16+. Selected dates only. Confirmed messages count without individual billing; work uses complete linked prompts. Steering and stops are timing/actions, not quality. Local example timelines are not exported.'
+  };
   data.history.models.forEach((row, i) => { row.modelId = verifiedHistoricalModelId(models[i], reference); });
   return 'Review my AI resource use using ONLY the snapshot below. Give up to three useful observations, including a pattern working well when the evidence supports it. For each, cite the exact field and sample coverage, explain an alternative explanation, suggest one small experiment, and say what I should compare afterward. Distinguish measurement from hypothesis. Do not invent savings, a score, task success, or an optimal target. Do not use tools or modify my setup. If evidence is weak, say what is missing.\n\n' + serializeReviewEvidence(data, 46 * 1024);
 }

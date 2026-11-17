@@ -11,6 +11,10 @@ test('AI review exports bounded, aliased measurements with scope and no identify
     skills: { invocations: 2, rows: [{ name: 'SECRET' }] }, sources: ['SECRET'] };
   const context = { available: true, checkedAt: report.generatedAt, totalTokens: 1000, categories: { messages: 800, secret: 'SECRET' }, entries: [{ label: 'SECRET' }] };
   report.efficiency.interactions = { prompts: 5, averagePromptChars: 500, content: 'SECRET', sessionId: 'SECRET' };
+  report.efficiency.conversations = { sessions: 4, countedSessions: 3, medianPrompts: 2, distribution: [{ label: 'SECRET', count: 3 }],
+    dayDistribution: [{ label: 'SECRET', count: 1 }], promptWork: { prompts: 5, totalPrompts: 6, medianCalls: 2, distribution: [{ label: 'SECRET', count: 5 }] },
+    examples: [{ sessionId: 'SECRET', events: [{ ms: 123456789, delivery: 'SECRET' }] }], comparison: { private: 'SECRET' },
+    delivery: { idle: 3, steering: 2, unknown: 1 }, steering: { topMessages: 2, sessions: 1 } };
   report.tools = { rows: [{ name: 'SECRET', calls: 5, successes: 3, failures: 1, unknown: 1, arguments: 'SECRET' }] };
   const result = buildEfficiencyReview(report, context, { models: ['SECRET-0'], project: 'SECRET', session: 'SECRET' });
   assert.doesNotMatch(result, /SECRET|sessionName|"path"/);
@@ -23,6 +27,9 @@ test('AI review exports bounded, aliased measurements with scope and no identify
   assert.equal(data.currentContext.totalTokens, 1000);
   assert.equal(data.history.interactions.averagePromptChars, 500);
   assert.equal(data.history.tools[0].successRate, 75);
+  assert.equal(data.history.conversations.medianPrompts, 2);
+  assert.equal(data.history.conversations.promptWork.medianCalls, 2);
+  assert.doesNotMatch(result, /"examples"|"events"|123456789/);
   report.efficiency.summary.requests = 100;
   assert.equal(data.history.summary.requests, 12, 'export is a frozen snapshot');
   assert.ok(Buffer.byteLength(result) < 48 * 1024);

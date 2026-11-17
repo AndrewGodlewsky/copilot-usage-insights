@@ -62,6 +62,18 @@ function fixture(t, overrides = {}) {
 }
 const input = { model: 'model-a', prompt: 'Synthetic statistics only' };
 
+test('catalog recommends exact eligible Sonnet 5.5, with no automatic model substitute', async t => {
+  const f = fixture(t, { extraModels: [
+    { id: 'claude-opus-5.5', name: 'Opus', provider: { kind: 'copilot' } },
+    { id: 'private-model', name: 'Claude Sonnet 5.5', provider: { kind: 'copilot' } },
+    { id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', provider: { kind: 'copilot' }, policy: { state: 'enabled' } },
+  ] });
+  assert.equal((await f.service.catalog()).recommendedModel, 'claude-sonnet-5.5');
+  f.state.extraModels[2].policy.state = 'disabled';
+  assert.equal((await f.service.catalog()).recommendedModel, '');
+  assert.equal(f.state.sent.length, 0);
+});
+
 test('frozen references are sent unchanged and refreshed or changed metadata requires re-preparation', async t => {
   const publicRow = { id: 'gpt-5.3-codex', provider: { kind: 'copilot' }, capabilities: { supports: { vision: true } } };
   for (const change of ['none', 'capability', 'policy', 'refresh', 'account']) {

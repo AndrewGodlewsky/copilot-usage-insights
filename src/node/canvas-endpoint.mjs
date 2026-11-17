@@ -24,7 +24,8 @@ export async function forgetCanvasEndpoint(identity) {
 // Copilot can replace an extension while retaining its canvas renderer. Preserve that
 // renderer's private loopback address; never share it with another session or instance.
 export async function startCanvasServer({ session, instanceId, extensionId = '', endpointDirectory = path.join(configDir(), 'canvas-endpoints'), ...options }) {
-  const { startServer } = await import('./canvas-server.mjs');
+  const measure = (event, work) => options.diagnostics ? options.diagnostics.measure(event, {}, work) : work();
+  const { startServer } = await measure('server.import', () => import('./canvas-server.mjs'));
   const file = endpointFile({ session, instanceId, extensionId, endpointDirectory });
   async function savedEndpoint() {
     try {
@@ -35,8 +36,10 @@ export async function startCanvasServer({ session, instanceId, extensionId = '',
   }
   let endpoint;
   try {
-    await fs.mkdir(endpointDirectory, { recursive: true, mode: 0o700 });
-    endpoint = await savedEndpoint();
+    endpoint = await measure('server.endpointRead', async () => {
+      await fs.mkdir(endpointDirectory, { recursive: true, mode: 0o700 });
+      return savedEndpoint();
+    });
   } catch (error) {
     // Recovery metadata is optional: a damaged or unwritable file must not prevent opening.
     options.diagnostics?.record('warn', 'server.endpoint', { phase: 'failed', ...diagnosticError(error) });
