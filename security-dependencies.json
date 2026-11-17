@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-17",
+  "vendored": [
+    {
+      "name": "js-yaml",
+      "version": "5.5.0",
+      "file": "src/vendor/js-yaml/js-yaml.mjs",
+      "sha256": "de0f5266d4312ab9cd564aba4217eb9cc98dcfd18bd59988aa7e0971e7c722b5",
+      "license": "MIT",
+      "licenseFile": "src/vendor/js-yaml/LICENSE",
+      "source": "https://registry.npmjs.org/js-yaml/5.5.0",
+      "artifact": "dist/browser/js-yaml.esm.min.mjs"
+    }
+  ],
+  "hostProvided": ["Node.js (including SQLite)", "@github/copilot-sdk/extension", "Copilot CLI helper"],
+  "optionalSystemTools": ["GitHub CLI (account verification)", "wsl.exe (running distributions only)", "Python 3 with sqlite3 (WSL database fallback)"]
+}

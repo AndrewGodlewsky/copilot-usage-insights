@@ -1,6 +1,7 @@
 import { open, stat } from 'node:fs/promises';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
 import { isLocalSkillFilePath } from './skill-folder.mjs';
+import { inOrder } from './read-queue.mjs';
 
 const MAX_HEADER_BYTES = 64 * 1024, MAX_REMEMBERED = 512;
 // A skill file's version is reread only when the file's size or timestamps change.
@@ -51,6 +52,6 @@ export async function readInstalledSkillVersion(file) {
 export async function addInstalledSkillVersions(rows) {
   const versions = new Map();
   for (const row of rows) if (!versions.has(row.path)) versions.set(row.path, null);
-  await Promise.all([...versions.keys()].map(async file => versions.set(file, await readInstalledSkillVersion(file))));
+  await inOrder([...versions.keys()], async file => versions.set(file, await readInstalledSkillVersion(file)));
   for (const row of rows) row.installedVersion = versions.get(row.path);
 }

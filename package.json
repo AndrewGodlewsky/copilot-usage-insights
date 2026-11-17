@@ -9,6 +9,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "validate:benchmarks": "node scripts/validate-model-benchmarks.mjs",
+    "validate:security": "node scripts/validate-security.mjs",
+    "benchmark:reports": "node --expose-gc scripts/benchmark-report-scale.mjs",
     "test": "node --test tests/*.test.mjs",
     "install:local": "node scripts/build.mjs && node scripts/install-local.mjs",
     "preview": "node scripts/build.mjs && node scripts/preview.mjs",

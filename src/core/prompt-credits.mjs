@@ -5,14 +5,18 @@ import { createContextGrowthAccumulator } from './context-growth.mjs';
 // IDs must remain exact: truncating long API call IDs can alias unrelated calls.
 export const linkId = value => typeof value === 'string' && value.length <= 8192 ? value : '';
 // A journal repeats the same identifiers on many lines, and every parsed line holds its own
-// copy of the text. Equal strings are kept once; the table is bounded and simply starts over.
+// copy of the text. Bound both entries and UTF-16 character storage; oversized values
+// remain intact in their records but do not stay alive in this process-wide cache.
 const shared = new Map();
+let sharedBytes = 0;
 export function intern(value) {
-  if (typeof value !== 'string' || !value) return value;
+  if (typeof value !== 'string' || !value || value.length > 8192) return value;
   const known = shared.get(value);
   if (known !== undefined) return known;
-  if (shared.size >= 16384) shared.clear();
+  const bytes = value.length * 2;
+  if (shared.size >= 16384 || sharedBytes + bytes > 4 * 1024 * 1024) { shared.clear(); sharedBytes = 0; }
   shared.set(value, value);
+  sharedBytes += bytes;
   return value;
 }
 const link = value => intern(linkId(value));
@@ -64,15 +68,25 @@ export function samePromptEvent(a, b, accounting = false) {
 }
 export function createPromptEventSet() {
   const byId = new Map(), events = [];
+  // Conflicts remain distinct, but an adversarial reused ID must not compare every prior copy.
+  const signature = e => JSON.stringify(Object.keys(e).filter(k => k !== 'environment' && e[k] !== undefined).sort().map(k => [k, e[k]]));
   return {
     events,
     // Returns the retained event: the first equal copy, or `e` itself when it is new.
     add(e) {
       const seen = byId.get(e.id);
       if (seen === undefined) byId.set(e.id, e);
-      else if (Array.isArray(seen)) { const match = seen.find(x => samePromptEvent(x, e)); if (match) return match; seen.push(e); }
+      else if (seen instanceof Map) {
+        const key = signature(e), variants = seen.get(key), match = variants?.find(x => samePromptEvent(x, e));
+        if (match) return match;
+        if (variants) variants.push(e); else seen.set(key, [e]);
+      }
       else if (samePromptEvent(seen, e)) return seen;
-      else byId.set(e.id, [seen, e]);
+      else {
+        const variants = new Map([[signature(seen), [seen]]]), key = signature(e);
+        if (variants.has(key)) variants.get(key).push(e); else variants.set(key, [e]);
+        byId.set(e.id, variants);
+      }
       events.push(e);
       return e;
     },
@@ -311,17 +325,22 @@ function attributeSessions(all, records, recordByKey) {
     }
     let incomplete = !finished.some(f => f.ms >= lastStart);
     if (!incomplete && spawned.length) {
-      const childNodes = [...(s.children.get(tool) || EMPTY)], spawnIds = new Set(spawned.map(spawn => spawn.agent));
-      incomplete = spawned.some(spawn => {
+      const spawnIds = new Set(spawned.map(spawn => spawn.agent)), workByAgent = new Map(), doneByAgent = new Map();
+      for (const n of s.children.get(tool) || EMPTY) {
+        let latest = -Infinity;
+        for (const m of n.messages) latest = Math.max(latest, m.ms);
+        for (const t of n.turns) latest = Math.max(latest, t.end?.ms || t.start.ms);
         // A tool-only link can cover one unambiguous spawn, never several distinct agents.
-        const matched = childNodes.filter(n => n.agents.has(spawn.agent) || !n.agents.size && spawnIds.size === 1);
-        if (!matched.some(n => n.messages.length)) return true;
-        let lastChildWork = spawn.ms;
-        for (const n of matched) {
-          for (const m of n.messages) lastChildWork = Math.max(lastChildWork, m.ms);
-          for (const t of n.turns) lastChildWork = Math.max(lastChildWork, t.end?.ms || t.start.ms);
+        for (const agent of n.agents.size ? n.agents : spawnIds.size === 1 ? spawnIds : EMPTY) {
+          let work = workByAgent.get(agent);
+          if (!work) workByAgent.set(agent, work = { messages: false, latest: -Infinity });
+          work.messages ||= n.messages.length > 0; work.latest = Math.max(work.latest, latest);
         }
-        return !agentsDone.some(done => done.agent === spawn.agent && done.ms >= lastChildWork);
+      }
+      for (const done of agentsDone) doneByAgent.set(done.agent, Math.max(doneByAgent.get(done.agent) ?? -Infinity, done.ms));
+      incomplete = spawned.some(spawn => {
+        const work = workByAgent.get(spawn.agent);
+        return !work?.messages || !(doneByAgent.get(spawn.agent) >= Math.max(spawn.ms, work.latest));
       });
     }
     if (incomplete) for (const node of candidates) node.unfinished = true;
@@ -443,7 +462,12 @@ function attributePrompts(events, records, nowMs, { memo, unique } = {}) {
   }
   // A receipt recorded in one journal for another session's call ties those sessions together.
   const parent = new Map(), receiptOwner = new Map();
-  const find = id => { while (parent.has(id)) id = parent.get(id); return id; };
+  const find = id => {
+    let top = id;
+    while (parent.has(top)) top = parent.get(top);
+    while (parent.has(id)) { const next = parent.get(id); parent.set(id, top); id = next; }
+    return top;
+  };
   const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent.set(b, a); };
   for (const [id, list] of eventsBySession) for (const e of list) if (e.kind === 'receipt') {
     const record = recordByKey.get(e.receiptKey);
@@ -468,11 +492,19 @@ function attributePrompts(events, records, nowMs, { memo, unique } = {}) {
   else {
     const coupled = new Map();
     for (const id of ids) group(coupled, find(id), id);
-    for (const members of coupled.values()) {
+    const inputs = new Map(), inputBySession = new Map();
+    for (const [id, members] of coupled) if (members.length > 1) {
+      const input = { events: [], records: [] }; inputs.set(id, input);
+      for (const member of members) inputBySession.set(member, input);
+    }
+    // Partition once, retaining the input order used to break equal timestamp/ID ties.
+    for (const e of source) if (e.ms <= nowMs) inputBySession.get(e.sessionId)?.events.push(e);
+    for (const r of records) if (r.ms <= nowMs) inputBySession.get(r.sessionId)?.records.push(r);
+    for (const [id, members] of coupled) {
       if (members.length === 1) { solo(members[0]); continue; }
       // Coupled sessions are solved together, in their original relative order.
-      const set = new Set(members);
-      outcomes.push(attributeSessions(source.filter(e => e.ms <= nowMs && set.has(e.sessionId)).sort(byTime), records.filter(r => r.ms <= nowMs && set.has(r.sessionId)), recordByKey));
+      const input = inputs.get(id);
+      outcomes.push(attributeSessions(input.events.sort(byTime), input.records, recordByKey));
     }
   }
   const result = { events, records, latest, next, sessions, outcomes };
@@ -483,10 +515,11 @@ function attributePrompts(events, records, nowMs, { memo, unique } = {}) {
 // Reuse the accounting graph's human identity and ambiguity checks; no prompt text is retained.
 export function reviewPromptCandidates(events, records, query, start, end, now, options) {
   const { outcomes } = attributePrompts(events, records, now.getTime(), options), found = [], seen = new Set();
+  const models = query.models && new Set(query.models);
   const byKey = new Map(records.map(r => [r.key, r]));
   for (const outcome of outcomes) for (const p of outcome.prompts) {
     if (!p.identity || !p.linksKnown || !p.provider || p.day < start || p.day > end || query.project && p.project !== query.project || query.session && p.sessionId !== query.session) continue;
-    if (query.models && !p.charges.some(r => query.models.includes(r.model))) continue;
+    if (models && !p.charges.some(r => models.has(r.model))) continue;
     const record = byKey.get(p.sample.recordKey), key = JSON.stringify([p.sessionId, p.sample.promptId]);
     if (!record?.logFile || !record.apiCallId || !p.sample.interaction || seen.has(key)) continue;
     seen.add(key); found.push({ ...p.sample, record, sessionId: p.sessionId });
@@ -500,15 +533,23 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     coverage: { cancelledPrompts: 0, interruptedPrompts: 0, pluginCalls: 0, compactionCalls: 0, unexpectedPrompts: 0, unexpectedCalls: 0 },
     work: { requests: 0, averageRequests: null, maxRequests: null, tokenPrompts: 0, tokens: null, averageTokens: null } };
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
-  const models = query.models, work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
+  const models = query.models && new Set(query.models), work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const conversations = createConversationAccumulator(records, query, start, end, now);
   const contextGrowth = createContextGrowthAccumulator(query, start, end, now);
+  let previousCharges, selectedCharges, groupModels;
+  let groupVisible = false, groupCount = 0, groupUncertain = 0;
   const projectCount = name => projectPrompts.get(name) || projectPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
   const sessionCount = (project, id) => {
     const key = JSON.stringify([project, id]);
     return sessionPrompts.get(key) || sessionPrompts.set(key, { project, id, count: 0, uncertain: 0 }).get(key);
   };
   const modelCount = name => modelPrompts.get(name) || modelPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
+  const finishGroupModels = () => {
+    if (groupVisible) for (const name of groupModels) {
+      const model = modelCount(name); model.count += groupCount; model.uncertain += groupUncertain;
+    }
+    groupVisible = false; groupCount = groupUncertain = 0;
+  };
   // Count submissions separately from cost eligibility; missing charges do not erase a known user action.
   for (const outcome of outcomes) {
     for (const stop of outcome.stops || EMPTY) conversations.stop(stop);
@@ -519,7 +560,15 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
       conversations.add(prompt, prompt.state === ELIGIBLE);
       contextGrowth.add(prompt);
       if (query.session && query.session !== prompt.sessionId) continue;
-      const charges = prompt.charges, selected = models ? charges.filter(r => models.includes(r.model)) : charges;
+      const charges = prompt.charges;
+      // Prompts from one shared interaction are consecutive and share the charge array.
+      if (charges !== previousCharges) {
+        finishGroupModels();
+        previousCharges = charges;
+        selectedCharges = models ? charges.filter(r => models.has(r.model)) : charges;
+        groupModels = new Set(selectedCharges.map(r => r.model).filter(Boolean));
+      }
+      const selected = selectedCharges;
       const dated = prompt.day >= start && prompt.day <= end;
       if (prompt.provider && (!models || selected.length || !charges.length)) {
         const count = projectCount(prompt.project);
@@ -528,9 +577,9 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
           const key = prompt.identity && (!models || prompt.linksKnown && selected.length) ? 'count' : 'uncertain';
           count[key]++; session[key]++;
         }
-        if (!query.project || query.project === prompt.project) for (const name of new Set(selected.map(r => r.model).filter(Boolean))) {
-          const model = modelCount(name);
-          if (dated) model[prompt.identity && prompt.linksKnown ? 'count' : 'uncertain']++;
+        if (!query.project || query.project === prompt.project) {
+          groupVisible = true;
+          if (dated) { if (prompt.identity && prompt.linksKnown) groupCount++; else groupUncertain++; }
         }
       }
       if (!dated || query.project && query.project !== prompt.project || models && !selected.length) continue;
@@ -549,7 +598,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
       }
     }
     for (const r of outcome.unassigned) {
-      if (query.session && query.session !== r.sessionId || query.project && query.project !== r.project || models && !models.includes(r.model)) continue;
+      if (query.session && query.session !== r.sessionId || query.project && query.project !== r.project || models && !models.has(r.model)) continue;
       const day = dayOfMs(r.ms);
       if (day >= start && day <= end) {
         result.unlinkedRequests++;
@@ -558,6 +607,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
       }
     }
   }
+  finishGroupModels();
   result.projectPrompts = [...projectPrompts.values()];
   result.conversations = conversations.finish();
   result.contextGrowth = contextGrowth.finish(options?.sessionLabels);

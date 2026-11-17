@@ -125,12 +125,13 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
 
 function toolReport(records, copilotSessions, activity, input, start, end, now) {
   const nowMs = now.getTime();
+  const selectedModels = input.models && new Set(input.models);
   const excluded = new Set(activity.skillExcludedSessions || []), groups = [], byName = new Map(), projectOptions = new Set();
   // The selector uses display labels; tool events carry raw model IDs.
   let modelIds = null;
   if (input.models) {
     modelIds = new Map();
-    for (const r of records) if (r.ms <= nowMs && r.modelId && input.models.includes(r.model)) {
+    for (const r of records) if (r.ms <= nowMs && r.modelId && selectedModels.has(r.model)) {
       let ids = modelIds.get(r.sessionId);
       if (!ids) modelIds.set(r.sessionId, ids = new Set());
       ids.add(r.modelId);
@@ -143,7 +144,7 @@ function toolReport(records, copilotSessions, activity, input, start, end, now) 
     const attributed = lastAttributed;
     if (attributed) projectOptions.add(tool.project);
     const day = dayOfMs(tool.ms);
-    const matchingModel = !input.models || input.models.includes(tool.model) || !!modelIds.get(tool.sessionId)?.has(tool.model);
+    const matchingModel = !selectedModels || selectedModels.has(tool.model) || !!modelIds.get(tool.sessionId)?.has(tool.model);
     if (day < start || day > end || input.project && input.project !== tool.project || input.session && input.session !== tool.sessionId || !matchingModel) continue;
     if (!attributed) { omitted++; if (tool.server) mcpOmitted++; continue; }
     // One row per (name, server, MCP tool), kept in the order each first appeared.
@@ -166,9 +167,9 @@ function toolReport(records, copilotSessions, activity, input, start, end, now) 
 function usageScope(records, input, now) {
   const q = normalizeQuery(input, now), today = localDay(now), nowMs = now.getTime();
   for (const name of ['project', 'session']) if (input[name] !== undefined && typeof input[name] !== 'string') throw new TypeError(`${name} must be a string`);
-  const models = q.models, project = input.project, session = input.session, history = [];
+  const models = q.models && new Set(q.models), project = input.project, session = input.session, history = [];
   let first = today;
-  for (const r of records) if (r.ms <= nowMs && (!q.environment || environmentOf(r) === q.environment) && (!models || models.includes(r.model)) && (!project || r.project === project) && (!session || r.sessionId === session)) {
+  for (const r of records) if (r.ms <= nowMs && (!q.environment || environmentOf(r) === q.environment) && (!models || models.has(r.model)) && (!project || r.project === project) && (!session || r.sessionId === session)) {
     history.push(r);
     first = Math.min(first, dayOfMs(r.ms));
   }
@@ -332,7 +333,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   });
   // Choice lists ignore their own filter, so other choices remain available after selection.
   const modelChoices = new Map(), projectChoices = new Map(), modelOptions = new Set(), projectOptionSet = new Set(), copilotSessions = new Set();
-  const models_ = q.models, projectFilter = input.project, sessionFilter = input.session;
+  const models_ = q.models && new Set(q.models), projectFilter = input.project, sessionFilter = input.session;
   model = project = NONE;
   let modelChoice, projectChoice, modelWanted = true, optionModel = NONE, optionProject = NONE, optionSession = NONE;
   for (const r of records) {
@@ -342,7 +343,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     if (r.ms > nowMs || sessionFilter && r.sessionId !== sessionFilter) continue;
     const recordDay = dayOfMs(r.ms);
     if (recordDay < activityStart || recordDay > end) continue;
-    if (r.model !== model) { model = r.model; modelChoice = null; modelWanted = !models_ || models_.includes(model); }
+    if (r.model !== model) { model = r.model; modelChoice = null; modelWanted = !models_ || models_.has(model); }
     if (r.project !== project) { project = r.project; projectChoice = null; }
     if (!projectFilter || project === projectFilter) add(modelChoice ??= get(modelChoices, model), r, includeCache);
     if (modelWanted) add(projectChoice ??= get(projectChoices, project), r, includeCache);

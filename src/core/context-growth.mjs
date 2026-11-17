@@ -36,6 +36,7 @@ function finishGrowthBucket(b) {
 // Receives already deduplicated, attributed prompts during the existing report pass.
 export function createContextGrowthAccumulator(query, start, end, now) {
   const groups = new Map(), nowMs = now.getTime();
+  const models = query.models && new Set(query.models);
   let unconfirmedPrompts = 0;
   return {
     add(p) {
@@ -49,7 +50,7 @@ export function createContextGrowthAccumulator(query, start, end, now) {
         unconfirmedPrompts++; group.incomplete = true; group.points.push({ ms: p.sample.ms, unconfirmed: true }); return;
       }
       const r = p.linksKnown ? p.contextRecord : null;
-      const visible = !query.models || query.models.includes(r?.model);
+      const visible = !models || models.has(r?.model);
       const input = r && r.ms >= p.sample.ms && r.ms <= nowMs && growthKnown(r.inputTotal) ? r.inputTotal : null;
       const cache = input != null && r.cacheDetailsReported !== false && growthKnown(r.cacheRead) && growthKnown(r.cacheWrite) && r.cacheRead + r.cacheWrite <= input ? r.cacheRead : null;
       group.points.push({ ms: p.sample.ms, input, cache, modelId: r?.modelId || null, model: r?.model || '', boundary: !!p.contextBoundary, visible });

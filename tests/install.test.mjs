@@ -19,6 +19,14 @@ test('local installation is portable, repeatable, and refuses unrelated extensio
   assert.equal(JSON.parse(await fs.readFile(path.join(destination, 'package.json'), 'utf8')).type, 'module');
   const installed = await import(pathToFileURL(path.join(destination, 'src/node/skill-version.mjs')));
   assert.equal(installed.parseSkillVersion('---\nmetadata: {version: "1.2.3"}\n---\n').value, '1.2.3');
+  await assert.rejects(fs.access(path.join(destination, 'src/panel')));
+  await assert.rejects(fs.access(path.join(destination, 'src/review-guides/v1/examples.json')));
+  assert.match(await fs.readFile(path.join(destination, 'SECURITY.md'), 'utf8'), /Pause Usage Insights/);
+  await fs.access(path.join(destination, 'src/review-guides/v1/core.md'));
+  // Exercise all lazy backend import graphs without executing child-process entrypoints.
+  for (const file of ['canvas.mjs', 'canvas-server.mjs', 'canvas-usage.mjs', 'canvas-review.mjs']) await import(pathToFileURL(path.join(destination, 'src/node', file)));
+  const review = await import(pathToFileURL(path.join(destination, 'src/node/review-insights.mjs')));
+  assert.match((await review.loadReviewGuidance(['context-cache'])).text, /context/i);
   await fs.writeFile(path.join(destination, 'obsolete.txt'), 'old installed file');
   await installLocal({ destination });
   await assert.rejects(fs.access(path.join(destination, 'obsolete.txt')));

@@ -46,11 +46,12 @@ export function mergeCoverage(entries, countedSessions = new Set()) {
 // Only definite matches enter the banner. Unknown dates or filter metadata stay inspectable.
 export function summarizeCoverage(entries = [], sources = [], query, start, end, now) {
   const counts = {}, groups = new Map(), sourceByPath = new Map(sources.map(s => [s.path, s]));
+  const models = query.models?.length ? new Set(query.models) : null;
   for (const entry of entries) {
     const environment = sourceByPath.get(entry.source)?.environment;
     const filters = [[query.environment, environment], [query.project, entry.project], [query.session, entry.sessionId]];
     if (filters.some(([wanted, value]) => wanted && value && wanted !== value)) continue;
-    if (query.models?.length && entry.model && !query.models.includes(entry.model)) continue;
+    if (models && entry.model && !models.has(entry.model)) continue;
     const unknownFilter = filters.some(([wanted, value]) => wanted && !value) || query.models?.length > 0 && !entry.model;
     const first = entry.ms, last = entry.endMs === undefined ? first : entry.endMs;
     const dated = first !== null && last !== null;

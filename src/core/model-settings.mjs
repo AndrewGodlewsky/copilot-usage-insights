@@ -19,13 +19,13 @@ export function modelChange(e, sessionId, project) {
 }
 
 export function summarizeModelChanges(records, activity, query, start, end, now) {
-  const eligible = new Set(), excluded = new Set(activity.skillExcludedSessions || []), names = new Map();
+  const eligible = new Set(), excluded = new Set(activity.skillExcludedSessions || []), selectedIds = new Set();
+  const models = query.models && new Set(query.models);
   for (const r of records) if (r.ms <= now.getTime()) {
     eligible.add(r.sessionId);
-    if (!names.has(r.modelId)) names.set(r.modelId, new Set());
-    names.get(r.modelId).add(r.model);
+    if (models?.has(r.model)) selectedIds.add(r.modelId);
   }
-  const wanted = model => query.models?.some(name => name === model || names.get(model)?.has(name));
+  const wanted = model => models?.has(model) || selectedIds.has(model);
   const result = { events: 0, sessions: 0, modelChanges: 0, effortChanges: 0, manual: 0, automatic: 0, unknownSource: 0, omitted: 0, transitions: [] };
   const sessions = new Set(), seen = new Set(), transitions = new Map();
   for (const e of activity.modelChanges || []) {

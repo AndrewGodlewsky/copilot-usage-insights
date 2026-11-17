@@ -4,6 +4,12 @@ A local usage dashboard for the **GitHub Copilot desktop app**. Open it as a can
 
 Forked from [Orca Usage Insights](https://github.com/Etherll/orca-usage-insights) by [Etherll](https://github.com/Etherll), and adapted for GitHub Copilot. The original MIT license and copyright notice are preserved in [LICENSE](LICENSE).
 
+## Security and performance maintenance
+
+[Security and update guidance](SECURITY.md) explains exactly what is installed, which data is read or sent, how to pause the plugin in Settings, and when to disable it in Copilot. The [2026-11-17 security/performance review](docs/security-performance-review-2026-11-17.md) includes architecture diagrams, synthetic scale measurements, fixes, remaining limits, and maintenance instructions. `npm run validate:security` checks the reviewed vendored artifact and CI pins offline; it is not a live vulnerability scanner. Host SDK/Node updates still come through Copilot.
+
+[Audit follow-up issues](docs/audit-followups.md) record the storage, loading, validation and navigation decisions that require maintainer review, with measurements and acceptance criteria for future agents.
+
 ## Install in GitHub Copilot desktop
 
 Use the GitHub Copilot desktop app with canvas support, signed in to your GitHub account. The app installs the plugin from this repository; you do not need to clone it or run npm commands.

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { readUsageDatabase, normalizeDatabaseRows, USAGE_DB_FIELDS } from './copilot-db.mjs';
+import { normalizeDatabaseRows, USAGE_DB_FIELDS } from './copilot-db.mjs';
+import { readUsageDatabaseInProcess } from './copilot-db-process-reader.mjs';
 import { parseWslDistributions } from './wsl-sources.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
@@ -12,7 +13,7 @@ const runProcess = (file, args, options, input = '') => new Promise((resolve, re
 
 // Read a SQLite transaction in its owning environment. Never copy live DB/WAL/SHM files.
 export const WSL_USAGE_EXPORT = `
-import json, pathlib, signal, sqlite3, sys, time
+import json, pathlib, re, signal, sqlite3, sys, time
 # Killing wsl.exe alone need not terminate its Linux child. SIGALRM also bounds
 # blocked filesystem/SQLite work; keep its default action, not a Python handler.
 if hasattr(signal, 'alarm'):
@@ -32,7 +33,8 @@ try:
     db.execute('PRAGMA trusted_schema = OFF')
     db.execute('BEGIN')
     fields = ${JSON.stringify(USAGE_DB_FIELDS)}
-    columns = {r['name'] for r in db.execute('PRAGMA table_info(assistant_usage_events)')}
+    tables = {r['name'] for r in db.execute("SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name IN ('assistant_usage_events', 'sessions')") if isinstance(r['sql'], str) and not re.match(r'^\\s*CREATE\\s+VIRTUAL\\b', re.sub(r'/\\*.*?\\*/|--[^\\r\\n]*', ' ', r['sql'], flags=re.S), re.I)}
+    columns = {r['name'] for r in db.execute('PRAGMA table_info(assistant_usage_events)')} if 'assistant_usage_events' in tables else set()
     supported = all(f in columns for f in ['id', 'session_id', 'model', 'created_at'])
     rows, sessions = [], []
     size = 0
@@ -43,7 +45,7 @@ try:
         if size > ${MAX_BYTES - 1024}:
             raise ValueError('limit')
         target.append(item)
-    sc = {r['name'] for r in db.execute('PRAGMA table_info(sessions)')}
+    sc = {r['name'] for r in db.execute('PRAGMA table_info(sessions)')} if 'sessions' in tables else set()
     if 'id' in sc:
         projection = ','.join('"' + f + '"' if f in sc else "'' AS " + f for f in ['id', 'cwd', 'repository', 'summary'])
         for row in db.execute('SELECT ' + projection + ' FROM sessions'):
@@ -76,17 +78,24 @@ const isLocked = error => ['SQLITE_BUSY', 'SQLITE_LOCKED'].includes(error?.code)
   || error?.code === 'ERR_SQLITE_ERROR' && Number.isInteger(error.errcode) && [5, 6].includes(error.errcode & 255);
 const unavailable = () => new Error('Could not read the locked WSL usage database. Check that the distribution is running, /usr/bin/python3 includes sqlite3, and its default user can read this Copilot home. Journals remain included.');
 
-export function createUsageDatabaseReader({ platform = process.platform, readLocal = readUsageDatabase, run = runProcess, timeoutMs = 5000 } = {}) {
-  return async (file, receiptSessions, source, { readWslDatabases = true } = {}) => {
+export function createUsageDatabaseReader({ platform = process.platform, readLocal = readUsageDatabaseInProcess, run = runProcess, timeoutMs = 5000, localTimeoutMs = 30000 } = {}) {
+  let queue = Promise.resolve();
+  return async (file, receiptSessions, source, { readWslDatabases = true, signal } = {}) => {
+    signal?.throwIfAborted();
     const location = platform === 'win32' && wslDatabaseLocation(file);
     // A Windows lock wait cannot resolve WSL's WAL locking incompatibility; use the native fallback immediately.
-    try { return readLocal(file, receiptSessions, source, { waitForLock: !location }); }
+    try {
+      const next = queue.then(() => { signal?.throwIfAborted(); return readLocal(file, receiptSessions, source, { waitForLock: !location, signal, timeoutMs: location ? timeoutMs : localTimeoutMs }); });
+      queue = next.catch(() => {});
+      return await next;
+    }
     catch (error) {
+      signal?.throwIfAborted();
       if (!location || !isLocked(error)) throw error;
       if (!readWslDatabases) throw new Error('WSL usage database is locked and the native WSL database reader is disabled in Settings. Journals remain included.');
       const executable = path.win32.join(process.env.SystemRoot || 'C:\\Windows', process.arch === 'ia32' ? 'Sysnative' : 'System32', 'wsl.exe');
       const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|USERPROFILE|LOCALAPPDATA|APPDATA)$/i.test(key)));
-      const options = { shell: false, windowsHide: true, env, timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: MAX_BYTES, encoding: 'utf8' };
+      const options = { shell: false, windowsHide: true, env, timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: MAX_BYTES, encoding: 'utf8', ...(signal ? { signal } : {}) };
       try {
         const running = parseWslDistributions(await run(executable, ['--list', '--running', '--quiet'], { ...options, encoding: 'buffer', maxBuffer: 64 * 1024 }));
         if (!running.some(name => name.toLowerCase() === location.distribution.toLowerCase())) throw unavailable();
@@ -104,6 +113,7 @@ export function createUsageDatabaseReader({ platform = process.platform, readLoc
           || [...payload.rows, ...payload.sessions].some(row => !row || typeof row !== 'object' || Array.isArray(row))) throw unavailable();
         return { ...normalizeDatabaseRows(payload.rows, new Map(payload.sessions.map(s => [s.id, s])), receiptSessions, source, payload.supported), databaseRead: 'wsl' };
       } catch (error) {
+        signal?.throwIfAborted();
         const failure = unavailable();
         if (error?.code === 'ERR_SQLITE_ERROR') Object.assign(failure, { code: error.code, errcode: error.errcode });
         if (error?.killed || error?.code === 'ETIMEDOUT') failure.code = 'ETIMEDOUT';

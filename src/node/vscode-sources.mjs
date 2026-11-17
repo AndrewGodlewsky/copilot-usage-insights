@@ -35,21 +35,22 @@ export function workspaceInfo(data, fallback) {
 // Discovery uses fixed storage folders; journal reading/caching belongs to the existing scanner.
 export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), platform = process.platform } = {}) {
   const metadata = new Map();
-  async function info(workspace, fallback) {
+  async function info(workspace, fallback, seen) {
     const file = path.join(workspace, 'workspace.json');
+    seen.add(file);
     try {
       const stat = await fs.stat(file), known = metadata.get(file);
       if (known?.size === stat.size && known.mtime === stat.mtimeMs && known.ctime === stat.ctimeMs) return workspaceInfo(known.data, fallback);
-      if (!stat.isFile() || stat.size > 16384) return workspaceInfo(null, fallback);
+      if (!stat.isFile() || stat.size > 16384) { metadata.delete(file); return workspaceInfo(null, fallback); }
       const data = JSON.parse(await fs.readFile(file, 'utf8'));
       // Discard any unrelated metadata, including names and arbitrary payloads.
       const selected = { folder: data.folder, workspace: data.workspace };
       metadata.set(file, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, data: selected });
       return workspaceInfo(selected, fallback);
-    } catch { return workspaceInfo(null, fallback); }
+    } catch { metadata.delete(file); return workspaceInfo(null, fallback); }
   }
   return async ({ homes = [], extraHomes = [], include = true, disabled = [], cliSessions = new Set(), readJournal, force = false }) => {
-    const sources = [], snapshots = [], owners = [], files = [], identities = new Set();
+    const sources = [], snapshots = [], owners = [], files = [], identities = new Set(), seenMetadata = new Set();
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p, platform)));
     const roots = [...(include ? [...defaultHomes, ...homes] : []), ...extraHomes];
     let logs = 0;
@@ -73,7 +74,7 @@ export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), plat
         if (workspaces.length > MAX_WORKSPACES) { rootSource.state = 'warning'; rootSource.message = 'VS Code workspace discovery reached its limit.'; }
         for (const w of workspaces.slice(0, MAX_WORKSPACES)) {
           const workspace = path.join(base, 'workspaceStorage', w.name);
-          candidates.push({ dir: path.join(workspace, 'github.copilot-chat', 'debug-logs'), ...await info(workspace, location) });
+          candidates.push({ dir: path.join(workspace, 'github.copilot-chat', 'debug-logs'), ...await info(workspace, location, seenMetadata) });
         }
       }
       let found = false;
@@ -127,6 +128,7 @@ export function createVSCodeSources({ defaultHomes = standardVSCodeHomes(), plat
         sources.push(rootSource);
       }
     }
+    for (const file of metadata.keys()) if (!seenMetadata.has(file)) metadata.delete(file);
     return { sources, snapshots, owners, files };
   };
 }

@@ -1,140 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { Script, createContext } from 'node:vm';
+import { mountPanel } from './fixtures/panel.mjs';
 import { createReceiptParser } from '../src/core/copilot.mjs';
 import { buildReport, buildRequestPage, buildModelSessionPage, buildModelProjectPage, buildSessionModels } from '../src/core/copilot-report.mjs';
 import { mergeMcpInventory } from '../src/core/integrations.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, tokenTopicIcon } from '../src/panel/token-topics.mjs';
 import { buildEfficiencyReview } from '../src/panel/efficiency.mjs';
 import { createContextGrowthAccumulator } from '../src/core/context-growth.mjs';
+import { encodeReportWire } from '../src/core/report-wire.mjs';
 
-async function mountPanel(report, config = { textSize: 'small', extraHomes: [], disabledHomes: [] }, releaseNotes, inventory, initial = {}) {
-  let html = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
-  if (releaseNotes) html = html.replace(/const RELEASE_NOTES = .*;/, () => `const RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};`);
-  const nodes = new Map([...html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => {
-    const attrs = new Map([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-    return [id, { value: '', dataset: {}, href: attrs.get('href'), innerHTML: '', textContent: '', clientWidth: 500, clientHeight: 155, hidden: /\shidden\b/.test(tag),
-      setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
-      addEventListener(name, callback) { this[`on${name}`] = callback; },
-      getBoundingClientRect: () => ({ top: 0 }),
-      style: { setProperty(key, value) { this[key] = String(value); } },
-      before(node) { node.nextElementSibling = this; },
-      focus() { document.activeElement = this; },
-      select() { this.selected = true; },
-      click() { this.clicked = true; },
-      showModal() { this.open = true; }, close() { this.open = false; },
-      querySelectorAll: () => [], querySelector: () => null, contains: () => false }];
-  }));
-  const get = id => { assert.ok(nodes.has(id), `Element ${id} exists`); return nodes.get(id); };
-  get('initial-diagnostics').textContent = initial.diagnostics ? JSON.stringify(initial.diagnostics) : 'null';
-  // Model the persistent navigation children without running a browser.
-  for (const id of ['token-topic-stops', 'token-track-nodes', 'token-overview-insight', 'pattern-topic-stops', 'pattern-track-nodes']) {
-    let markup = '', children = [];
-    Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) {
-      markup = value;
-      children = [...value.matchAll(/<(?:button|span) data-(token|pattern)-(stop|node|jump)="([^"]+)"([^>]*)>/g)].map(([, prefix, kind, topic, rest]) => {
-        const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-        return { dataset: { [prefix + { stop: 'Stop', node: 'Node', jump: 'Jump' }[kind]]: topic },
-          focus() { document.activeElement = this; },
-          setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k),
-          classList: { toggle(key, on) { this[key] = on; } },
-        };
-      });
-    } });
-    get(id).querySelectorAll = () => children;
-    get(id).querySelector = selector => children.find(child => Object.values(child.dataset).includes(selector.match(/="([^"]+)"/)?.[1])) || null;
-  }
-  for (const [, id, choices] of html.matchAll(/<select[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
-    const options = [...choices.matchAll(/<option value="([^"]*)"([^>]*)>/g)];
-    get(id).value = (options.find(([, , attrs]) => /\bselected\b/.test(attrs)) || options[0])?.[1] || '';
-  }
-  get('cache').checked = true;
-  let activityMarkup = '', activityMarks = [];
-  Object.defineProperty(get('activity-chart'), 'innerHTML', { get: () => activityMarkup, set(value) {
-    activityMarkup = value;
-    activityMarks = [...value.matchAll(/<(?:rect|g)[^>]*data-inspect="(\d+)"([^>]*)>/g)].map(([, index, rest]) => {
-      const attrs = new Map([...rest.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, k, v]) => [k, v]));
-      return { dataset: { inspect: index }, focus() { document.activeElement = this; }, closest() { return this; },
-        setAttribute: (k, v) => attrs.set(k, v), getAttribute: k => attrs.get(k) };
-    });
-  } });
-  get('activity-chart').querySelectorAll = () => activityMarks;
-  get('activity-chart').querySelector = selector => activityMarks.find(mark => mark.dataset.inspect === selector.match(/="(\d+)"/)?.[1]) || null;
-  const requests = [], intervals = [], timeouts = [], listeners = new Map(), windowListeners = new Map(), rootStyle = new Map(), server = { config, saveError: '', copied: [], inventory, now: Date.now(), transportError: initial.transportError };
-  const objectUrls = new Map(), revoked = [];
-  server.downloads = [];
-  const document = { getElementById: get, activeElement: null, hidden: false,
-    body: { appendChild(node) { node.attached = true; } },
-    createElement(tag) {
-      assert.equal(tag, 'a');
-      return { click() {
-        assert.equal(this.attached, true);
-        if (server.downloadError) throw new Error('PRIVATE download failure');
-        server.downloads.push({ name: this.download, blob: objectUrls.get(this.href) });
-      }, remove() { this.attached = false; } };
-    },
-    addEventListener: (name, callback) => listeners.set(name, callback), documentElement: {
-      classList: { toggle() {} }, style: { setProperty: (k, v) => rootStyle.set(k, String(v)) },
-  } };
-  const motion = { matches: initial.reducedMotion === true, addEventListener(type, callback) { this.changed = callback; } };
-  const context = createContext({
-    Date: class extends Date { static now() { return server.now; } },
-    innerWidth: 1200, innerHeight: 800,
-    document,
-    Blob, URL: class extends URL { static createObjectURL(blob) { const url = `blob:synthetic-${objectUrls.size}`; objectUrls.set(url, blob); return url; } static revokeObjectURL(url) { revoked.push(url); objectUrls.delete(url); } },
-    window: { addEventListener: (name, callback) => windowListeners.set(name, callback) }, matchMedia: query => query.includes('prefers-reduced-motion') ? motion : ({ matches: false }), setInterval: (callback, ms) => intervals.push({ callback, ms }),
-    navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
-    AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
-    fetch: async (url, options) => {
-      const message = JSON.parse(options.body); requests.push(message);
-      if (server.transportError) throw new TypeError('PRIVATE_NETWORK_ERROR');
-      if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
-      if (message.method === 'diagnostics.get') return { ok: true, json: async () => ({ version: 'test-version', runtime: { node: 'v24', platform: 'win32', arch: 'x64' }, startedAt: new Date().toISOString(), limit: 300, dropped: 0, entries: [{ at: new Date().toISOString(), level: 'info', event: 'history.scan', durationMs: 25 }] }) };
-      if (message.method === 'review.prepare') return { ok: true, json: async () => server.prepare ? server.prepare(message) : ({ id: 'fixture-snapshot', preview: JSON.stringify({ scope: message.input.filters, limits: ['Session measures unavailable with a model filter.'] }), model: server.config.reviewModel || '', reasoningEffort: server.config.reviewReasoning || 'default', allowSamples: server.config.reviewAllowSamples !== false, hasEvidence: true, scope: { range: message.input.filters.range, startDate: '2026-11-09', endDate: '2026-11-15' } }) };
-      if (message.method.startsWith('review.')) return { ok: !server.reviewError, json: async () => server.reviewError ? { error: server.reviewError } : server.review ? server.review(message) : { models: [{ id: 'fixture-model', label: 'Fixture model', reasoningEfforts: ['medium', 'high'] }], verified: true } };
-      if (message.method === 'settings.get') return { ok: true, json: async () => ({ ...server.config, defaultHome: '/copilot' }) };
-      if (message.method === 'efficiency.context') return { ok: true, json: async () => server.contextSnapshot || { available: false, reason: 'unsupported' } };
-      if (message.method === 'usage.inventory') {
-        if (server.inventory) return { ok: true, json: async () => server.inventory() };
-        const fields = ['name', 'displayName', 'enabled', 'status', 'source', 'plugin', 'version', 'toolsLoaded', 'error'];
-        return { ok: true, json: async () => ({ mcp: { available: report.mcp?.available === true, rows: report.mcp?.available ? report.mcp.rows.map(row => Object.fromEntries(fields.filter(k => k in row).map(k => [k, row[k]]))) : [] }, plugins: report.plugins || { available: false, rows: [] } }) };
-      }
-      if (message.method === 'settings.set') {
-        if (server.saveError) return { ok: false, json: async () => ({ error: server.saveError }) };
-        server.config = { ...server.config, ...message.input };
-        report.preferences = { textSize: server.config.textSize, simplifyNumbers: server.config.simplifyNumbers ?? true };
-        return { ok: true, json: async () => server.config };
-      }
-      if (message.method === 'usage.sessionModels') {
-        if (server.sessionModelsError) return { ok: false, json: async () => ({ error: server.sessionModelsError }) };
-        return { ok: true, json: async () => server.sessionModels(message.input) };
-      }
-      if (message.method === 'usage.modelProjects') {
-        if (server.modelProjectsError) return { ok: false, json: async () => ({ error: server.modelProjectsError }) };
-        return { ok: true, json: async () => server.modelProjects(message.input) };
-      }
-      if (message.method === 'usage.sessions') {
-        if (server.sessionError) return { ok: false, json: async () => ({ error: server.sessionError }) };
-        return { ok: true, json: async () => server.sessionPage(message.input) };
-      }
-      if (message.method === 'usage.requests') {
-        if (server.requestError) return { ok: false, json: async () => ({ error: server.requestError }) };
-        return { ok: true, json: async () => server.requestPage(message.input) };
-      }
-      assert.ok(['usage.report', 'usage.refresh'].includes(message.method));
-      return { ok: true, json: async () => server.report ? server.report(message.input) : report };
-    },
-  });
-  new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
-  if (!initial.beforeLoad) {
-    windowListeners.get('load')?.();
-    const startup = timeouts.find(timer => timer.ms === 0);
-    await startup?.callback();
-  }
-  await new Promise(setImmediate);
-  return { get, nodes, requests, rootStyle, server, document, intervals, listeners, windowListeners, timeouts, motion, viewport: context, objectUrls, revoked };
-}
 
 test('dashboard waits for document load before requesting history, and starts only once', async () => {
   const panel = await mountPanel(buildReport([], { range: 'mtd' }), undefined, undefined, undefined, { beforeLoad: true });
@@ -146,6 +21,46 @@ test('dashboard waits for document load before requesting history, and starts on
   assert.equal(timers.length, 1);
   await timers[0].callback();
   assert.equal(panel.requests.filter(r => r.method === 'usage.report').length, 1);
+});
+
+test('persistent pause stops panel polling, leaves diagnostics/settings available, and resumes with a fresh read', async () => {
+  const { get, requests, intervals, server } = await mountPanel({ ...buildReport([], { range: 'mtd' }), sources: [], coverage: {} }, { paused: true, extraHomes: [], disabledHomes: [], runtimeSecurity: { nodeVersion: 'v24.22.1', status: 'below-baseline', minimum: '24.22.3', reviewedAt: '2026-11-17' } });
+  assert.match(get('status').textContent, /paused/);
+  assert.equal(get('content').hidden, true);
+  assert.equal(get('refresh').disabled, true);
+  const before = requests.length;
+  for (const timer of intervals) await timer.callback();
+  assert.equal(requests.length, before);
+  await get('settings-open').onclick();
+  assert.match(get('settings-runtime').textContent, /older than.*24.22.3/);
+  assert.equal(get('settings-pause').textContent, 'Resume Usage Insights');
+  await get('logs-open').onclick();
+  assert.ok(requests.some(r => r.method === 'diagnostics.get'));
+  await get('settings-pause').onclick();
+  assert.equal(server.config.paused, false);
+  assert.doesNotMatch(get('status').textContent, /Could not/);
+  assert.ok(requests.some(r => r.method === 'usage.refresh'));
+  assert.equal(get('refresh').disabled, false);
+  await get('settings-pause').onclick();
+  assert.equal(server.config.paused, true);
+  assert.match(get('status').textContent, /paused/);
+  assert.equal(get('content').hidden, true);
+  assert.equal(get('refresh').disabled, true);
+});
+
+test('pause discards a report that finishes after the user stops activity', async () => {
+  const { get, server } = await mountPanel(buildReport([], {}));
+  let finish;
+  server.report = () => new Promise(resolve => { finish = resolve; });
+  const pending = get('refresh').onclick();
+  await new Promise(setImmediate);
+  await get('settings-open').onclick();
+  await get('settings-pause').onclick();
+  finish(buildReport([], {}));
+  await pending;
+  assert.equal(get('content').hidden, true);
+  assert.match(get('status').textContent, /paused/);
+  assert.equal(get('refresh').disabled, true);
 });
 
 test('Skills rerenders dated rows when switching between 7 and 90 days', async () => {
@@ -176,6 +91,7 @@ test('Skills shows unverified-provider activity visibly in the selected month wi
   parser.push(JSON.stringify({ type: 'skill.invoked', id: 'skill', timestamp: now.toISOString(), data: { name: 'saved-skill', trigger: 'agent-invoked' } }));
   const snapshot = parser.snapshot(), report = { ...buildReport(snapshot.records, { range: 'mtd' }, now, snapshot), sources: [], coverage: {} };
   const { get } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   assert.equal(get('content').hidden, false);
   assert.match(get('skills-summary').textContent, /1 use.*Rolling 30.*1 included with provider unverified/);
   assert.match(get('skills').innerHTML, /saved-skill.*provider unverified/);
@@ -591,6 +507,7 @@ test('coverage review keeps outside and undated issues out of the banner, pages 
 
 test('coverage dismissal hides only relevant markers across cards, charts, and expanded tables without fetching', async () => {
   const { get, report, records, now, requests, server, click } = await requestPanel();
+  const visitAll = () => { for (const view of ['usage', 'efficiency', 'breakdown']) get('view').onclick({ target: { dataset: { view } } }); };
   const history = [records[0], { ...records[1], input: null, inputTotal: null, output: null, reasoning: null, cacheRead: null, cacheWrite: null, nanoAiu: null, creditStatus: 'unavailable' }];
   Object.assign(report, buildReport(history, {}, now));
   Object.assign(report.promptCredits, { prompts: 2, eligiblePrompts: 1, averageCredits: .25, excluded: { attribution: 0, accounting: 1, unfinished: 0 } });
@@ -603,6 +520,7 @@ test('coverage dismissal hides only relevant markers across cards, charts, and e
   assert.equal(get('coverage').hidden, false);
   assert.equal(get('hero-credits').textContent, '0.25 *');
   assert.match(get('prompt-coverage-note').textContent, /^\*/);
+  visitAll();
   for (const id of markedSurfaces) assert.match(get(id).innerHTML, /\d(?:[KM]|%)? \*/, `${id} marks its partial measurements`);
   await click({ requestModel: '<Sonnet>' });
   await click({ modelProject: 'Unknown project' });
@@ -614,6 +532,7 @@ test('coverage dismissal hides only relevant markers across cards, charts, and e
   assert.equal(requests.length, requestCount, 'dismissing the notice uses only the existing report');
   assert.equal(get('tip').hidden, true, 'an already open tooltip cannot retain a stale marker');
   assert.equal(get('hero-credits').textContent, '0.25');
+  visitAll();
   assert.equal(get('token-total').textContent, '120');
   for (const id of markedSurfaces) assert.doesNotMatch(get(id).innerHTML, /\d(?:[KM]|%)? \*/, `${id} clears its markers`);
   assert.doesNotMatch(get('prompt-coverage-note').textContent, /^\*/);
@@ -672,6 +591,7 @@ test('known exclusions stay inspectable, while unexpected prompt and source prob
 test('optional prompt lengths and tool outcomes stay in coverage details without a warning', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, requests } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   assert.equal(get('coverage').hidden, true);
   report.efficiency.interactions = { prompts: 2, promptSamples: 1, averagePromptChars: 14, observedSessions: 1 };
   await get('refresh').onclick();
@@ -699,6 +619,7 @@ test('optional prompt lengths and tool outcomes stay in coverage details without
 
 test('optional reasoning stays informational while missing primary prompt tokens still warn', async () => {
   const { get, report, records, now } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const history = [records[0], { ...records[1], reasoning: 30 }];
   Object.assign(report, buildReport(history, {}, now));
   report.promptCredits.unlinkedRequests = 0;
@@ -878,6 +799,47 @@ test('shared chart tooltips keep their width and flip away from viewport edges',
   listeners.get('pointerleave')();
   assert.equal(popup.hidden, true);
   assert.equal(requests.length, before, 'hover and repositioning never fetch data');
+});
+
+test('tooltip movement reuses markup and dimensions until its content, viewport or formatting changes', async () => {
+  const { get, listeners, viewport, requests } = await mountPanel({ ...buildReport([], {}), sources: [], coverage: {} });
+  const popup = get('tip');
+  let markup = '', writes = 0, reads = 0;
+  Object.defineProperty(popup, 'innerHTML', { get: () => markup, set(value) { markup = value; writes++; } });
+  Object.defineProperty(popup, 'offsetWidth', { get() { reads++; return 240; } });
+  Object.defineProperty(popup, 'offsetHeight', { get() { reads++; return 110; } });
+  const mark = { dataset: { tip: JSON.stringify({ title: '<Tokens>', rows: [['Input', 2131]] }) } };
+  const move = (x = 100) => listeners.get('pointermove')({ clientX: x, clientY: 100, target: { closest: () => mark } });
+  const before = requests.length;
+  for (let i = 0; i < 1000; i++) move(100 + i % 100);
+  assert.equal(writes, 1);
+  assert.equal(reads, 2);
+  assert.equal(popup.style.left, '211px', 'placement still follows every pointer movement');
+  assert.match(markup, /&lt;Tokens&gt;/);
+  assert.match(markup, /2\.1K/);
+  listeners.get('pointerleave')();
+  move();
+  assert.equal(writes, 1, 'reopening the same tooltip reuses the cached layout');
+  mark.dataset.tip = JSON.stringify({ title: 'Changed', rows: [['Input', 2131]] });
+  move();
+  assert.equal(writes, 2);
+  viewport.innerWidth = 800;
+  move();
+  assert.equal(writes, 3);
+  assert.equal(reads, 6);
+  assert.equal(requests.length, before, 'pointer movement never loads data');
+  await get('settings-open').onclick();
+  get('simplify-numbers').checked = false;
+  await get('settings-save').onclick();
+  move();
+  assert.equal(writes, 4);
+  assert.ok(markup.includes((2131).toLocaleString()));
+  await get('settings-open').onclick();
+  get('text-size').value = 'large';
+  await get('settings-save').onclick();
+  move();
+  assert.equal(writes, 5);
+  assert.equal(reads, 10);
 });
 
 test('daily keyboard focus shows values without fetching and hides them on blur or Escape', async () => {
@@ -1083,9 +1045,150 @@ async function requestPanel() {
   panel.server.requestPage = input => ({ ...buildRequestPage(records, input, now), rows: buildRequestPage(records, input, now).rows.map(r => ({ ...r,
     ...(input.id ? { prompt: { available: true, text: '<script>unsafe()</script> Full original prompt', truncated: false } } : {}),
   })) });
-  const click = dataset => panel.get('breakdown').onclick({ target: { closest: () => ({ dataset }) } });
+  const click = dataset => {
+    if (panel.get('breakdown-view').hidden) panel.get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+    return panel.get('breakdown').onclick({ target: { closest: () => ({ dataset }) } });
+  };
   return { ...panel, click, report, records, now };
 }
+
+test('hidden Breakdown and Efficiency views defer rendering and show the latest report when opened', async () => {
+  const { get, requests, report, records, now } = await requestPanel();
+  const writes = { breakdown: 0, 'efficiency-summary': 0 };
+  for (const id of Object.keys(writes)) {
+    let markup = get(id).innerHTML;
+    assert.equal(markup, '', `${id} is deferred on initial load`);
+    Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) { markup = value; writes[id]++; } });
+  }
+  const before = requests.length;
+  for (let i = 0; i < 10; i++) get('daily').onclick({ target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
+  assert.deepEqual(writes, { breakdown: 0, 'efficiency-summary': 0 });
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.deepEqual(writes, { breakdown: 1, 'efficiency-summary': 0 });
+  assert.match(get('breakdown').innerHTML, /&lt;Sonnet&gt;/);
+  get('view').onclick({ target: { dataset: { view: 'usage' } } });
+  assert.equal(requests.length, before, 'local navigation uses the loaded report');
+  Object.assign(report, buildReport([{ ...records[0], model: '<Fresh model>' }], {}, now));
+  await get('refresh').onclick();
+  assert.deepEqual(writes, { breakdown: 1, 'efficiency-summary': 0 }, 'refresh does not regenerate hidden views');
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.deepEqual(writes, { breakdown: 1, 'efficiency-summary': 1 });
+  assert.match(get('efficiency-models').innerHTML, /&lt;Fresh model&gt;/);
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'patterns' } } });
+  jumpPatternTopic(get, 'growth');
+  assert.equal(get('pattern-growth-panel').hidden, false);
+  get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'tokens' } } });
+  jumpTokenTopic(get, 'skills');
+  get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
+  assert.equal(get('token-context-panel').hidden, false, 'programmatic context navigation works after deferred rendering');
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.match(get('breakdown').innerHTML, /&lt;Fresh model&gt;/);
+  assert.doesNotMatch(get('breakdown').innerHTML, /&lt;Sonnet&gt;/);
+});
+
+for (const failed of [false, true]) test(`late drilldown ${failed ? 'errors' : 'results'} stay ready without rebuilding hidden Breakdown`, async () => {
+  const { get, click, server, requests } = await requestPanel();
+  await click({ requestModel: '<Sonnet>' });
+  await click({ modelProject: 'Unknown project' });
+  await click({ requestSession: 's1' });
+  const original = server.requestPage;
+  let finish;
+  server.requestPage = input => new Promise((resolve, reject) => {
+    finish = () => failed ? reject(new Error('Synthetic detail failure')) : resolve(original(input));
+  });
+  const loading = click({ requestId: JSON.stringify(['receipt', 's1', 'call-0']) });
+  await new Promise(setImmediate);
+  assert.match(get('breakdown').innerHTML, /Loading original prompt/);
+  get('view').onclick({ target: { dataset: { view: 'usage' } } });
+  let markup = get('breakdown').innerHTML, writes = 0;
+  Object.defineProperty(get('breakdown'), 'innerHTML', { get: () => markup, set(value) { markup = value; writes++; } });
+  const calls = requests.length;
+  finish(); await loading;
+  assert.equal(writes, 0, 'completion does not rebuild an invisible table');
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
+  assert.equal(writes, 1);
+  assert.equal(requests.length, calls, 'returning shows the completed result without another read');
+  assert.match(markup, failed ? /Synthetic detail failure/ : /Full original prompt/);
+  assert.doesNotMatch(markup, /Loading original prompt/);
+});
+
+test('hidden Usage charts stay untouched and refresh from current data when Usage returns', async () => {
+  const { get, report, records, now, requests } = await requestPanel();
+  const surfaces = ['daily', 'calendar', 'rhythm', 'token-bar', 'models-summary', 'projects-summary'];
+  const writes = new Map();
+  for (const id of surfaces) {
+    let markup = get(id).innerHTML;
+    Object.defineProperty(get(id), 'innerHTML', { get: () => markup, set(value) { markup = value; writes.set(id, (writes.get(id) || 0) + 1); } });
+  }
+  for (const view of ['breakdown', 'efficiency']) {
+    get('view').onclick({ target: { dataset: { view } } });
+    writes.clear();
+    const before = requests.length;
+    get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
+    get('metric').onclick({ target: { dataset: { metric: 'tokens' } } });
+    assert.equal(requests.length, before);
+    Object.assign(report, buildReport([{ ...records[0], model: `<Current ${view}>`, project: `<Project ${view}>`, input: 200, inputTotal: 200, output: 20 }], {}, now));
+    await get('refresh').onclick();
+    assert.equal(writes.size, 0, 'hidden Usage charts are not regenerated by shared controls or refresh');
+    assert.equal(get('hero-credits').textContent, '0.25', 'the shared header remains current');
+    get('view').onclick({ target: { dataset: { view: 'usage' } } });
+    for (const id of surfaces) assert.equal(writes.get(id), 1, `${id} redraws once on return`);
+    assert.equal(get('token-total').textContent, '220');
+    assert.ok(get('models-summary').innerHTML.includes(`&lt;Current ${view}&gt;`));
+    assert.ok(get('projects-summary').innerHTML.includes(`&lt;Project ${view}&gt;`));
+  }
+  get('daily').onkeydown({ key: 'Enter', preventDefault() {}, target: { closest: () => ({ dataset: { day: '2026-11-14' } }) } });
+  assert.match(get('token-title').textContent, /Tokens on/);
+  get('all-days').onclick();
+  assert.equal(get('token-title').textContent, 'Total tokens');
+});
+
+test('compact reports decode before rendering and large session filters populate only when opened', async () => {
+  const { records, now } = await requestPanel();
+  const history = Array.from({ length: 1001 }, (_, i) => ({ ...records[0], key: `lazy-${i}`, sessionId: `lazy-${i}`, sessionName: `<Session ${i}>` }));
+  const makeReport = input => ({ ...buildReport(history, input, now), sources: [], coverage: {} });
+  const report = makeReport({ range: 'mtd' });
+  const { get, server, requests } = await mountPanel(encodeReportWire(report), undefined, undefined, undefined, { serializedResponses: true });
+  server.report = input => encodeReportWire(makeReport(input));
+  assert.ok(requests.filter(r => ['usage.report', 'usage.refresh'].includes(r.method)).every(r => r.compact === true));
+  assert.ok(requests.filter(r => !['usage.report', 'usage.refresh'].includes(r.method)).every(r => r.compact === undefined));
+  assert.equal(get('token-total').textContent, '120.1K');
+  assert.equal((get('session').innerHTML.match(/<option /g) || []).length, 1, 'closed filters create only All sessions');
+  const before = requests.length;
+  get('filters').open = true; get('filters').ontoggle();
+  assert.equal((get('session').innerHTML.match(/<option /g) || []).length, 1002);
+  assert.match(get('session').innerHTML, /&lt;Session 1000&gt;/);
+  assert.equal(requests.length, before, 'opening a large filter list does not fetch history');
+  get('session').value = 'lazy-1000';
+  get('filters').open = false; get('filters').ontoggle();
+  assert.equal(get('session').value, 'lazy-1000');
+  assert.equal((get('session').innerHTML.match(/<option /g) || []).length, 2, 'collapse retains the selected session and All sessions');
+  await get('session').onchange();
+  assert.equal(get('token-total').textContent, '120');
+  assert.equal(requests.at(-1).input.session, 'lazy-1000');
+  assert.equal(get('session').value, 'lazy-1000');
+});
+
+test('Efficiency inspection can select a deferred session that has no mounted option yet', async () => {
+  const { records, now } = await requestPanel();
+  const history = Array.from({ length: 1001 }, (_, i) => ({ ...records[0], key: `inspect-${i}`, sessionId: `inspect-${i}`, sessionName: `Session ${i}` }));
+  const report = { ...buildReport(history, {}, now), sources: [], coverage: {} };
+  const target = { kind: 'growth', model: records[0].model, session: 'inspect-900', project: 'Unknown project', sessionName: 'Session 900', early: 1, late: 10, multiple: 10, samples: 6, requests: 6 };
+  report.efficiency.insights = [target];
+  const { get, requests } = await mountPanel(report);
+  let selected = '';
+  // Native selects reject values that have no option; the general fixture is permissive.
+  Object.defineProperty(get('session'), 'value', { get: () => selected, set(value) {
+    selected = value === '' || get('session').innerHTML.includes(`value="${value}"`) ? value : '';
+  } });
+  assert.doesNotMatch(get('session').innerHTML, /inspect-900/);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  await get('efficiency-insights').onclick({ target: { closest: () => ({ dataset: { efficiencyInsight: '0' } }) } });
+  assert.equal(get('breakdown-view').hidden, false);
+  assert.equal(get('session').value, 'inspect-900');
+  assert.equal(requests.at(-1).input.session, 'inspect-900');
+  assert.match(get('session').innerHTML, /value="inspect-900"/);
+});
 
 test('Activity and When you work expand, inspect cached data, navigate by keyboard and restore focus', async () => {
   const { get, report, requests, document, server, listeners } = await requestPanel();
@@ -1154,6 +1257,7 @@ test('expanded charts distinguish empty recorded slots from unavailable accounti
 
 test('both Breakdown hierarchies keep aligned columns, repeated headings, and alternating level backgrounds', async () => {
   const { get, click, records, requests } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const html = () => get('breakdown').innerHTML;
   const layout = () => html().match(/<table[^>]*>/)[0] + html().match(/<colgroup>[\s\S]*?<\/colgroup>/)?.[0];
   const initialLayout = layout();
@@ -1221,6 +1325,7 @@ test('refresh outages preserve expanded navigation and unchanged recovery clears
 
 test('model sessions expand into matching request columns and on-demand original prompts', async () => {
   const { get, requests, click, server } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const html = () => get('breakdown').innerHTML;
   assert.equal(requests.filter(r => r.method === 'usage.requests' || r.method === 'usage.sessions').length, 0);
   await click({ requestModel: '<Sonnet>' });
@@ -1362,6 +1467,7 @@ test('model sessions page independently, sort before paging, and discard removed
 
 test('model projects page independently and scope same-ID sessions, calls, and prompt details to the selected project', async () => {
   const { get, records, report, now, server, requests, click } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   let history = Array.from({ length: 28 }, (_, i) => ({ ...records[0], key: `project-call-${i}`, project: `Project ${String(i).padStart(2, '0')}`,
     sessionId: 'shared-session', sessionName: 'Same session', output: i, nanoAiu: (28 - i) * 1e9 }));
   Object.assign(report, buildReport(history, {}, now));
@@ -1419,6 +1525,7 @@ test('model project loading can retry and late responses cannot reopen a collaps
 
 test('project sessions expand and page locally, sort the full set, and reset or clamp pages as needed', async () => {
   const { get, report, records, now, requests, click, document, server } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const sessions = Array.from({ length: 52 }, (_, i) => ({ ...records[0], key: `request-${i}`, sessionId: `session-${i}`,
     sessionName: `Session ${String(i).padStart(2, '0')}`, output: i, inputTotal: 100, input: 30 }));
   Object.assign(report, buildReport(sessions, {}, now));
@@ -1490,6 +1597,7 @@ test('project sessions expand and page locally, sort the full set, and reset or 
 
 test('project expansion isolates sessions, escapes names, and shares metric columns and shading', async () => {
   const { get, report, records, now, click, requests } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const projects = [
     { ...records[0], key: 'a1', project: '<Project "A">', sessionId: 'a1', sessionName: '<Session A>' },
     { ...records[0], key: 'b1', project: 'Project B', sessionId: 'b1', sessionName: 'Session B' },
@@ -1525,6 +1633,7 @@ test('project expansion isolates sessions, escapes names, and shares metric colu
 
 test('project sessions expand into filtered model metrics, sort locally, and refresh without prompt reads', async () => {
   const { get, report, records, now, server, click, requests } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const history = [
     { ...records[0], key: 'a', project: '<Project>', sessionId: 's1', sessionName: '<Session>', model: '<Model A>', output: 500, nanoAiu: 1e9 },
     { ...records[0], key: 'b', project: '<Project>', sessionId: 's1', sessionName: '<Session>', model: '<Model B>', nanoAiu: 2e9 },
@@ -1970,21 +2079,24 @@ test('visibility refresh coalesces pending work, retains failure age, and accept
   assert.equal(requests.length, failed + 1, 'failed refresh does not mark old data fresh');
 });
 
-test('banner renders each report range and keeps the full scene width in narrow canvases', async () => {
+test('shared banner renders each range on every dashboard and keeps its scene width in narrow canvases', async () => {
   const now = new Date(2026, 10, 14, 22);
   const report = { ...buildReport([], { range: '7d' }, now), sources: [], coverage: {} };
   const { get } = await mountPanel(report);
-  for (const width of [1080, 500, 280]) {
-    get('banner').clientWidth = width;
-    for (const [range, count] of [['1d', 1], ['7d', 1], ['mtd', 1], ['30d', 1], ['90d', 1], ['all', 4], ['custom', 0]]) {
-      const query = range === 'custom' ? { range, startDate: '2026-11-01', endDate: '2026-11-14' } : { range };
-      Object.assign(report, buildReport([], query, now));
-      await get('refresh').onclick();
-      const svg = get('banner').innerHTML;
-      const [, w, h] = svg.match(/viewBox="0 0 (\d+) (\d+)"/).map(Number);
-      assert.ok(w / h <= width / get('banner').clientHeight, 'the SVG must not crop buildings horizontally');
-      const buildings = [...svg.matchAll(/<rect x="\d+" y="(\d+)" width="\d+" height="1" fill="#12152c"\/>/g)].filter(([, y]) => Number(y) === h - 1);
-      assert.equal(buildings.length, count, `${range} at width ${width}`);
+  for (const view of ['usage', 'breakdown', 'efficiency']) {
+    get('view').onclick({ target: { dataset: { view } } });
+    for (const width of [1080, 500, 280]) {
+      get('banner').clientWidth = width;
+      for (const [range, count] of [['1d', 1], ['7d', 1], ['mtd', 1], ['30d', 1], ['90d', 1], ['all', 4], ['custom', 0]]) {
+        const query = range === 'custom' ? { range, startDate: '2026-11-01', endDate: '2026-11-14' } : { range };
+        Object.assign(report, buildReport([], query, now));
+        await get('refresh').onclick();
+        const svg = get('banner').innerHTML;
+        const [, w, h] = svg.match(/viewBox="0 0 (\d+) (\d+)"/).map(Number);
+        assert.ok(w / h <= width / get('banner').clientHeight, 'the SVG must not crop buildings horizontally');
+        const buildings = [...svg.matchAll(/<rect x="\d+" y="(\d+)" width="\d+" height="1" fill="#12152c"\/>/g)].filter(([, y]) => Number(y) === h - 1);
+        assert.equal(buildings.length, count, `${range} at width ${width}`);
+      }
     }
   }
 });
@@ -2029,6 +2141,18 @@ test('banner cycles three patterns per building only when it reappears', async (
   }
 });
 
+test('an unchanged report still updates the shared skyline clock outside Usage', async () => {
+  const report = { ...buildReport([], { range: '7d' }, new Date(2026, 10, 14, 22)), sources: [], coverage: {} };
+  const { get, server } = await mountPanel(report, undefined, undefined, undefined, { serializedResponses: true });
+  for (const [view, hour] of [['breakdown', 10], ['efficiency', 22]]) {
+    get('view').onclick({ target: { dataset: { view } } });
+    const before = get('banner').innerHTML;
+    server.report = () => ({ unchanged: true, generatedAt: new Date(2026, 10, 14, hour).toISOString() });
+    await get('refresh').onclick();
+    assert.notEqual(get('banner').innerHTML, before, 'day and night still change the shared skyline');
+  }
+});
+
 test('dashboard keeps skill and request metrics separate from MCP activity', async () => {
   const now = new Date(2026, 10, 13, 22, 49, 37), timestamp = now.toISOString();
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
@@ -2045,7 +2169,8 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
   snapshot.records[0].sessionName = '<Planning "work">';
   const report = { ...buildReport(snapshot.records, { range: '1d' }, now, snapshot), sources: [], coverage: {} };
   report.skills.rows[0].installedVersion = { value: '1.0.1', status: 'available' };
-  const { get, nodes, requests } = await mountPanel(report);
+  const { get, nodes, requests } = await mountPanel(report, undefined, undefined, undefined, { serializedResponses: true });
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   assert.ok(get('skills').innerHTML.includes('&lt;hello-test&gt;'), get('status').textContent);
   const headers = [...get('skills').innerHTML.matchAll(/<th(?:\s[^>]*)?>(.*?)<\/th>/g)].map(([, value]) => value);
   assert.deepEqual(headers, ['Skill', 'Uses', 'By user', 'By agent', 'Sessions', 'Failures', 'Skill version (installed)', 'Last used']);
@@ -2081,6 +2206,7 @@ test('dashboard keeps skill and request metrics separate from MCP activity', asy
 
 test('skills table keeps eight aligned columns and makes unresolved failures readable without folder actions', async () => {
   const { get, report, records, now } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const parser = createReceiptParser({ sessionId: 's1', source: 'fixture' });
   const timestamp = now.toISOString(), missingName = '<missing-skill-with-a-long-requested-name>';
   const events = [{ type: 'skill.invoked', id: 'success', timestamp, data: { name: 'known', trigger: 'user-invoked', path: '/skills/known/SKILL.md' } },
@@ -2151,6 +2277,7 @@ test('skills expand aligned project statistics locally, preserve focus and refre
     projectRows: [{ name: 'Failure project', ...counts, invocations: 0 }] };
   const report = { ...buildReport([], {}), sources: [], coverage: {}, skills: { invocations: 3, failures: 2, sessions: 2, rows: [known, unknown] } };
   const { get, requests, server, document } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const requestsBefore = requests.length;
   let focusCount = 0;
   const button = (skillId, skillAction = 'toggle') => ({ dataset: { skillId, skillAction }, setAttribute() {}, removeAttribute() {},
@@ -2222,6 +2349,7 @@ test('detail panels sort independently and preserve choices and report data acro
   ] };
   const original = structuredClone(report);
   const { get, requests } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const names = id => [...get(id).innerHTML.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell]) => id === 'mcp' ? cell.match(/<summary[^>]*>(.*?)<\/summary>/)[1] : cell.replace(/<span aria-hidden="true">.*?<\/span> /g, '').replace(/<[^>]*>/g, ''));
   const sort = (id, key) => { get(`${id}-sort`).value = key; get(`${id}-sort`).onchange(); };
   assert.deepEqual(names('skills'), ['Zulu skill', 'Alpha skill', 'Beta skill']);
@@ -2268,6 +2396,7 @@ test('long selected filter names remain readable in full and keep their original
 
 test('simplified numbers apply across views and context, persist, and only change after saving', async () => {
   const { get, report, records, now, requests, server, click, listeners } = await requestPanel();
+  const visitAll = () => { for (const view of ['usage', 'efficiency', 'breakdown']) get('view').onclick({ target: { dataset: { view } } }); };
   const large = [{ ...records[0], inputTotal: 42_242_785, input: 42_242_785, cacheRead: 0, cacheWrite: 0, output: 2131,
     reasoning: 1000, toolTokenCount: 2131, nanoAiu: 2_131_000_000_000 }];
   Object.assign(report, buildReport(large, {}, now));
@@ -2282,7 +2411,9 @@ test('simplified numbers apply across views and context, persist, and only chang
   const snapshot = JSON.stringify(report);
   assert.equal(get('hero-credits').textContent, '2.1K');
   assert.equal(get('token-total').textContent, '42.2M');
+  visitAll();
   for (const id of ['breakdown', 'token-stats', 'token-legend', 'efficiency-summary', 'mcp', 'sources']) assert.match(get(id).innerHTML, /2\.1K/, id);
+  visitAll();
   for (const id of ['daily', 'models-summary']) assert.match(get(id).innerHTML, /42\.2M/, id);
   assert.match(get('skills').innerHTML, /2\.1K/);
   assert.match(get('skills').innerHTML, /1\.2\.3/, 'versions remain intact');
@@ -2307,16 +2438,20 @@ test('simplified numbers apply across views and context, persist, and only chang
   get('simplify-numbers').checked = false;
   server.saveError = 'Could not save';
   await get('settings-save').onclick();
+  visitAll();
   assert.equal(get('token-total').textContent, '42.2M', 'failure does not apply a draft');
   server.saveError = '';
   const beforeSave = requests.length;
   await get('settings-save').onclick();
+  visitAll();
   await new Promise(setImmediate);
   assert.equal(server.config.simplifyNumbers, false);
   assert.ok(!requests.slice(beforeSave).some(r => r.method === 'usage.refresh'), 'display-only settings do not force a rescan');
   assert.equal(get('hero-credits').textContent, (2131).toLocaleString());
   assert.equal(get('token-total').textContent, (42_244_916).toLocaleString());
+  visitAll();
   for (const id of ['daily', 'models-summary']) assert.ok(get(id).innerHTML.includes((42_244_916).toLocaleString()), id);
+  visitAll();
   for (const id of ['breakdown', 'skills', 'efficiency-summary', 'mcp', 'sources']) assert.ok(get(id).innerHTML.includes((2131).toLocaleString()), id);
   tooltip(42_244_916);
   assert.ok(get('tip').innerHTML.includes((2131).toLocaleString()));
@@ -2331,6 +2466,7 @@ test('simplified numbers apply across views and context, persist, and only chang
   assert.equal(get('simplify-numbers').checked, false);
   get('simplify-numbers').checked = true;
   await get('settings-save').onclick();
+  visitAll();
   assert.equal(get('token-total').textContent, '42.2M');
   assert.match(get('efficiency-context-result').innerHTML, /2\.1T/);
 
@@ -2340,6 +2476,7 @@ test('simplified numbers apply across views and context, persist, and only chang
   await new Promise(setImmediate);
   get('metric').onclick({ target: { dataset: { metric: 'credits' } } });
   assert.equal(get('hero-credits').textContent, '12.3');
+  visitAll();
   for (const id of ['tiles', 'projects-summary', 'breakdown', 'efficiency-summary', 'efficiency-models', 'daily']) {
     assert.match(get(id).innerHTML, /12\.3/, id);
     assert.doesNotMatch(get(id).innerHTML, /12\.345678901/, id);
@@ -2348,8 +2485,10 @@ test('simplified numbers apply across views and context, persist, and only chang
   await get('settings-open').onclick();
   get('simplify-numbers').checked = false;
   await get('settings-save').onclick();
+  visitAll();
   await new Promise(setImmediate);
   assert.equal(get('hero-credits').textContent, '12.345678901');
+  visitAll();
   for (const id of ['tiles', 'projects-summary', 'breakdown', 'efficiency-summary', 'efficiency-models', 'daily']) {
     assert.match(get(id).innerHTML, /12\.345678901/, id);
   }
@@ -2367,6 +2506,7 @@ function jumpTokenTopic(get, id) {
 test('token insights reuse the explicit snapshot across sections and filters without hidden reads', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, requests, server, document } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   assert.match(get('token-overview-insight').innerHTML, /data-token-jump="prompts"/);
   get('token-overview-panel').onclick({ target: { closest: () => ({ dataset: { tokenJump: 'prompts' } }) } });
   assert.equal(get('token-selected-title').textContent, 'Work behind each prompt');
@@ -2563,6 +2703,7 @@ test('Efficiency section pickers separate topics, switch locally, and retain ind
 
 test('token explorer maps every stop, preserves its focused lens, and only rerenders changed selections', async () => {
   const { get, requests, document } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const lens = get('efficiency-topic'), stops = get('token-topic-stops').querySelectorAll('[data-token-stop]');
   const nodes = get('token-track-nodes').querySelectorAll('[data-token-node]');
   assert.equal(lens.getAttribute('type'), 'range');
@@ -2703,6 +2844,7 @@ test('compact token explorer retains keyboard, direct jumps, and endpoint focus'
 
 test('pattern explorer shares the compact lens, maps every topic and preserves navigation through refresh', async () => {
   const { get, requests, document } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   get('efficiency-sections').onclick({ target: { dataset: { efficiencySection: 'patterns' } } });
   const lens = get('efficiency-pattern-topic');
   assert.equal(lens.getAttribute('type'), 'range');
@@ -2786,6 +2928,7 @@ test('Efficiency panels live only in their assigned dashboard and AI review stay
 
 test('token topic inspector links retain keyboard focus through refresh and section changes', async () => {
   const { get, document } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const body = get('token-topic-body');
   let markup = '', button;
   Object.defineProperty(body, 'innerHTML', { get: () => markup, set(value) {
@@ -3180,6 +3323,7 @@ test('review loading uses local phrases, respects reduced motion and freezes exc
 test('AI review freezes custom dates and does not mistake unrelated filter changes for a new scope', async () => {
   const { report } = await requestPanel();
   const { get, requests, server } = await mountPanel(report, { reviewModel: 'fixture-model' });
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   server.review = () => ({ cards: [], emptyReason: 'Too little evidence', model: 'fixture-model' });
   get('range').value = 'custom'; get('range').onchange();
   get('start-date').value = '2026-11-01'; get('end-date').value = '2026-11-14';
@@ -3310,6 +3454,7 @@ test('a failed review restores focus when its animation control disappears', asy
 
 test('focused conversation navigation is local, keyboard accessible and survives refresh and filters', async () => {
   const { get, requests, report, document } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const nav = get('conversation-topics'), body = get('efficiency-conversations');
   const choose = topic => nav.onclick({ target: { closest: () => ({ dataset: { conversationTopic: topic } }) } });
   const before = requests.length;
@@ -3349,6 +3494,7 @@ test('focused conversation navigation is local, keyboard accessible and survives
 
 test('focused conversation disclosure summaries retain focus and open state after refresh', async () => {
   const { get, nodes, document, report } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   Object.assign(report.efficiency.conversations, { workSessions: 1, workPrompts: 1, workMatrix: [[1, 0, 0], [0, 0, 0], [0, 0, 0]] });
   const root = get('efficiency-conversations');
   get('conversation-topics').onclick({ target: { closest: () => ({ dataset: { conversationTopic: 'work' } }) } });
@@ -3377,6 +3523,7 @@ test('focused conversation disclosure summaries retain focus and open state afte
 
 test('Context Growth grouping and session controls stay local, keep the range mounted and survive refresh', async () => {
   const { get, requests, report, document } = await requestPanel();
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const a = createContextGrowthAccumulator({}, 1, 1, new Date());
   for (let s = 0; s < 4; s++) for (let p = 0; p < 8; p++) a.add({ sessionId: `session${s}`, project: 'Project', day: 1,
     sample: { ms: p }, identity: true, humanDelivery: true, provider: true, linksKnown: true,

@@ -148,10 +148,10 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const start = report.query.range === 'all' ? -Infinity : parseDateDay(report.daily[0].day), end = parseDateDay(report.daily.at(-1).day);
   const chars = new Map((scoped.interactions || []).filter(v => v.kind === 'prompt').map(v => [v.key, v.chars]));
   const candidates = reviewPromptCandidates(scoped.promptEvents || [], records, filters, start, end, now, { memo: scoped.cache })
-    .map(c => ({ ...c, record: { ...c.record }, chars: chars.get(JSON.stringify(['interaction', 'prompt', c.sessionId, c.promptId])) ?? null }))
+    .map(c => ({ ...c, chars: chars.get(JSON.stringify(['interaction', 'prompt', c.sessionId, c.promptId])) ?? null }))
     .sort((a, b) => (a.chars ?? 0) - (b.chars ?? 0) || a.ms - b.ms || a.promptId.localeCompare(b.promptId));
   const chosen = candidates.length <= 24 ? candidates : Array.from({ length: 24 }, (_, n) => candidates[Math.floor(n * (candidates.length - 1) / 23)]);
-  chosen.forEach((c, n) => { c.id = `prompt-${n + 1}`; });
+  chosen.forEach((c, n) => { c.id = `prompt-${n + 1}`; c.record = { ...c.record }; });
   const scope = { range: report.query.range, startDate: report.daily[0].day, endDate: report.daily.at(-1).day, modelFiltered: !!filters.models?.length, projectFiltered: !!filters.project, sessionFiltered: !!filters.session, environmentFiltered: !!filters.environment, ownReviewSessionsExcluded: excluded.size };
   const payload = { schema: 'usage-insights-evidence-v1', capturedAt: now.toISOString(), scope, evidence,
     candidates: chosen.map(c => ({ id: c.id, characters: c.chars, delivery: c.delivery, model: `Model ${Math.max(0, e.models.findIndex(m => m.name === c.record.model)) + 1}` })),

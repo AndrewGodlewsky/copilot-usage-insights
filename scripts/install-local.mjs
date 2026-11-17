@@ -31,7 +31,12 @@ export async function installLocal({ destination = path.join(copilotHome(), 'ext
   let backedUp = false;
   try {
     await fs.mkdir(stage);
-    for (const file of ['src', 'panel', 'licenses', 'LICENSE', 'package.json']) await fs.cp(path.join(root, file), path.join(stage, file), { recursive: true });
+    for (const file of ['src', 'panel', 'licenses', 'LICENSE', 'package.json', 'SECURITY.md', 'security-dependencies.json']) await fs.cp(path.join(root, file), path.join(stage, file), {
+      recursive: true,
+      // The compiled panel already contains these sources. Runtime review guides stay installed.
+      filter: source => path.resolve(source) !== path.join(root, 'src', 'panel')
+        && !['src/review-guides/README.md', 'src/review-guides/v1/examples.json'].includes(path.relative(root, source).split(path.sep).join('/')),
+    });
     await fs.writeFile(path.join(stage, 'extension.mjs'), "import './src/extension.mjs';\n");
     await fs.writeFile(path.join(stage, marker), JSON.stringify({ id: identity, version: manifest.version }, null, 2) + '\n');
     if (previous) { await fs.rename(destination, backup); backedUp = true; }

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReceiptParser, normalizeSessionName } from '../core/copilot.mjs';
 import { createPromptEventSet } from '../core/prompt-credits.mjs';
-import { readDesktopSessionNames } from './copilot-db.mjs';
+import { readDesktopSessionNamesInProcess } from './copilot-db-process-reader.mjs';
 import { createUsageDatabaseReader } from './wsl-db.mjs';
 import { diagnosticError } from '../core/diagnostics.mjs';
 import { load, CORE_SCHEMA } from '../vendor/js-yaml/js-yaml.mjs';
@@ -22,6 +22,20 @@ const absent = e => e?.code === 'ENOENT' || e?.code === 'ENOTDIR';
 const sameFile = (known, stat) => known.size === stat.size && known.mtime === stat.mtimeMs && known.ctime === stat.ctimeMs;
 const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
 const sameFields = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true; };
+const sameSet = (a, b) => { if (a === b) return true; if (a.size !== b.size) return false; for (const value of a) if (!b.has(value)) return false; return true; };
+async function databaseStamp(file) {
+  try {
+    const real = await fs.realpath(file);
+    if (real.startsWith('\\\\')) return null;
+    const [stat, wal, journal] = await Promise.all(['', '-wal', '-journal'].map(async suffix => {
+      try { return await fs.lstat(real + suffix, { bigint: true }); }
+      catch (error) { if (absent(error)) return null; throw error; }
+    }));
+    // Active WAL commits can publish after their file metadata changes. Never cache that state.
+    if (!stat?.isFile() || wal || journal) return null;
+    return [real, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+  } catch { return null; }
+}
 const chunks = [];
 async function hashPrefix(handle, length, metrics, signal) {
   const hash = createHash('sha256'), buffer = chunks.pop() || Buffer.allocUnsafe(CHUNK);
@@ -110,7 +124,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
   const readMetrics = () => ({ filesRead: 0, filesReused: 0, filesAppended: 0, bytesRead: 0, bytesHashed: 0 });
   const environmentType = source => source.environment?.startsWith('wsl:') ? 'wsl' : source.environment?.startsWith('remote:') ? 'remote' : 'local';
   // Journals and session names are reread only when their size or timestamps change.
-  const files = new Map(), names = new Map();
+  const files = new Map(), names = new Map(), databaseCache = new Map();
   // Shared by every result of this scanner, so later stages can keep work between scans.
   const cache = { uniquePromptEvents: true };
   let queue = Promise.resolve(), merge = null, fallback = new Map(), previous = null;
@@ -310,13 +324,23 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const coverageEntries = snapshots.flatMap(s => [...(s.coverageEntries || []), ...(s.emptySummary && summaryActivity.has(s.emptySummary.sessionId) ? [s.emptySummary] : [])]);
     for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
     let skillExcluded = journals.skillExcludedSessions, sessionsByHome = journals.sessionsByHome;
+    const seenDatabases = new Set(databases.map(({ db }) => db));
+    for (const db of databaseCache.keys()) if (!seenDatabases.has(db)) databaseCache.delete(db);
     if (phase) { phase.databasesDeferred = databases.length; databases.length = 0; }
     // WSL readers wait on child processes. Overlap at most two, then reconcile in source order.
     const databaseResults = await inOrder(databases, async ({ db, source }) => {
       try {
         const fields = { sourceIndex: sources.indexOf(source) + 1, sourceKind: 'copilot', environmentType: environmentType(source) };
         const result = await measure('history.database', fields, async () => {
-          const result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases });
+          const stamp = await databaseStamp(db), known = databaseCache.get(db);
+          fields.cacheHit = !force && stamp !== null && known?.stamp === stamp && sameSet(known.receipts, journals.receiptSessions);
+          let result;
+          if (fields.cacheHit) result = known.result;
+          else {
+            databaseCache.delete(db);
+            result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases, signal });
+            if (stamp !== null && result.databaseRead !== 'wsl' && stamp === await databaseStamp(db)) databaseCache.set(db, { stamp, receipts: journals.receiptSessions, result });
+          }
           Object.assign(fields, { records: result.records.length, databaseReader: result.databaseRead === 'wsl' ? 'wsl' : 'local' });
           return result;
         });
@@ -339,12 +363,15 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         }
         coverage.unclassified += result.unclassified; coverage.invalid += result.invalid;
         for (const issue of result.coverageEntries || []) coverageEntries.push(issue);
-        // The database is read afresh every scan; rows that have not changed keep their earlier objects.
+        // Refreshed database rows that have not changed keep their earlier objects.
         const before = fallback.get(db), rows = new Map();
-        for (let r of result.records) {
-          r.environment = sourceEnvironment(r.source).environment;
+        let environmentSource, environment;
+        for (let index = 0; index < result.records.length; index++) {
+          let r = result.records[index];
+          if (r.source !== environmentSource) { environmentSource = r.source; environment = sourceEnvironment(r.source).environment; }
+          r.environment = environment;
           const known = before?.get(r.key);
-          if (known && sameFields(r, known)) r = known;
+          if (known && (r === known || sameFields(r, known))) result.records[index] = r = known;
           rows.set(r.key, r);
           // Database rows are keyed apart from journal receipts; only another database can repeat one.
           if (extra.has(r.key)) continue;
@@ -357,7 +384,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
     fallback = kept;
-    return measure('history.finalize', { records: journals.recordList.length + extra.size }, () => {
+    return measure('history.finalize', { records: journals.recordList.length + extra.size }, async () => {
       const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
       const issues = mergeCoverage(coverageEntries, new Set([...journals.receiptSessions, ...databaseSessions]));
       for (const kind of ['excluded', 'unclassified', 'invalid', 'invalidSkills', 'invalidTools', 'aggregateOnly']) {
@@ -371,8 +398,17 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         if (!sessionsByHome.has(record.source)) sessionsByHome.set(record.source, new Set());
         sessionsByHome.get(record.source).add(record.sessionId);
       }
-      measure('history.names', { sources: sessionsByHome.size }, () => {
-        if (!phase) for (const [home, ids] of sessionsByHome) if (!sources.some(s => s.path === home && s.kind === 'vscode')) for (const [id, name] of readDesktopSessionNames(path.join(home, 'data.db'), ids)) setName(home, id, name);
+      await measure('history.names', { sources: sessionsByHome.size }, async () => {
+        if (!phase) for (const [home, ids] of sessionsByHome) {
+          const source = sources.find(s => s.path === home);
+          if (source?.kind === 'vscode') continue;
+          try {
+            for (const [id, name] of await readDesktopSessionNamesInProcess(path.join(home, 'data.db'), ids, { signal })) setName(home, id, name);
+          } catch (error) {
+            signal?.throwIfAborted();
+            if (source) { source.state = 'warning'; source.message = 'Desktop session names could not be read; usage remains included.'; source.diagnostic = diagnosticError(error); }
+          }
+        }
       });
       for (const s of sources) if (s.state === 'ok' && !s.records) s.state = 'empty';
       // A record carries its session's current name. The name is written onto the record itself

@@ -10,6 +10,7 @@ import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from '
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
 import { publicModelLabels } from '../core/public-models.mjs';
+import { decodeReportWire } from '../core/report-wire.mjs';
 
 const $ = id => document.getElementById(id);
 const clientDiagnostics = createDiagnostics();
@@ -74,7 +75,7 @@ let loadError = '', lastResponseAt, cachedServerDiagnostics, lastSuccessfulScanA
 let historyLoading, historyPoll, historyStarted, displayedHistoryPhase;
 function scheduleHistoryPoll() {
   clearTimeout(historyPoll); historyPoll = null;
-  if (!historyLoading || loadError || document.hidden) return;
+  if (state.paused || !historyLoading || loadError || document.hidden) return;
   historyPoll = setTimeout(() => {
     historyPoll = null;
     if (document.hidden) return;
@@ -110,14 +111,17 @@ async function request(method, input = {}, refresh = false, signal, known) {
   const fields = { method, range: input.range, refresh, detail: method === 'usage.requests' && input.id !== undefined, requestStage: 'fetch', ...connectionState() };
   const work = async () => {
     try {
-      const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }), ...(signal ? { signal } : {}) });
+      const response = await fetch('api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ method, input, ...(['usage.report', 'usage.refresh'].includes(method) ? { compact: true } : {}), ...(refresh ? { refresh: true } : {}), ...(known ? { known } : {}) }), ...(signal ? { signal } : {}) });
       lastResponseAt = Date.now();
       fields.httpStatus = response.status;
       fields.requestStage = 'decode';
       const result = ['usage.report', 'usage.refresh'].includes(method)
-        ? await clientDiagnostics.measure('api.decode', { method }, () => response.json()) : await response.json();
+        ? await clientDiagnostics.measure('api.decode', { method }, async () => decodeReportWire(await response.json())) : await response.json();
       fields.requestStage = 'http';
-      if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+      if (!response.ok) {
+        if (result.code === 'paused') applyPaused(true);
+        throw Object.assign(new Error(result.error || `Request failed (${response.status})`), { code: result.code });
+      }
       fields.requestStage = 'complete';
       if (method === 'usage.inventory' && result.diagnostics) cachedServerDiagnostics = result.diagnostics;
       if (Array.isArray(result.rows)) fields.rows = result.rows.length;
@@ -249,6 +253,7 @@ function applyInventory() {
   state.report.plugins = inventorySnapshot?.plugins;
 }
 async function loadInventory(refresh = false) {
+  if (state.paused) return;
   if (inventoryPending) { inventoryQueued ||= refresh; return; }
   inventoryPending = true;
   renderIntegrations(state.report);
@@ -271,7 +276,7 @@ function setRefreshFeedback(status) {
   const busy = status === 'busy', label = busy ? 'Refreshing…' : status === 'done' ? 'Updated' : 'Refresh';
   for (const id of ['refresh', 'footer-refresh']) {
     $(id).dataset.refreshState = status;
-    $(id).disabled = busy;
+    $(id).disabled = busy || !!state.paused;
     $(id).setAttribute('aria-busy', String(busy));
     $(id).setAttribute('aria-label', busy ? 'Refreshing usage' : status === 'done' ? 'Usage updated. Refresh again.' : 'Refresh usage');
     $(`${id}-label`).textContent = label;
@@ -279,6 +284,7 @@ function setRefreshFeedback(status) {
   if (status === 'done') refreshFeedbackTimer = setTimeout(() => setRefreshFeedback('idle'), 1400);
 }
 async function load(force = false, refresh = false, background = false) {
+  if (state.paused) { renderLoadStatus(); return; }
   clearTimeout(historyPoll); historyPoll = null;
   state.version++; state.force ||= force; state.rescan ||= refresh;
   if (state.pending) return;
@@ -369,7 +375,7 @@ async function load(force = false, refresh = false, background = false) {
         renderLoadStatus();
         if (state.creditsUnavailable) $('status').before($('filters'));
       }
-    } while (version !== state.version);
+    } while (!state.paused && version !== state.version);
   } finally {
     state.pending = false; setRefreshFeedback(manual && successful ? 'done' : 'idle');
     clientDiagnostics.record(successful ? 'info' : 'error', 'ui.load', { ...loadFields, phase: successful ? 'finished' : 'failed', durationMs: (globalThis.performance?.now() ?? Date.now()) - loadStarted });
@@ -377,6 +383,14 @@ async function load(force = false, refresh = false, background = false) {
   }
 }
 function renderLoadStatus() {
+  if (state.paused) {
+    $('content').hidden = true;
+    $('coverage').hidden = true;
+    $('status').hidden = false;
+    $('status').textContent = 'Usage Insights is paused. New reads and AI reviews are paused. Open Settings to resume.';
+    if ($('activity-dialog').open) $('activity-dialog').close();
+    return;
+  }
   const matching = state.report && state.filterKey === JSON.stringify(query());
   if (!matching) rememberReviewAnimation();
   $('content').hidden = !matching;
@@ -392,12 +406,21 @@ function renderLoadStatus() {
   $('status').textContent = loadError ? loadError + (matching ? ' Showing the last successful data; it may be out of date.' : ' Data for these filters could not be loaded.') : 'No matching Copilot usage yet. Make a request in Copilot, then refresh. Check Local data sources below if you expected history.';
 }
 const builtOptions = new Map();
+function renderSessionChoices() {
+  const values = state.report?.options.sessions || [];
+  // A collapsed filter must not create thousands of invisible native option elements.
+  const visible = values.length <= 1000 || $('filters').open ? values : values.filter(v => v.id === $('session').value);
+  options('session', visible, 'All sessions');
+}
+$('filters').addEventListener('toggle', renderSessionChoices);
 function options(id, values, all) {
   const select = $(id), selected = select.value;
+  const previous = builtOptions.get(id);
+  if (previous?.values === values && previous.selected === selected && previous.all === all) return;
   // A long history has thousands of sessions; the list is rebuilt only when it differs.
   const key = JSON.stringify([selected, all, values]);
-  if (builtOptions.get(id) === key) return;
-  builtOptions.set(id, key);
+  builtOptions.set(id, { values, selected, all, key });
+  if (previous?.key === key) return;
   const choices = values.map(v => typeof v === 'string' ? { id: v, name: v } : v);
   const available = selected && !choices.some(v => v.id === selected) ? [{ id: selected, name: selected }, ...choices] : choices;
   const title = choice => choice.name === choice.id ? choice.name : `${choice.name} — ${choice.id}`;
@@ -490,7 +513,7 @@ async function loadSessionModels() {
   if (!view) return;
   const version = ++view.version;
   view.pending = true; view.error = '';
-  renderBreakdown();
+  if (state.view === 'breakdown') renderBreakdown();
   try {
     const result = await request('usage.sessionModels', { ...JSON.parse(state.filterKey), project: project.project, session: view.session });
     if (state.projectView !== project || project.models !== view || view.version !== version) return;
@@ -499,7 +522,7 @@ async function loadSessionModels() {
     if (state.projectView !== project || project.models !== view || view.version !== version) return;
     view.error = `Could not load models: ${e.message}`;
   } finally {
-    if (state.projectView === project && project.models === view && view.version === version) { view.pending = false; renderBreakdown(); }
+    if (state.projectView === project && project.models === view && view.version === version) { view.pending = false; if (state.view === 'breakdown') renderBreakdown(); }
   }
 }
 
@@ -538,7 +561,7 @@ async function loadModelGroupPage(offset, projects) {
   const current = () => state.modelView === parent && (projects || parent.sessions === view);
   const version = ++view.version;
   view.pending = true; view.error = ''; view.offset = offset;
-  renderBreakdown();
+  if (state.view === 'breakdown') renderBreakdown();
   try {
     const page = await request(projects ? 'usage.modelProjects' : 'usage.sessions', { ...JSON.parse(state.filterKey), model: parent.model, ...(!projects ? { project: view.project } : {}), sort: $('sort').value, offset });
     if (!current() || view.version !== version) return;
@@ -554,7 +577,7 @@ async function loadModelGroupPage(offset, projects) {
     if (!current() || view.version !== version) return;
     view.error = `Could not load ${projects ? 'projects' : 'sessions'}: ${e.message}`;
   } finally {
-    if (current() && view.version === version) { view.pending = false; renderBreakdown(); }
+    if (current() && view.version === version) { view.pending = false; if (state.view === 'breakdown') renderBreakdown(); }
   }
 }
 const loadModelProjectPage = (offset = 0) => loadModelGroupPage(offset, true);
@@ -565,7 +588,7 @@ async function loadRequestPage(offset = 0) {
   const version = ++view.version;
   view.pending = true; view.error = ''; view.offset = offset;
   view.details.clear(); view.detailVersion++; view.detail = null; view.detailPending = !!view.selectedId;
-  renderBreakdown();
+  if (state.view === 'breakdown') renderBreakdown();
   try {
     const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, project: view.project, session: view.session, offset });
     if (state.requestView !== view || view.version !== version) return;
@@ -576,16 +599,16 @@ async function loadRequestPage(offset = 0) {
     if (state.requestView !== view || view.version !== version) return;
     view.error = `Could not load requests: ${e.message}`;
   } finally {
-    if (state.requestView === view && view.version === version) { view.pending = false; renderBreakdown(); }
+    if (state.requestView === view && view.version === version) { view.pending = false; if (state.view === 'breakdown') renderBreakdown(); }
   }
 }
 async function loadRequestDetail(id) {
   const view = state.requestView;
   if (!view || !view.page?.rows.some(r => r.id === id) || view.pending) return;
   const version = ++view.detailVersion;
-  if (view.details.has(id)) { view.selectedId = id; view.detail = view.details.get(id); view.detailPending = false; view.detailError = ''; renderBreakdown(); return; }
+  if (view.details.has(id)) { view.selectedId = id; view.detail = view.details.get(id); view.detailPending = false; view.detailError = ''; if (state.view === 'breakdown') renderBreakdown(); return; }
   view.selectedId = id; view.detail = null; view.detailPending = true; view.detailError = '';
-  renderBreakdown();
+  if (state.view === 'breakdown') renderBreakdown();
   try {
     const page = await request('usage.requests', { ...JSON.parse(state.filterKey), model: view.model, project: view.project, session: view.session, id });
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
@@ -594,7 +617,7 @@ async function loadRequestDetail(id) {
     if (state.requestView !== view || view.detailVersion !== version || view.selectedId !== id) return;
     view.detailError = `Could not load original prompt: ${e.message}`;
   } finally {
-    if (state.requestView === view && view.detailVersion === version) { view.detailPending = false; renderBreakdown(); }
+    if (state.requestView === view && view.detailVersion === version) { view.detailPending = false; if (state.view === 'breakdown') renderBreakdown(); }
   }
 }
 function skillFolder(file) {
@@ -1224,7 +1247,10 @@ async function inspectEfficiency(target) {
   if (!target) return;
   $('model').value = target.model;
   if (target.project !== undefined) $('project').value = target.project;
-  if (target.session !== undefined) $('session').value = target.session;
+  if (target.session !== undefined) {
+    options('session', (state.report?.options.sessions || []).filter(v => v.id === target.session), 'All sessions');
+    $('session').value = target.session;
+  }
   $('group').value = 'models';
   state.requestView = null; state.projectView = null;
   showView('breakdown');
@@ -1284,7 +1310,7 @@ function renderContent() {
   const scopeDate = selected ? new Date(selected.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   const keys = r.query.includeCache ? [...TOKEN_KEYS, 'unclassifiedInput'] : ['input', 'output'];
   options('environment', r.options.environments || [], 'All environments');
-  options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); options('session', r.options.sessions, 'All sessions');
+  options('model', r.options.models, 'All models'); options('project', r.options.projects, 'All projects'); renderSessionChoices();
   renderLoadStatus();
   const filterPosition = state.view === 'efficiency' && !$('content').hidden ? $('efficiency-tokens-panel') : $('status');
   if ($('filters').nextElementSibling !== filterPosition) filterPosition.before($('filters'));
@@ -1326,46 +1352,50 @@ function renderContent() {
       `Recorded credits divided by input + output tokens, ${cacheContext}, multiplied by 1,000,000. Only requests with complete charges and token counts are included (${creditSamples(t.creditTokenRequests)}). Unavailable when there are no eligible tokens.`],
   ];
   $('tiles').innerHTML = tiles.map(([label, value, sub, measure, title]) => `<div class="tile"><span class="label">${esc(label)}</span><strong class="value"${measure ? ` data-measure="${measure}"` : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(value)}</strong><span class="sub">${esc(sub)}</span></div>`).join('');
-  $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
-  $('token-total').textContent = recordedValue(scope, 'total', number);
-  $('token-total').title = recordedValue(scope, 'total', number);
-  $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
-  $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
-  $('all-days').hidden = !selected;
-  const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
-  const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
-  $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(recordedValue(scope, key, number))}">${esc(recordedValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
-  $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache. Percentages show shares of recorded tokens.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
   renderBanner(r);
-  $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
-  $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
-  const width = Math.max(280, $('daily').clientWidth);
-  const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
-  $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale, showCoverage: !$('coverage').hidden });
-  const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
-  $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
-  $('calendar').innerHTML = r.loading ? '<p class="muted">Activity history is loading…</p>' : calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
-  $('rhythm').innerHTML = punchCard(r.rhythm, { fmt: number });
-  $('activity-expand').disabled = !!r.loading;
+  if (state.view === 'usage') {
+    $('token-title').textContent = (selected ? `Tokens on ${scopeDate}` : 'Total tokens') + (r.query.includeCache ? '' : ' excluding cache');
+    $('token-total').textContent = recordedValue(scope, 'total', number);
+    $('token-total').title = recordedValue(scope, 'total', number);
+    $('token-context').textContent = `${number(scope.sessions)} sessions · ${number(scope.requests)} requests through GitHub Copilot`;
+    $('token-types-title').textContent = `Tokens by type · ${scopeDate || 'all days'}`;
+    $('all-days').hidden = !selected;
+    const stats = [['Input (including cache)', 'inputTotal'], ['Output', 'output'], ['Uncached input', 'input'], ['Cache read', 'cacheRead'], ['Cache write', 'cacheWrite']];
+    const cacheRate = scope.missingCache ? 'Unavailable' : scope.inputTotal ? `${number(scope.cacheRead / scope.inputTotal * 100)}%` : '—';
+    $('token-stats').innerHTML = stats.map(([label, key]) => `<div><dt>${label}</dt><dd title="${esc(recordedValue(scope, key, number))}">${esc(recordedValue(scope, key, number))}</dd></div>`).join('') + `<div><dt>Cache hit rate</dt><dd>${cacheRate}</dd></div>`;
+    $('token-note').textContent = 'Input includes cache reads and writes. Cache hit rate is the share of input read from cache. Percentages show shares of recorded tokens.' + (r.query.includeCache ? '' : ' Cache is excluded from totals and charts; the individual counts above remain visible.');
+    $('daily-title').textContent = credits ? 'Daily AI credits' : 'Daily tokens';
+    $('daily-caption').textContent = `${r.daily[0]?.day || ''} — ${r.daily.at(-1)?.day || ''} · local time`;
+    const width = Math.max(280, $('daily').clientWidth);
+    const unavailable = t.requests && (credits ? t.credits === null : t.knownTokenRequests === 0);
+    $('daily').innerHTML = unavailable ? `<p class="muted">${credits ? 'Credit charges' : 'Token counts'} are unavailable for these requests.</p>` : stackedBars(r.daily, { width, height: 230, keys: credits ? ['credits'] : keys, colors, labels, fmt: credits ? creditNumber : number, selectable: true, selectedDay: state.selectedDay, textScale, showCoverage: !$('coverage').hidden });
+    const legendKeys = credits ? ['credits'] : keys.filter(k => t[k] > 0);
+    $('legend').innerHTML = legendKeys.map(k => `<span><i style="background:${colors[k]}"></i>${labels[k]}</span>`).join('');
+    $('calendar').innerHTML = r.loading ? '<p class="muted">Activity history is loading…</p>' : calendarHeatmap(r.calendar, { fmt: number, showCoverage: !$('coverage').hidden });
+    $('rhythm').innerHTML = punchCard(r.rhythm, { fmt: number });
+    $('activity-expand').disabled = !!r.loading;
+    const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
+    const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
+    $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
+    $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(recordedValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(recordedValue(scope, k, number))}</b></span>`).join('');
+    // Model bars always show tokens; the credit selector controls the daily chart.
+    $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: recordedValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
+    $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10, $('projects-sort').value), 'Project', false, 'projectFilter');
+    $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
+    $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
+  }
   renderActivityExplorer();
-  const typeKeys = r.query.includeCache ? ['input', 'cacheRead', 'cacheWrite', 'unclassifiedInput', 'output'] : ['input', 'output'];
-  const segments = typeKeys.filter(k => scope[k] > 0).map(k => ({ label: labels[k], value: scope[k], color: colors[k], note: recordedValue(scope, k), incomplete: !$('coverage').hidden && !!(scope.missingTokens || scope.missing?.[k]) }));
-  $('token-bar').innerHTML = segmentBar(segments, { width: Math.max(280, $('token-bar').clientWidth), textScale });
-  $('token-legend').innerHTML = typeKeys.filter(k => k !== 'unclassifiedInput' || scope[k] > 0).map(k => `<span title="${esc(recordedValue(scope, k, number))}"><i style="background:${colors[k]}"></i>${labels[k]} <b>${esc(recordedValue(scope, k, number))}</b></span>`).join('');
-  // Model bars always show tokens; the credit selector controls the daily chart.
-  $('models-summary').innerHTML = hBars(visibleChoices(r.usageChoices.models, $('model').value, 8, $('models-sort').value).map(m => ({ label: m.name, value: m.total, note: recordedValue(m, 'total', number) })), { width: Math.max(280, $('models-summary').clientWidth), textScale, selectable: true, selectedLabel: $('model').value });
-  $('projects-summary').innerHTML = table(visibleChoices(r.usageChoices.projects, $('project').value, 10, $('projects-sort').value), 'Project', false, 'projectFilter');
-  $('models-selection').textContent = $('model').value ? 'Model filter on · bars show tokens' : 'Top 8 · bars show tokens';
-  $('projects-selection').textContent = $('project').value ? 'Project filter on · select again to clear' : 'Top 10 · select to filter';
   $('sources').innerHTML = r.sources.map(s => `<div class="source ${esc(s.state)}"><code>${esc(s.path)}</code><p>${esc(s.state)} · ${number(s.records ?? 0)} requests · ${number(s.files ?? 0)} session logs${s.message ? ` · ${esc(s.message)}` : ''}</p></div>`).join('');
   renderUpdated(r);
-  renderBreakdown();
-  renderEfficiency();
+  if (state.view === 'breakdown') renderBreakdown();
+  if (state.view === 'efficiency') renderEfficiency();
   $('efficiency-review-open').disabled = !!r.loading || reviewRunning || reviewConnectionPending;
-  if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
-  for (const type of ['model', 'project']) {
-    const key = type === 'model' ? 'usageModel' : 'usageProject';
-    if (focusedChoice?.[key] !== undefined) [...$(`${type}s-summary`).querySelectorAll(`[data-usage-${type}]`)].find(el => el.dataset[key] === focusedChoice[key])?.focus({ preventScroll: true });
+  if (state.view === 'usage') {
+    if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
+    for (const type of ['model', 'project']) {
+      const key = type === 'model' ? 'usageModel' : 'usageProject';
+      if (focusedChoice?.[key] !== undefined) [...$(`${type}s-summary`).querySelectorAll(`[data-usage-${type}]`)].find(el => el.dataset[key] === focusedChoice[key])?.focus({ preventScroll: true });
+    }
   }
 }
 function selectUsageFilter(type, value) {
@@ -1647,12 +1677,58 @@ async function refreshReviewConnection(reconnect) {
 }
 $('review-models-refresh').onclick = () => refreshReviewConnection(false);
 $('review-reconnect').onclick = () => refreshReviewConnection(true);
+function applyPaused(paused) {
+  const changed = !!state.paused !== paused;
+  state.paused = paused;
+  $('settings-pause').textContent = paused ? 'Resume Usage Insights' : 'Pause Usage Insights';
+  $('settings-pause-status').textContent = paused ? 'Paused. Settings and diagnostic logs remain available.' : 'Running. You can pause new data reads and AI reviews at any time.';
+  if (paused && changed) {
+    state.version++;
+    state.report = null; state.creditsUnavailable = true;
+    state.requestView = state.modelView = state.projectView = state.skillView = null;
+    inventorySnapshot = undefined; inventoryQueued = false;
+    historyLoading = null; clearTimeout(historyPoll); historyPoll = null;
+    efficiencyContextSnapshot = null;
+    if (reviewRun) reviewRun.cancelled = true;
+    reviewResult = null;
+    reviewProgress(null);
+    $('review-result').hidden = true;
+    $('review-answer').textContent = '';
+    $('review-preview').hidden = true;
+    $('efficiency-review-output').value = '';
+    $('tip').hidden = true;
+    renderHeaderCredits();
+  }
+  setRefreshFeedback('idle');
+  renderLoadStatus();
+}
+function renderRuntimeSecurity(status) {
+  const node = status?.nodeVersion || 'unknown';
+  $('settings-runtime').textContent = status?.status === 'below-baseline'
+    ? `Node ${node} is older than the reviewed security baseline ${status.minimum}. Update Copilot to obtain its runtime updates. You can pause this plugin while updating. Reviewed ${status.reviewedAt}.`
+    : status?.status === 'baseline-met'
+      ? `Node ${node} meets the baseline reviewed ${status.reviewedAt}. This is a dated check, not a vulnerability scan or safety guarantee.`
+      : `Node ${node} has not been checked against a supported security baseline. Keep Copilot and this plugin updated.`;
+}
+$('settings-pause').onclick = async () => {
+  $('settings-pause').disabled = true; $('settings-error').hidden = true;
+  try {
+    const config = await request('settings.set', { paused: !state.paused });
+    applyPaused(config.paused === true);
+    if (!state.paused) await load(true);
+  } catch (error) { $('settings-error').textContent = error.message; $('settings-error').hidden = false; }
+  finally { $('settings-pause').disabled = false; }
+};
 $('settings-open').onclick = $('footer-settings').onclick = async () => {
   $('settings-error').hidden = true;
   $('settings-save').disabled = true;
+  $('settings-pause').disabled = true;
   $('settings-dialog').showModal();
   try {
     const config = await request('settings.get');
+    applyPaused(config.paused === true);
+    renderRuntimeSecurity(config.runtimeSecurity);
+    $('settings-pause').disabled = false;
     $('text-size').value = config.textSize ?? 'small';
     $('simplify-numbers').checked = config.simplifyNumbers !== false;
     $('review-samples').checked = config.reviewAllowSamples !== false;
@@ -1677,6 +1753,7 @@ $('settings-save').onclick = async () => {
   try {
     const effort = savedReviewReasoning || reviewReasoningTouched || reviewModels.some(m => m.id === $('review-model').value) ? { reviewReasoning: $('review-reasoning').value } : {};
     const config = await request('settings.set', { textSize: $('text-size').value, simplifyNumbers: $('simplify-numbers').checked, includeWsl: $('include-wsl').checked, readWslDatabases: $('read-wsl-databases').checked, includeVSCode: $('include-vscode').checked, extraVSCodeHomes: lines('extra-vscode-homes'), extraHomes: lines('extra-homes'), disabledHomes: lines('disabled-homes'), reviewModel: $('review-model').value, reviewAllowSamples: $('review-samples').checked, ...effort });
+    applyPaused(config.paused === true);
     applyPreferences(config); render();
     $('settings-dialog').close();
     await load(settingsSources !== JSON.stringify([config.extraHomes, config.disabledHomes, config.includeWsl !== false, config.readWslDatabases !== false, config.includeVSCode !== false, config.extraVSCodeHomes || []]));
@@ -1685,13 +1762,20 @@ $('settings-save').onclick = async () => {
 };
 try { document.documentElement.classList.toggle('light', (localStorage.getItem('usage-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'light'); } catch {}
 $('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); try { localStorage.setItem('usage-theme', light ? 'light' : 'dark'); } catch {} };
+let tooltipLayout;
 function showTooltip(mark, x, y) {
-  const tip = JSON.parse(mark.dataset.tip), popup = $('tip');
-  popup.innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(typeof tip.total === 'number' ? number(tip.total) : tip.total)}</b></p>`);
-  popup.hidden = false;
-  const width = popup.offsetWidth, height = popup.offsetHeight, gap = 12, margin = 8;
+  const popup = $('tip');
   const viewportWidth = document.documentElement.clientWidth || innerWidth;
   const viewportHeight = document.documentElement.clientHeight || innerHeight;
+  const key = JSON.stringify([mark.dataset.tip, state.simplifyNumbers, state.textSize, viewportWidth, viewportHeight]);
+  if (tooltipLayout?.key !== key) {
+    const tip = JSON.parse(mark.dataset.tip);
+    popup.innerHTML = `<strong>${esc(tip.title || '')}</strong>` + (tip.rows || []).map(([label, value]) => `<p><span>${esc(label)}</span><span>${esc(typeof value === 'number' ? number(value) : value)}</span></p>`).join('') + (tip.total === undefined ? '' : `<p><b>Total</b><b>${esc(typeof tip.total === 'number' ? number(tip.total) : tip.total)}</b></p>`);
+    popup.hidden = false;
+    tooltipLayout = { key, width: popup.offsetWidth, height: popup.offsetHeight };
+  }
+  popup.hidden = false;
+  const { width, height } = tooltipLayout, gap = 12, margin = 8;
   const left = x + gap + width <= viewportWidth - margin ? x + gap : x - gap - width;
   const top = y + gap + height <= viewportHeight - margin ? y + gap : y - gap - height;
   popup.style.left = `${Math.max(margin, Math.min(left, viewportWidth - width - margin))}px`;

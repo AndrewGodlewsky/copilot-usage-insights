@@ -49,7 +49,7 @@ test('settings validate paths, persist atomic changes, and never replace corrupt
   const dir = await fixture(t), settings = createSettings(dir);
   await settings.set({ extraHomes: [dir] });
   await Promise.all([settings.set({ disabledHomes: [dir] }), settings.set({ extraHomes: [] })]);
-  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], reviewAllowSamples: true, reviewModel: 'claude-sonnet-5.5', reviewReasoning: 'high' });
+  assert.deepEqual(await createSettings(dir).get(), { extraHomes: [], disabledHomes: [dir], textSize: 'small', simplifyNumbers: true, paused: false, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], reviewAllowSamples: true, reviewModel: 'claude-sonnet-5.5', reviewReasoning: 'high' });
   await assert.rejects(settings.set({ extraHomes: ['relative'] }), /absolute/);
   await assert.rejects(settings.set({ unexpected: true }), /Unknown/);
   await fs.writeFile(path.join(dir, 'settings.json'), '{bad');
@@ -64,7 +64,7 @@ test('text size defaults to small and persists only supported choices without ch
   assert.equal((await settings.get()).textSize, 'small');
   for (const textSize of ['large', 'medium', 'small']) {
     await settings.set({ textSize });
-    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], reviewAllowSamples: true, reviewModel: 'claude-sonnet-5.5', reviewReasoning: 'high' });
+    assert.deepEqual(await createSettings(dir).get(), { extraHomes: [dir], disabledHomes: [], textSize, simplifyNumbers: true, paused: false, includeWsl: true, readWslDatabases: true, includeVSCode: true, extraVSCodeHomes: [], reviewAllowSamples: true, reviewModel: 'claude-sonnet-5.5', reviewReasoning: 'high' });
   }
   for (const textSize of ['huge', '', 1, null, {}]) await assert.rejects(settings.set({ textSize }), /textSize/);
   assert.equal((await settings.get()).textSize, 'small');
