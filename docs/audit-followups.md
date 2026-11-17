@@ -8,7 +8,7 @@ These are decision and investigation handoffs, not approval to remove features. 
 | Older history loaded on demand | [#4](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/4) |
 | Optional prompt/tool timeline retention | [#5](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/5) |
 | Unused-event JSON validation | [#6](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/6) |
-| Historical journal integrity policy | [#7](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/7) |
+| Historical journal integrity policy — retain full verification; identity fix and diagnostics completed | [#7](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/7), [decision and measurements](journal-integrity.md) |
 | Large-list pagination and search | [#8](https://github.com/AndrewGodlewsky/copilot-usage-insights/issues/8) |
 
 ## Starting point for every issue
@@ -75,6 +75,8 @@ Preserve recorded `totalNanoAiu` charges, exact zero versus missing values, prov
 **Acceptance:** quantify skipped validation and determine how coverage UI/export would communicate it. Verify byte-identical totals for valid fixtures, escaped/reordered/duplicate JSON keys, nested text that resembles an event type, unknown future events, UTF-8 and chunk boundaries, partial final lines, oversized lines, copied/replayed events, skill/tool failures, prompt links and compaction. Test whether a prefix shortcut can accidentally drop relevant data, not only whether nominal fixtures pass. Preserve full validation as the fallback and ensure a manual recheck can restore diagnostics if a fast mode is approved. No silent default flip; maintainer may explicitly choose to retain full validation and close the issue.
 
 ## 5. Decide the integrity policy for appended historical journals
+
+**Resolved:** retain complete verification, add file identity to cache checks, and report prefix-check timing/counts. See [the implemented decision and regression results](journal-integrity.md). The investigation below remains as the original handoff; no weaker validation mode was enabled.
 
 **Decision:** retain full consumed-prefix verification (audit recommendation), or explicitly accept weaker historical-edit detection for faster append processing. Prefer a proven feature-preserving method if one exists; filesystem modification time alone is insufficient evidence.
 

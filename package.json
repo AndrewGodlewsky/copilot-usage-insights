@@ -1,6 +1,6 @@
 {
   "name": "copilot-usage-insights",
-  "version": "0.1.110",
+  "version": "0.1.111",
   "private": true,
   "type": "module",
   "description": "Local GitHub Copilot usage and AI credits in a desktop canvas.",

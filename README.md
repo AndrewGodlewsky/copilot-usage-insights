@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.110** adds grouped Context Growth charts, project/model filters and individual session inspection, with aggregate patterns available to AI review. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.111** adds a persistent pause control, strengthens local data handling and improves large-history processing and dashboard updates. Refresh detects replaced journals more reliably, and Show logs explains the cost of verifying growing files. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -271,6 +271,8 @@ A separate, small runtime log records extension startup/exit, observed crashes/s
 Only approved diagnostic fields are retained. Copied logs omit prompts, conversation content, skill/model/session names, session IDs, local filesystem paths, raw error messages, credentials, and the private canvas URL. Source files are identified by safe code filenames and line numbers, and data sources by an ordinal number. This limits sensitive information in an issue while preserving the operation and timing needed to investigate it.
 
 Opening or reloading logs does not rescan usage history. Dashboard logs are immediately copyable while server logs load; if that request fails or takes more than three seconds, the dialog keeps dashboard logs and any cached server snapshot available. If clipboard permission is blocked, it selects the text for manual copying. **Reload logs** updates the snapshot while the dialog stays open.
+
+[Journal integrity checks](docs/journal-integrity.md) explain the `prefixChecks`, `prefixMismatches` and `prefixCheckMs` fields. Full verification remains enabled so earlier edits to a growing journal are detected; the timing describes verification work, not an additional scan or a weaker validation mode.
 
 If the server has stopped, it cannot automatically send newer disk entries to the already-open page. Use **Load saved logs** inside Show logs, select `diagnostics.jsonl` and optionally `diagnostics.previous.jsonl`, then **Copy logs**. The dialog explains where to find them on each operating system; on Windows, paste `%LOCALAPPDATA%\copilot-usage-insights` into the file picker's address bar. This works without the server or a terminal. Up to two files of 1 MiB each are read locally, filtered through the same diagnostic allowlist, deduplicated, and limited to the newest 300 imported entries. They are labeled as a file snapshot. Invalid files leave existing logs intact; nothing is uploaded or persisted by the import. Reopening the dashboard also captures saved logs again, but the underlying connection failure still requires diagnosis.
 

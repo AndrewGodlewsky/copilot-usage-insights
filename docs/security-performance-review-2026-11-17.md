@@ -2,6 +2,8 @@
 
 This review starts at `93117a6` (v0.1.110, fetched `origin/main`). The working tree was clean. Changes are on `audit/security-performance`; no prior edits were overwritten. This audit does not publish, install into a user's Copilot setup, or change the version.
 
+Release follow-up: the maintainer subsequently authorized v0.1.111 on `main`. It includes the audit changes and the [journal-integrity decision](journal-integrity.md) from issue #7. Release checks passed 629 tests with one POSIX-only skip, plus all six 100,000-record scan tests. The other functionality decisions remain open in the [follow-up index](audit-followups.md).
+
 The aim is to preserve accounting and functionality while reducing attack surface, unnecessary work, and load-time stalls. Measurements use generated records and temporary directories, never personal histories or paid inference. Browser/desktop automation was not authorized: UI measurements below cover JavaScript and DOM operations in a VM fixture, **not browser paint or a live Copilot canvas**.
 
 ## Conclusions

@@ -8,7 +8,7 @@ for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', '
 const sourceFiles = 'canvas-server|canvas-endpoint|copilot-source|copilot-db-process-reader|copilot-db-process|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
-for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills', 'filesDeferred', 'databasesDeferred', 'scanId']) numericFields.add(field);
+for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'prefixChecks', 'prefixMismatches', 'prefixCheckMs', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills', 'filesDeferred', 'databasesDeferred', 'scanId']) numericFields.add(field);
 for (const event of ['history.recent', 'history.background']) RUNTIME_EVENTS.add(event);
 RUNTIME_EVENTS.add('skills.report');
 for (const field of ['skillUses', 'skillFailures', 'omittedSkillUses', 'omittedSkillFailures', 'unattributedUses', 'unattributedFailures']) numericFields.add(field);
@@ -128,11 +128,12 @@ export function loadTimingSummary(entries) {
     const name = entry.event === 'ui.load' && entry.loadKind === 'initial' ? 'Initial usage load' : labels[entry.event];
     const context = [entry.source, entry.processId ? `process ${entry.processId}` : '', entry.loadKind, entry.sourceIndex ? `source ${entry.sourceIndex}` : '', entry.environmentType, entry.historyPhase].filter(Boolean).join(', ');
     const timing = Number.isFinite(entry.durationMs) ? `${entry.durationMs} ms` : 'no completion retained';
-    const counts = ['scanId', 'records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'filesDeferred', 'databasesDeferred', 'bytesRead', 'bytesHashed', 'responseBytes', 'cacheHit', 'unchanged']
+    const counts = ['scanId', 'records', 'folders', 'files', 'filesRead', 'filesAppended', 'filesReused', 'filesDeferred', 'databasesDeferred', 'bytesRead', 'bytesHashed', 'prefixChecks', 'prefixMismatches', 'prefixCheckMs', 'responseBytes', 'cacheHit', 'unchanged']
       .filter(key => typeof entry[key] === 'boolean' || Number.isFinite(entry[key])).map(key => `${key}=${entry[key]}`).join(', ');
     lines.push(`${entry.at} ${name}${context ? ` (${context})` : ''}: ${entry.phase}, ${timing}${counts ? '; ' + counts : ''}`);
   }
   lines.push('bytesRead = journal bytes parsed; bytesHashed = additional prefix-validation reads. Source numbers are anonymous and local to each scan.',
+    'prefixChecks = full consumed-prefix checks on growing files; prefixMismatches = checks that required a full reread; prefixCheckMs = summed check elapsed time (parallel checks can overlap).',
     'Canvas startup timings are separate from usage scanning. Document loaded measures navigation through the page load event, not final browser paint. Host work before extension registration is not measured. Inventory loads separately.');
   return lines.join('\n');
 }

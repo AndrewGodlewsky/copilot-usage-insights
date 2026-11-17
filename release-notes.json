@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.111",
+    "summary": "Large histories now use less repeated processing and smaller dashboard transfers, with stronger local data protections and a Pause control in Settings. Refresh detects replaced journals more reliably, and logs show the time spent checking growing files without reducing historical verification."
+  },
+  {
     "version": "0.1.110",
     "summary": "Context Growth now groups conversation patterns into clear trend lines with shaded ranges. Filter by project or model, inspect individual sessions, and include these patterns in AI reviews with explicit measurement limits."
   },

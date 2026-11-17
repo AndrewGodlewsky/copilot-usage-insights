@@ -19,7 +19,8 @@ const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // it is read again from the start, and from then on with a digest.
 const RECENT = 24 * 60 * 60 * 1000;
 const absent = e => e?.code === 'ENOENT' || e?.code === 'ENOTDIR';
-const sameFile = (known, stat) => known.size === stat.size && known.mtime === stat.mtimeMs && known.ctime === stat.ctimeMs;
+const sameFile = (known, stat) => known.dev === stat.dev && known.ino === stat.ino
+  && known.size === stat.size && known.mtime === stat.mtimeMs && known.ctime === stat.ctimeMs;
 const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
 const sameFields = (a, b) => { for (const k in a) if (a[k] !== b[k]) return false; return true; };
 const sameSet = (a, b) => { if (a === b) return true; if (a.size !== b.size) return false; for (const value of a) if (!b.has(value)) return false; return true; };
@@ -39,6 +40,8 @@ async function databaseStamp(file) {
 const chunks = [];
 async function hashPrefix(handle, length, metrics, signal) {
   const hash = createHash('sha256'), buffer = chunks.pop() || Buffer.allocUnsafe(CHUNK);
+  const started = metrics ? performance.now() : 0;
+  if (metrics) metrics.prefixChecks++;
   try {
     for (let position = 0; position < length;) {
       signal?.throwIfAborted();
@@ -47,7 +50,10 @@ async function hashPrefix(handle, length, metrics, signal) {
       if (metrics) metrics.bytesHashed += bytesRead;
       hash.update(buffer.subarray(0, bytesRead)); position += bytesRead;
     }
-  } finally { chunks.push(buffer); }
+  } finally {
+    if (metrics) metrics.prefixCheckMs += performance.now() - started;
+    chunks.push(buffer);
+  }
   return hash;
 }
 // Combines every journal's contribution, in folder order. Every entry is filed under a session
@@ -121,7 +127,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const result = diagnostics ? diagnostics.measure(event, fields, work) : work();
     return result?.then ? result.then(value => { signal?.throwIfAborted(); return value; }) : result;
   };
-  const readMetrics = () => ({ filesRead: 0, filesReused: 0, filesAppended: 0, bytesRead: 0, bytesHashed: 0 });
+  const readMetrics = () => ({ filesRead: 0, filesReused: 0, filesAppended: 0, bytesRead: 0, bytesHashed: 0,
+    prefixChecks: 0, prefixMismatches: 0, prefixCheckMs: 0 });
   const environmentType = source => source.environment?.startsWith('wsl:') ? 'wsl' : source.environment?.startsWith('remote:') ? 'remote' : 'local';
   // Journals and session names are reread only when their size or timestamps change.
   const files = new Map(), names = new Map(), databaseCache = new Map();
@@ -146,7 +153,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           name = data?.id && data.id !== sessionId ? '' : normalizeSessionName(data?.name);
         } catch { name = ''; }
       }
-      names.set(file, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, name });
+      names.set(file, { dev: stat.dev, ino: stat.ino, size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, name });
       return name;
     } catch { names.delete(file); return ''; }
     finally { await handle?.close(); }
@@ -181,9 +188,10 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const chunk = chunks.pop() || Buffer.allocUnsafe(CHUNK);
     try {
       let prefixMatches = false, hash;
-      if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino) {
+      if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino && entry.dev === stat.dev) {
         hash = await hashPrefix(handle, entry.offset, metrics, signal);
         prefixMatches = hash.copy().digest('hex') === entry.digest;
+        if (!prefixMatches && metrics) metrics.prefixMismatches++;
       }
       if (!prefixMatches) {
         const growing = Date.now() - stat.mtimeMs < RECENT || !!entry && (!force || entry.digest !== null);
@@ -222,7 +230,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           position += bytesRead;
         }
       } finally { if (consumed) entry.digest = consumed.digest('hex'); }
-      Object.assign(entry, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, ino: stat.ino });
+      Object.assign(entry, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, ino: stat.ino, dev: stat.dev });
       files.set(file, entry);
       // A journal read without a digest is never continued, only read again, so what its parser
       // remembers for recognising repeated lines can be let go.
