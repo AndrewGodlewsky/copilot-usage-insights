@@ -315,15 +315,50 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
   if (id === 'results') {
     const rows = (report.tools?.rows || []).slice().sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name)).slice(0, 5);
     const messages = category('messages');
+    const material = report.efficiency?.toolMaterial, shown = material?.calls > 0 ? material : null;
+    const things = (value, one, many = `${one}s`) => `${number(value)} ${value === 1 ? one : many}`;
+    const span = ms => {
+      if (!valid(ms)) return 'Unavailable';
+      if (ms < 1000) return `${number(Math.round(ms))} ms`;
+      if (ms < 60_000) return `${number(ms / 1000, { maximumFractionDigits: 1 })} s`;
+      const seconds = Math.round(ms / 1000), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
+      return hours ? `${number(hours)} h ${number(minutes)} min` : `${number(minutes)} min ${number(seconds % 60)} s`;
+    };
+    // What the agent ran: calls by family, grouped by recorded tool name only, with how long calls took.
+    const families = (shown?.families || []).filter(row => row.calls > 0);
+    const ran = !shown ? empty('No tool calls match these filters, so there is nothing to group. Missing records do not mean no tools were used.')
+      : table(['What the agent ran', 'Calls', 'Share of calls', 'Calls with a recorded duration', 'Typical duration', 'Total duration'],
+        families.map(row => [row.label, number(row.calls), percent(row.share), `${number(row.timedCalls)} of ${number(row.calls)}`, row.timedCalls ? span(row.middleMs) : 'Unavailable', row.timedCalls ? span(row.totalMs) : 'Unavailable']))
+        + note(`${things(shown.calls, 'tool call')} in the selected history, grouped by the recorded tool name only. Names this view does not recognise are counted as other tools${shown.otherNames?.length ? ` (most often: ${shown.otherNames.map(row => `${row.name || 'unnamed'}, ${number(row.calls)}`).join('; ')})` : ''}. A tool that records an MCP server is counted as an MCP tool, whatever its name. A group says what kind of tool ran, not how much it brought in.`)
+        + note(`A duration runs from the start of a call to its recorded completion. ${shown.timedCalls === shown.calls ? `All ${number(shown.calls)} calls have one` : `Only ${number(shown.timedCalls)} of ${number(shown.calls)} calls have one`}. Typical means half of the calls took less. Calls can overlap, so a total is not time spent waiting.`);
+    // Input added between model calls: an estimate, grouped by how many tool calls started in between.
+    const added = shown?.added, groups = added?.groups || [], sessions = added?.sessions;
+    const left = sessions ? [[sessions.subagent, 'recorded subagent calls, whose tool calls cannot be told apart from the main conversation'],
+      [sessions.unknownInitiator, 'recorded model calls with no initiator'], [sessions.noToolEvents, 'recorded no tool events'], [sessions.tooShort, 'had only one model call']]
+      .filter(([count]) => count > 0).map(([count, why]) => `${things(count, 'conversation')} ${why}`) : [];
+    const between = !added?.steps ? empty(sessions?.total
+      ? 'No step between two main-conversation model calls could be measured in these filters. A step needs the input and output of the earlier call and the input of the next. Missing counts are not zero.'
+      : 'No main-conversation model calls match these filters, so input added between calls cannot be estimated.')
+      : table(['Tool calls in between', 'Steps', 'Typical added input', 'Input shrank'], groups.map(row => [row.label, number(row.steps), row.grew ? `${number(row.middle)} tokens` : 'Unavailable', number(row.shrunk)]))
+        + note(`An estimate, not a measurement: the next call's input minus the earlier call's input and output. It covers tool results and any new message from you. Typical means half of the steps added less. ${things(added.steps, 'step')} from ${number(sessions.used)} of ${things(sessions.total, 'conversation')}${added.unmeasured ? `; ${things(added.unmeasured, 'more step')} lacked an input or output count` : ''}. ${added.shrunk ? `${things(added.shrunk, 'step')} where input shrank (a compaction or changed history) ${added.shrunk === 1 ? 'is' : 'are'} counted but left out of the typical values. ` : ''}${left.length ? `Left out: ${left.join('; ')}. ` : ''}Subagent calls cannot be put in order, so they are not steps.${added.modelFiltered ? ' A model filter is on, so calls on other models are missing and some steps span more than one call.' : ''}`);
+    // A comparison between groups needs enough steps on both sides and a clear difference.
+    const enough = 10, typical = groups.filter(row => row.grew >= enough && valid(row.middle) && row.middle > 0);
+    const most = typical.reduce((a, b) => !a || b.middle > a.middle ? b : a, null), least = typical.reduce((a, b) => !a || b.middle < a.middle ? b : a, null);
+    const lead = typical.length > 1 && most.middle >= 1.5 * least.middle
+      ? `Steps with ${most.label.toLowerCase()} between model calls added a typical ${number(most.middle)} tokens of input, against ${number(least.middle)} with ${least.label.toLowerCase()}.`
+      : valid(added?.middle) && added.grew >= enough ? `Half of the ${number(added.grew)} steps where input grew added less than ${number(added.middle)} tokens of input.`
+      : messages == null ? 'Tool activity is visible before its context footprint is measurable.' : `${number(messages)} tokens are in conversation and tool messages combined.`;
     return metrics(metric('Conversation context', messages, 'Current user, assistant, and tool messages together'),
       metric('Of occupied context', share(messages, context?.totalTokens), 'Current snapshot only', percent),
       metric('Recorded tool calls', report.tools?.calls ?? null, 'Selected history; activity, not token charges'))
+      + section('What the agent ran', ran)
+      + section('Input added between model calls', between)
       + contextStamp() + (current ? sources(['tool'], 'Largest tool-attributed context sources') + inspect : inspect)
       + section('Most-used tools in selected history', rows.length ? table(['Tool', 'Calls', 'Failures', 'Unknown outcome'], rows.map(r => [r.server ? `${r.server} / ${r.mcpTool || r.name}` : r.name, number(r.calls), number(r.failures), number(r.unknown)])) : empty('No matching tool activity was recorded.'))
       + note(`${number(report.tools?.omitted ?? 0)} tool calls omitted for missing or mixed provider attribution. A model filter can also exclude calls with no recorded model.`)
-      + insight(messages == null ? 'Tool activity is visible before its context footprint is measurable.' : `${number(messages)} tokens are in conversation and tool messages combined.`,
+      + insight(lead,
         'For the next exploration task, ask for a targeted search and relevant excerpts before requesting full files or large command output.',
-        'tool-attributed context and input per call on similar work. Call counts do not reveal result size, repeated reads, or historical file-level token cost.');
+        'added input per step and tool calls per step on similar work, and whether the answer still had what it needed. Steps with more tool calls can add more input because the results were larger, or because your message was. Call counts do not reveal result size, repeated reads, or file-level token cost.');
   }
   if (id === 'cache') {
     const rows = measuredModels('cacheRequests', 'cacheInput');

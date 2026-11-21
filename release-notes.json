@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.125",
+    "summary": "Files, searches, and tool results now shows what kinds of tools the agent ran and how long they took. It also estimates how much input each step added to the conversation, grouped by how many tool calls ran in between. The figure is an estimate, not a per-file bill."
+  },
+  {
     "version": "0.1.124",
     "summary": "Context growth now opens with a summary across all conversations: typical input at later prompts, how many conversations grew to two and five times their start, and how much input and credits came after a conversation doubled its starting size. The chart and session inspector are unchanged."
   },

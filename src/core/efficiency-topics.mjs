@@ -13,6 +13,7 @@ import { createRecoveryTopic } from './efficiency-recovery.mjs';
 import { createToolFootprint } from './efficiency-tools.mjs';
 import { createModelMix } from './efficiency-models.mjs';
 import { createGrowthSummary } from './efficiency-growth.mjs';
+import { createToolMaterial } from './efficiency-results.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -27,15 +28,21 @@ const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },
 ];
 
+// A topic that needs both sides (it relates model calls to tool calls by time) registers here and
+// gets add(record, day) and addTool(tool, outcome).
+const combinedTopics = [
+  { key: 'toolMaterial', create: createToolMaterial },
+];
+
 const begin = (topics, context) => topics.map(topic => ({ key: topic.key, accumulator: topic.create(context) }));
 export function createEfficiencyTopics(context = {}) {
-  const requests = begin(requestTopics, context), tools = begin(toolTopics, context);
+  const combined = begin(combinedTopics, context), single = begin(toolTopics, context), requests = [...begin(requestTopics, context), ...combined], tools = [...single, ...combined];
   return {
     addRequest(record, day) { for (let i = 0; i < requests.length; i++) requests[i].accumulator.add(record, day); },
-    addTool(tool, outcome) { for (let i = 0; i < tools.length; i++) tools[i].accumulator.add(tool, outcome); },
+    addTool(tool, outcome) { for (let i = 0; i < tools.length; i++) { const accumulator = tools[i].accumulator; (accumulator.addTool || accumulator.add).call(accumulator, tool, outcome); } },
     finish() {
       const result = {};
-      for (const { key, accumulator } of [...requests, ...tools]) result[key] = accumulator.finish();
+      for (const { key, accumulator } of [...requests, ...single]) result[key] = accumulator.finish();
       return result;
     },
   };
