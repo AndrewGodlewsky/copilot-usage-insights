@@ -2,6 +2,7 @@ import { normalizeQuery, localDay, dayOfMs, dayKey, dayNumber, parseDateDay, RAN
 import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
 import { createEfficiencyTopics } from './efficiency-topics.mjs';
+import { buildFindings } from './efficiency-findings.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
 import { environmentOf, environmentOptions, selectEnvironment } from './environments.mjs';
 import { summarizeCoverage } from './coverage.mjs';
@@ -285,6 +286,8 @@ export function buildSessionModels(records, input = {}, now = new Date(), activi
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)) };
 }
 
+// The findings read the finished sections and add one key; `insights` stays as the accumulator built it.
+const withFindings = (efficiency, promptSummary) => ({ ...efficiency, findings: buildFindings(efficiency, promptSummary) });
 export function buildReport(records, input = {}, now = new Date(), activity = {}) {
   normalizeQuery(input, now);
   const environments = environmentOptions(records, activity.sources);
@@ -368,7 +371,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: { ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, habits, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
+    efficiency: withFindings({ ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, habits, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) }, promptSummary),
     options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

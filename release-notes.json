@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.128",
+    "summary": "Findings now draws on the other Efficiency views: cache reuse after long pauses and after a model change, credits held by the heaviest prompts, failed tool calls in a row, repeated compaction, and input late in long conversations. Each finding opens the view that holds the detail."
+  },
+  {
     "version": "0.1.127",
     "summary": "Conversation habits now relates your own patterns to the work that followed: how long conversations run and their share of credits, whether later prompts in a conversation carry more calls and credits than the first, and how pauses and prompt length relate to the work. Prompt text is never read."
   },

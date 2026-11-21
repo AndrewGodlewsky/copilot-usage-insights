@@ -7,6 +7,7 @@ import { renderRecovery } from './recovery.mjs';
 import { renderModelMix } from './model-mix.mjs';
 import { renderGrowthSummary } from './growth-summary.mjs';
 import { renderHabitsTopic } from './habits-topic.mjs';
+import { renderFindings } from './findings.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
@@ -1253,7 +1254,9 @@ function renderEfficiency() {
     const completed = failedServer.failures + failedServer.successes;
     $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
   }
-  $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0)} patterns to review`;
+  const crossView = efficiency.findings;
+  $('efficiency-findings').innerHTML = renderFindings(crossView, { number, credits: creditNumber });
+  $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
   if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
   $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
@@ -1289,6 +1292,15 @@ $('efficiency-insights').onclick = event => {
   }
   const index = event.target.closest('[data-efficiency-insight]')?.dataset.efficiencyInsight;
   if (index !== undefined) return inspectEfficiency(state.report?.efficiency?.insights[Number(index)]);
+};
+// A finding opens the view that holds its detail: a token topic or a pattern topic.
+$('efficiency-findings').onclick = event => {
+  const target = event.target.closest('[data-finding-topic]')?.dataset;
+  if (!target) return;
+  const tokens = target.findingSection === 'tokens';
+  showEfficiencySection(tokens ? 'tokens' : 'patterns');
+  (tokens ? showTokenTopic : showPatternTopic)(target.findingTopic, true);
+  $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
 };
 $('efficiency-models').onclick = event => {
   const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;
