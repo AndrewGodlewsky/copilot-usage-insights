@@ -12,6 +12,7 @@ import { createCompactionTopic } from './efficiency-compaction.mjs';
 import { createRecoveryTopic } from './efficiency-recovery.mjs';
 import { createToolFootprint } from './efficiency-tools.mjs';
 import { createModelMix } from './efficiency-models.mjs';
+import { createGrowthSummary } from './efficiency-growth.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -20,6 +21,7 @@ const requestTopics = [
   { key: 'compaction', create: createCompactionTopic },
   { key: 'toolFootprint', create: createToolFootprint },
   { key: 'modelMix', create: createModelMix },
+  { key: 'growthSummary', create: createGrowthSummary },
 ];
 const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },

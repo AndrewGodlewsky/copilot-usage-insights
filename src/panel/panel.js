@@ -5,6 +5,7 @@ import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTiming
 import { buildEfficiencyReview } from './efficiency.mjs';
 import { renderRecovery } from './recovery.mjs';
 import { renderModelMix } from './model-mix.mjs';
+import { renderGrowthSummary } from './growth-summary.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
@@ -1159,7 +1160,7 @@ function renderEfficiencyGrowth() {
     select.innerHTML = `<option value="">All ${label}</option>` + (values || []).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
     select.value = $(id).value;
   }
-  root.innerHTML = renderContextGrowth(data, growthOptions());
+  root.innerHTML = renderGrowthSummary(report?.efficiency?.growthSummary, { number, credits: creditNumber }, report?.efficiency) + renderContextGrowth(data, growthOptions());
   for (const id of open) { const detail = document.getElementById(id); if (detail) detail.open = true; }
   if (focus?.startsWith('growth-')) document.getElementById(focus)?.focus({ preventScroll: true });
 }
