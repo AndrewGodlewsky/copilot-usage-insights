@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.120",
+    "summary": "Context reduction is now measured. Under Worth a closer look it shows how often conversations were compacted and why, the context size before and after, what the summary calls used, how input and cache reuse changed on the next call, and how soon input grew back. No summary text is read."
+  },
+  {
     "version": "0.1.119",
     "summary": "Work behind each prompt now shows the shape behind the averages: the typical prompt beside the average, prompts grouped by how many model calls they needed, the share of credits held by the heaviest tenth, and what the work consisted of. The five heaviest prompts open their conversation in Breakdown."
   },

@@ -222,3 +222,4 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 @media(max-width:720px){.token-index>li{grid-template-columns:minmax(0,1fr) auto}.token-index-value{text-align:right}.token-index-detail{grid-column:1/-1}}
 /* Work behind each prompt: a heaviest-prompt row that opens its conversation. */
 .token-prompt-open{text-decoration:underline;text-decoration-color:var(--muted-fg);text-underline-offset:3px}
+.compaction-caption{margin-top:14px;color:var(--muted-fg);font-size:calc(12px * var(--text-scale));font-weight:600}.compaction-caption+.token-bar-list{margin-top:8px}

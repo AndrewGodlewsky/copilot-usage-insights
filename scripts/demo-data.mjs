@@ -107,7 +107,7 @@ export function demoData(now = new Date()) {
   // Output shaping draws from its own sequence so the settings and compactions above stay as they were.
   const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11), outputRand = mulberry32(23);
   const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000;
-  const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], skillExcludedSessions: [], coverageEntries: [] };
+  const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], compactionEvents: [], skillExcludedSessions: [], coverageEntries: [] };
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
   let files = 0;
   for (const session of history.sessions()) {
@@ -116,7 +116,7 @@ export function demoData(now = new Date()) {
     const snapshot = parser.snapshot();
     files++;
     for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);
-    for (const key of ['skills', 'interactions', 'promptEvents', 'tools', 'modelChanges', 'skillExcludedSessions', 'coverageEntries']) result[key].push(...snapshot[key]);
+    for (const key of ['skills', 'interactions', 'promptEvents', 'tools', 'modelChanges', 'compactionEvents', 'skillExcludedSessions', 'coverageEntries']) result[key].push(...snapshot[key]);
     for (const key of ['excluded', 'unclassified', 'invalid', 'invalidSkills']) coverage[key] += snapshot[key];
   }
   return { ...result, sources: [{ path: 'Synthetic demo — no account data', state: 'ok', files, records: result.records.length }], coverage };

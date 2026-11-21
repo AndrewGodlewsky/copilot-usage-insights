@@ -2,6 +2,7 @@
 import { linkId, intern, promptEvent, promptEventTypes, createPromptEventSet } from './prompt-credits.mjs';
 import { createCoverageCollector, coverageTime } from './coverage.mjs';
 import { recordedEffort, modelChange } from './model-settings.mjs';
+import { compactionEvent } from './efficiency-compaction.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -88,7 +89,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
   const sessions = new Set([initialSession]);
   // `tools` holds each call as it will be reported: its start plus the latest outcome seen so far.
   const tools = new Map(), toolOutcomes = new Map(), interactions = new Map();
-  const modelChanges = new Map();
+  const modelChanges = new Map(), compactionEvents = new Map();
   const promptEvents = createPromptEventSet();
   const relabel = () => { label = project || cwd.split(/[\\/]/).filter(Boolean).at(-1) || 'Unknown project'; };
   const note = (set, value) => { if (!set.has(value)) { set.add(value); revision++; } };
@@ -186,9 +187,12 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         }
       } else if (e?.type === 'session.compaction_complete') {
         if (e.ephemeral) return;
+        const id = linkId(e.data?.compactionAttemptId) || linkId(e.id);
+        // The outcome and counts are activity, kept apart from any usage the same event carries.
+        const completed = compactionEvent(e, id, sessionId, label);
+        if (completed && !compactionEvents.has(completed.key)) { compactionEvents.set(completed.key, completed); revision++; }
         const u = e.data?.compactionTokensUsed;
         if (!u || typeof u !== 'object') return;
-        const id = linkId(e.data?.compactionAttemptId) || linkId(e.id);
         const key = id ? JSON.stringify(['compaction', sessionId, id]) : '';
         if (compactions.has(key)) return;
         const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId, cwd, project: label, source });
@@ -234,7 +238,7 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
       coverageEntries: [...coverage.snapshot(), ...(hasCheckpoint && summaryNeedsCoverage && !receiptSessions.size ? [summaryEntry()] : [])],
       // Another partial copy can contain the activity missing from an otherwise empty summary.
       emptySummary: hasCheckpoint && !summaryNeedsCoverage ? summaryEntry() : null, summaryActivitySession: summaryNeedsCoverage ? sessionId : '',
-      tools: [...tools.values()], modelChanges: [...modelChanges.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
+      tools: [...tools.values()], modelChanges: [...modelChanges.values()], compactionEvents: [...compactionEvents.values()], toolOutcomes: [...toolOutcomes.values()], sessions: [...sessions],
       skillExcludedSessions: [...skillExcludedSessions], invalidSkills, invalidTools, receiptSessions: [...receiptSessions], invalid, excluded, unclassified, aggregateOnly: hasCheckpoint && summaryNeedsCoverage && receiptSessions.size === 0 }),
   };
 }

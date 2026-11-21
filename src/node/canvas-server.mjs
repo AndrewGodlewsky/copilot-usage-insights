@@ -59,7 +59,7 @@ async function whileActive(work, signal) {
 // The latest time carried by anything in a scan: until then, the clock can still change a report.
 function latestTime(scan) {
   let latest = -Infinity;
-  for (const list of [scan.records, scan.skills, scan.interactions, scan.promptEvents, scan.tools, scan.modelChanges]) for (const item of list || []) {
+  for (const list of [scan.records, scan.skills, scan.interactions, scan.promptEvents, scan.tools, scan.modelChanges, scan.compactionEvents]) for (const item of list || []) {
     if (item.ms > latest) latest = item.ms;
     if (item.completedMs > latest) latest = item.completedMs;
   }

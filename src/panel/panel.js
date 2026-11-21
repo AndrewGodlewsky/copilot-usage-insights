@@ -1207,7 +1207,7 @@ function renderSelectedPatternTopic() {
   const topic = PATTERN_TOPICS.find(item => item.id === patternTopic);
   $('pattern-topic-title').textContent = topic.label;
   $('pattern-topic-question').textContent = topic.question;
-  $('pattern-topic-scope').textContent = patternTopic === 'growth' ? 'Selected history · current filters' : 'Measurement not available yet';
+  $('pattern-topic-scope').textContent = patternTopic === 'growth' || patternTopic === 'compaction' ? 'Selected history · current filters' : 'Measurement not available yet';
   $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
 }
 function openTokenContext() {

@@ -61,7 +61,7 @@ async function hashPrefix(handle, length, metrics, signal) {
 // Those few are reconciled entry by entry, the first copy winning; all others are simply joined
 // end to end. Pure: the result is kept for as long as the same snapshots are current.
 function mergeJournals(snapshots) {
-  const records = [], compactions = new Map(), skills = [], interactions = [], promptEvents = [], tools = [], modelChanges = [];
+  const records = [], compactions = new Map(), skills = [], interactions = [], promptEvents = [], tools = [], modelChanges = [], compactionEvents = [];
   const receiptSessions = new Set(), skillExcludedSessions = new Set(), sessionsByHome = new Map(), added = new Array(snapshots.length).fill(0);
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, invalidTools: 0, aggregateOnly: 0, fallbackRequests: 0 };
   const owner = new Map(), overlapping = new Set();
@@ -70,7 +70,7 @@ function mergeJournals(snapshots) {
     if (first === undefined) owner.set(id, i);
     else if (first !== i) { overlapping.add(first); overlapping.add(i); }
   }
-  const seenRecords = new Map(), seenInteractions = new Set(), seenSkills = new Set(), seenChanges = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
+  const seenRecords = new Map(), seenInteractions = new Set(), seenSkills = new Set(), seenChanges = new Set(), seenCompactions = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
   let home, homeSessions, session;
   const keep = r => {
     records.push(r);
@@ -92,6 +92,7 @@ function mergeJournals(snapshots) {
       for (const skill of s.skills) skills.push(skill);
       for (const tool of s.tools) tools.push(tool);
       for (const change of s.modelChanges || []) modelChanges.push(change);
+      for (const event of s.compactionEvents || []) compactionEvents.push(event);
       continue;
     }
     for (const r of s.records) {
@@ -103,6 +104,7 @@ function mergeJournals(snapshots) {
     for (const event of s.promptEvents) if (seenEvents.add(event) === event) promptEvents.push(event);
     for (const skill of s.skills) if (!seenSkills.has(skill.key)) { seenSkills.add(skill.key); skills.push(skill); }
     for (const change of s.modelChanges || []) if (!seenChanges.has(change.key)) { seenChanges.add(change.key); modelChanges.push(change); }
+    for (const event of s.compactionEvents || []) if (!seenCompactions.has(event.key)) { seenCompactions.add(event.key); compactionEvents.push(event); }
     for (const tool of s.tools) {
       const at = toolAt.get(tool.key);
       if (at === undefined) { toolAt.set(tool.key, tools.length); tools.push(tool); }
@@ -118,7 +120,7 @@ function mergeJournals(snapshots) {
     const outcome = outcomes.get(key), tool = tools[at];
     if (outcome && (outcome.success !== tool.success || outcome.completedMs !== tool.completedMs)) tools[at] = { ...tool, ...outcome };
   }
-  return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, modelChanges, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
+  return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, modelChanges, compactionEvents, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
 
 export function createScanner({ optionalHomes = [], skipUnused = false, discoverWsl, discoverVSCode, diagnostics, readDatabase = createUsageDatabaseReader(), signal } = {}) {
@@ -165,7 +167,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     const revision = entry.parser.revision();
     if (entry.revision !== revision) {
       entry.snapshot = entry.parser.snapshot(); entry.revision = revision;
-      for (const key of ['records', 'compactions', 'skills', 'interactions', 'promptEvents', 'tools', 'modelChanges']) for (const item of entry.snapshot[key] || []) item.environment = entry.environment;
+      for (const key of ['records', 'compactions', 'skills', 'interactions', 'promptEvents', 'tools', 'modelChanges', 'compactionEvents']) for (const item of entry.snapshot[key] || []) item.environment = entry.environment;
     }
     return entry.snapshot;
   }
@@ -433,9 +435,9 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       for (const r of journals.recordList) records[n++] = named(r);
       for (const r of extra.values()) records[n++] = named(r);
       for (const r of compactions) records[n++] = named(r);
-      const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, modelChanges: journals.modelChanges, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
+      const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, modelChanges: journals.modelChanges, compactionEvents: journals.compactionEvents, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
       // Nothing changed: hand back the very same result, so everything derived from it stays valid.
-      if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools && previous.modelChanges === result.modelChanges
+      if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools && previous.modelChanges === result.modelChanges && previous.compactionEvents === result.compactionEvents
         && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)
         && sameFields(previous.coverage, coverage) && JSON.stringify(previous.coverageEntries) === JSON.stringify(issues) && JSON.stringify(previous.sources) === JSON.stringify(sources)) return previous;
       if (previous && !renamed && sameList(previous.records, records)) result.records = previous.records;

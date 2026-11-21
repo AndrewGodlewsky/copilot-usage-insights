@@ -1,5 +1,6 @@
 import { esc } from './charts.mjs';
 import { renderTokenInsight } from './token-insights.mjs';
+import { renderCompactionTopic } from './compaction-topic.mjs';
 
 export const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', iconPath: 'M4 19v-6h3v6m4 0V9h3v10m4 0V5h3v14M3 21h19', group: '', question: 'See the overall balance of input and output.' },
@@ -47,7 +48,7 @@ export function renderTokenTopic(id, report, formats) {
       metric('Later input / call', growth.late, 'Median of the last three measured calls'),
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
   }
-  if (id === 'compaction') return unmeasured('Before-and-after compaction measurements are not available here yet. Context reductions need recorded compaction boundaries and comparable calls. A lower input count alone does not show what information was retained.');
+  if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary);
   if (id === 'transitions') {
     const changes = report.efficiency?.switches, efforts = report.efficiency?.efforts || [];
     if (!changes && !efforts.length) return '<p class="muted">No recorded model or effort measurements for these filters.</p>';
