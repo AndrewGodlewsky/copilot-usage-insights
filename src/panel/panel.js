@@ -6,6 +6,7 @@ import { buildEfficiencyReview } from './efficiency.mjs';
 import { renderRecovery } from './recovery.mjs';
 import { renderModelMix } from './model-mix.mjs';
 import { renderGrowthSummary } from './growth-summary.mjs';
+import { renderHabitsTopic } from './habits-topic.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
@@ -1016,6 +1017,7 @@ function renderEfficiencyHabits() {
   root.innerHTML = renderConversations(state.report?.efficiency?.conversations, { number, topic: conversationTopic,
     loading: !!historyLoading, examplesOpen: conversationExamplesOpen, exampleIndex: conversationExampleIndex,
     bucket: conversationBucketSelection, interactions: state.report?.efficiency?.interactions });
+  $('efficiency-habits-detail').innerHTML = renderHabitsTopic(state.report?.efficiency?.habits, { number, credits: creditNumber });
   for (const id of open) { const detail = $(id); if (detail) detail.open = true; }
   for (const id of CONVERSATION_TOPICS) $('conversation-tab-' + id).setAttribute('aria-pressed', String(id === conversationTopic));
   if (focus?.startsWith('conversation-')) $(focus)?.focus({ preventScroll: true });

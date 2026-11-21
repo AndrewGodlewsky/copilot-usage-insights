@@ -14,7 +14,7 @@ function histogramMedian(histogram) {
   return (lower + upper) / 2;
 }
 // Human submissions and financial attribution have different certainty requirements.
-const confirmedHuman = prompt => prompt.humanDelivery === true || prompt.humanDelivery === undefined && prompt.identity;
+export const confirmedHuman = prompt => prompt.humanDelivery === true || prompt.humanDelivery === undefined && prompt.identity;
 
 function conversationWindow(start, end, examples) {
   const sessions = new Map(), stopSessions = new Set(), callCounts = new Map();

@@ -56,6 +56,8 @@ function enrich(session, rand, outputRand, breaks, latest, flaky) {
       prompt = e.id;
       const roll = prompts++ ? breaks() : 1, wait = Math.round((roll < .07 ? 70 + breaks() * 600 : roll < .2 ? 6 + breaks() * 44 : 0) * 60_000);
       if (wait && end + shift + wait < latest) { shift += wait; stale = roll < .07 || breaks() < .5; }
+      // Demo prompts vary in length without drawing from any random stream.
+      if (e.data) e.data.content = 'x'.repeat([60, 240, 900, 2600][prompts % 4]);
     }
     if (shift) e.timestamp = new Date(Date.parse(e.timestamp) + shift).toISOString();
     if (e.type === 'user.message' && mainAgent(e)) {

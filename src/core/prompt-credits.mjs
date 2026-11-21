@@ -1,6 +1,7 @@
 import { dayOfMs, dayKey } from './query.mjs';
 import { createConversationAccumulator } from './conversations.mjs';
 import { createContextGrowthAccumulator } from './context-growth.mjs';
+import { createHabitsAccumulator } from './efficiency-habits.mjs';
 
 // IDs must remain exact: truncating long API call IDs can alias unrelated calls.
 export const linkId = value => typeof value === 'string' && value.length <= 8192 ? value : '';
@@ -616,6 +617,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const models = query.models && new Set(query.models), work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const conversations = createConversationAccumulator(records, query, start, end, now);
   const contextGrowth = createContextGrowthAccumulator(query, start, end, now);
+  const habits = options?.interactions ? createHabitsAccumulator(query, start, end, now, options.interactions) : null;
   const spread = promptSpread();
   let previousCharges, selectedCharges, groupModels;
   let groupVisible = false, groupCount = 0, groupUncertain = 0;
@@ -640,6 +642,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
     for (const prompt of outcome.prompts) {
       conversations.add(prompt, prompt.state === ELIGIBLE);
       contextGrowth.add(prompt);
+      habits?.add(prompt, prompt.state === ELIGIBLE);
       if (query.session && query.session !== prompt.sessionId) continue;
       const charges = prompt.charges;
       // Prompts from one shared interaction are consecutive and share the charge array.
@@ -693,6 +696,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   result.projectPrompts = [...projectPrompts.values()];
   result.conversations = conversations.finish();
   result.contextGrowth = contextGrowth.finish(options?.sessionLabels);
+  if (habits) result.habits = habits.finish();
   result.modelPrompts = [...modelPrompts.values()];
   result.sessionPrompts = [...sessionPrompts.values()];
   if (result.eligiblePrompts) { result.credits = nano.number() / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }

@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.127",
+    "summary": "Conversation habits now relates your own patterns to the work that followed: how long conversations run and their share of credits, whether later prompts in a conversation carry more calls and credits than the first, and how pauses and prompt length relate to the work. Prompt text is never read."
+  },
+  {
     "version": "0.1.126",
     "summary": "Model and effort changes now shows which models and effort levels change, how each change was made, and how the call right after a model change compares with the one before it, including how much less it read from cache. Effort levels are compared inside one model only."
   },

@@ -325,8 +325,8 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   for (let d = activeDays.has(today) ? today : today - 1; activeDays.has(d); d--) current++;
   const activityStart = q.range === 'all' ? -Infinity : start;
   const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now,
-    { memo: activity.cache, unique: activity.cache?.uniquePromptEvents === true, sessionLabels });
-  const { projectPrompts, modelPrompts, sessionPrompts, conversations, contextGrowth, ...promptSummary } = promptCredits;
+    { memo: activity.cache, unique: activity.cache?.uniquePromptEvents === true, sessionLabels, interactions: activity.interactions || [] });
+  const { projectPrompts, modelPrompts, sessionPrompts, conversations, contextGrowth, habits, ...promptSummary } = promptCredits;
   const promptCounts = new Map(projectPrompts.map(p => [p.name, p]));
   const modelCounts = new Map(modelPrompts.map(p => [p.name, p]));
   const sessionCounts = new Map(sessionPrompts.map(p => [JSON.stringify([p.project, p.id]), p]));
@@ -368,7 +368,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: { ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
+    efficiency: { ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, habits, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
     options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }
