@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.117",
+    "summary": "Skills and instruction footprint now shows how each skill came to be loaded: preloaded at the start of a conversation, invoked by the agent, or invoked by you. Each skill lists its conversations, projects, last use and failed loads, beside the current instruction, skill and plugin sources."
+  },
+  {
     "version": "0.1.116",
     "summary": "Always-loaded context now draws the current conversation: room left against the allowance, what fills it, setup beside conversation, and the largest sources you can change, grouped by kind. It also sets the snapshot beside your selected history."
   },

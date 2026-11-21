@@ -224,16 +224,117 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
           'weighted cache-read share and actual credits on comparable work. Cache writes prepare context for reuse; they are not themselves cache hits or proof of waste.'));
   }
   if (id === 'skills') {
-    const skills = report.skills, rows = (skills?.rows || []).slice().sort((a, b) => b.invocations - a.invocations || a.name.localeCompare(b.name)).slice(0, 5);
-    return metrics(metric('Custom instructions', category('customInstructions'), 'Current snapshot estimate'),
-      metric('Recorded skill uses', skills?.invocations ?? null, 'Selected dates, project, and session'),
+    const skills = report.skills, all = skills?.rows || [];
+    const rows = all.slice().sort((a, b) => b.invocations - a.invocations || String(a.name).localeCompare(String(b.name))).slice(0, 5);
+    const count = value => valid(value) ? number(value) : 'Unavailable';
+    const things = (value, one) => `${count(value)} ${value === 1 ? one : one + 's'}`;
+    const text = value => `<span class="cell-text">${esc(value)}</span>`;
+    // How each recorded use came to be loaded. A use whose trigger a row does not carry stays
+    // "not recorded"; it is never moved into another group.
+    const loads = [['preloaded', 'Preloaded at start', 'preloaded', 'var(--s4)'], ['agent', 'Invoked by the agent', 'by the agent', 'var(--s1)'],
+      ['manual', 'Invoked by you', 'by you', 'var(--s3)'], ['unknown', 'Not recorded', 'not recorded', 'var(--muted-fg)']];
+    const loaded = new Map(all.map(row => {
+      const counts = loads.map(([key]) => valid(row.triggers?.[key]) ? row.triggers[key] : 0);
+      counts[3] += Math.max(0, (valid(row.invocations) ? row.invocations : 0) - counts.reduce((sum, n) => sum + n, 0));
+      return [row, counts];
+    }));
+    const split = [0, 0, 0, 0];
+    for (const counts of loaded.values()) counts.forEach((n, i) => { split[i] += n; });
+    const uses = split.reduce((sum, n) => sum + n, 0);
+    const splitBar = bars(loads.map(([, label, , color], i) => ({ label, value: split[i], color })));
+    const loadCell = row => {
+      const counts = loaded.get(row), total = counts.reduce((sum, n) => sum + n, 0);
+      if (!total) return text('No recorded uses');
+      const parts = loads.map(([, , short, color], i) => ({ short, color, value: counts[i] })).filter(part => part.value > 0);
+      return `<span class="token-skill-split" aria-hidden="true">${parts.map(part => `<i style="width:${(part.value / total * 100).toFixed(1)}%;background:${part.color}"></i>`).join('')}</span>`
+        + text(parts.slice().sort((a, b) => b.value - a.value).map(part => `${number(part.value)} ${part.short}`).join(', '));
+    };
+    const usedOn = row => {
+      const at = Date.parse(row.lastUsed);
+      return Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unavailable';
+    };
+    const mostUsed = () => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table token-skill-table"><thead><tr>${['Skill', 'Source plugin', 'Uses', 'How it was loaded', 'Conversations', 'Projects', 'Last used', 'Failed loads'].map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${text(r.name || 'Unnamed skill')}</td><td>${text(r.plugin || 'None recorded')}</td><td>${text(count(r.invocations))}</td><td>${loadCell(r)}</td><td>${text(count(r.sessions))}</td><td>${text(count(r.projects))}</td><td>${text(usedOn(r))}</td><td>${text(count(r.failures))}</td></tr>`).join('')}</tbody></table></div>`
+      + note(`Showing ${number(rows.length)} of ${things(all.length, 'skill')} with recorded activity, most used first. Uses count recorded loads, including preloaded ones; failed loads are counted separately. Last used is the most recent recorded use or failed load.`);
+
+    // Conversations with model calls give a sense of scale. They are not a matched denominator:
+    // skill activity ignores the model filter and can come from a conversation with no model call
+    // in these dates, so no share is shown.
+    const modelFiltered = Array.isArray(report.query?.models), calls = report.totals?.sessions;
+    // Without all four counts, what was included or left out is unknown rather than none.
+    const audited = ['unattributedUses', 'unattributedFailures', 'omitted', 'omittedFailures'].every(key => valid(skills?.[key]));
+    const unverified = audited ? skills.unattributedUses + skills.unattributedFailures : null, left = audited ? skills.omitted + skills.omittedFailures : null;
+    const scale = modelFiltered ? ' The model filter does not apply here.'
+      : unverified === 0 && valid(calls) && valid(skills.sessions) && skills.sessions <= calls ? ` For scale, ${things(calls, 'conversation')} had model calls in this view.` : '';
+    const used = skills ? all.filter(row => row.invocations > 0).length : null, failedOnly = all.length - (used ?? 0);
+
+    const footprint = () => {
+      const of = value => {
+        if (value == null) return current ? 'Not available in this snapshot' : 'Needs a context snapshot';
+        const part = share(value, context.totalTokens);
+        return part == null ? 'Share of context unavailable' : `${percent(part)} of occupied context`;
+      };
+      const custom = category('customInstructions'), system = category('systemPrompt');
+      const tiles = metrics(metric('Custom instructions', custom, of(custom)), metric('System instructions', system, of(system) + (system == null ? '' : '; excludes custom instructions')));
+      const unmatched = 'Context sources are not joined to uses by display name';
+      if (!current) return tiles + contextStamp() + note(`A snapshot covers the current conversation only. ${unmatched}.`) + inspect;
+      const entries = context.entries || [], byId = new Map(entries.map(entry => [entry.id, entry]));
+      const name = entry => entry.label || entry.id || 'Unnamed source';
+      const lists = [['skill', 'Skill sources'], ['plugin', 'Plugin sources']].map(([kind, title]) => ({ kind, title,
+        list: entries.filter(entry => entry.kind === kind && valid(entry.tokens)).sort((a, b) => b.tokens - a.tokens || String(a.id).localeCompare(String(b.id))) }));
+      // One scale for both lists, so a bar in one can be compared with a bar in the other.
+      const largest = Math.max(0, ...lists.map(({ list }) => list[0]?.tokens ?? 0));
+      const tokens = value => { const part = share(value, context.totalTokens); return part == null ? number(value) : `${number(value)} · ${percent(part)}`; };
+      const column = ({ kind, title, list }) => `<div><h4>${esc(title)}</h4>${!list.length ? empty(`Copilot returned no attributed ${kind} sources in this snapshot. This does not establish that none were loaded.`)
+        : barList(list.slice(0, 5).map(entry => ({ label: name(entry), value: entry.tokens, detail: entry.parentId && byId.has(entry.parentId) ? `Parent source: ${name(byId.get(entry.parentId))}` : '' })), { format: tokens, total: largest })
+          || empty(`${things(list.length, kind + ' source')} listed with 0 tokens in this snapshot.`)}</div>`;
+      return tiles + contextStamp() + `<div class="token-skill-sources">${lists.map(column).join('')}</div>`
+        + note(`Tokens in the current conversation, with each source's share of occupied context. Showing ${lists.map(({ kind, list }) => `${number(Math.min(list.length, 5))} of ${things(list.length, kind + ' source')}`).join(' and ')} in the retained snapshot${context.omitted ? `; ${number(context.omitted)} entries were omitted from the snapshot` : ''}. Parent and child sources can overlap; do not add these rows.`)
+        + note(`These sources sit beside the recorded uses above without being matched to them. ${unmatched}, so the same name in both places does not prove the same skill.`)
+        + inspect;
+    };
+
+    const caveats = ['Skill activity ignores the model filter, the same as Breakdown → Skills.',
+      ...(!skills ? [] : !audited ? ['How many uses had an unverified provider, or were left out for rejected or mixed billing-provider evidence, is unavailable for this view.']
+        : [`${unverified ? `${things(skills.unattributedUses, 'use')} and ${things(skills.unattributedFailures, 'failed load')} are included although the provider could not be verified.` : 'No uses or failed loads are included with an unverified provider.'} ${left ? `${things(skills.omitted, 'use')} and ${things(skills.omittedFailures, 'failed load')} were left out because the billing-provider evidence was rejected or mixed.` : 'None were left out for rejected or mixed billing-provider evidence.'}`]),
+      'Counts show activity, not cost. Uses and failed loads do not price a skill, and they cannot show that a skill sat unused in context.'];
+
+    // The most a single skill reached on one measure. Worded so that a tie stays true.
+    const most = pick => all.reduce((best, row) => (pick(row) || 0) > (pick(best) || 0) ? row : best, all[0]);
+    const preloadedShare = uses ? split[0] / uses * 100 : null;
+    let found;
+    if (!skills) found = ['Skill activity is not available for this view.', 'Refresh the report or try a wider date range.',
+      'recorded skill uses and failed loads once the report loads. Unavailable is not zero.'];
+    else if (preloadedShare >= 25) {
+      const lead = most(row => loaded.get(row)[0]), counts = loaded.get(lead);
+      found = [`${number(split[0])} of ${number(uses)} recorded skill uses (${percent(preloadedShare)}) ${split[0] === 1 ? 'was' : 'were'} preloaded at the start of a conversation.`,
+        `No skill was preloaded more often than ${lead.name || 'Unnamed skill'}: ${number(counts[0])} of its ${things(counts.reduce((sum, n) => sum + n, 0), 'recorded use')}. For one comparable task, try a conversation where that skill is not preloaded, so it loads only if the task calls for it.`,
+        'a new context snapshot and whether the task still succeeds. A preloaded skill may be exactly what the task needs; these counts do not show whether the agent relied on it.'];
+    } else if (skills.failures > 0) {
+      const lead = most(row => row.failures);
+      found = [`${things(skills.failures, 'skill load')} failed in this view.`,
+        lead?.failures > 0 ? `No skill had more failed loads than ${lead.name || 'Unnamed skill'} (${number(lead.failures)}). Retry it on a small task in a new conversation and note whether it loads.`
+          : 'Find the skill in Breakdown → Skills, then retry it on a small task in a new conversation and note whether it loads.',
+        'failed loads for that skill over the following week. A failed load can be followed by a successful retry, so this count does not show that work stopped or why the load failed.'];
+    } else if (uses) {
+      const common = [1, 2, 3].reduce((best, i) => split[i] > split[best] ? i : best, 1);
+      found = [common === 3 ? `How the skill was loaded was not recorded for ${number(split[3])} of ${things(uses, 'skill use')}.`
+        : `${number(split[common])} of ${number(uses)} recorded skill uses (${percent(split[common] / uses * 100)}) ${split[common] === 1 ? 'was' : 'were'} invoked ${common === 1 ? 'by the agent' : 'by you'} during a conversation.`,
+        'Take a context snapshot before and after a task that invokes a skill, to see what that skill adds to context.',
+        'the skill sources in the two snapshots. A use count does not show how many tokens a skill added or whether it helped.'];
+    } else found = ['No skill uses or failed loads were recorded in this view.', 'Try a wider date range or fewer filters.',
+      'recorded skill uses and failed loads in the wider view. No recorded use does not show that no skill was in context.'];
+
+    return metrics(metric('Recorded skill uses', skills?.invocations ?? null, 'Selected dates, project, and session'),
+      metric('Skills used', used, failedOnly > 0 ? `Different skills with a recorded use; ${things(failedOnly, 'other')} had only failed loads` : 'Different skills with at least one recorded use'),
+      metric('Conversations with skill activity', skills?.sessions ?? null, `At least one recorded use or failed load.${scale}`),
       metric('Failed skill loads', skills?.failures ?? null, 'Explicit failed load attempts'))
-      + contextStamp() + (current ? sources(['skill'], 'Largest attributed skill sources') + inspect : inspect)
-      + section('Most-used skills in selected history', rows.length ? table(['Skill', 'Source plugin', 'Uses', 'Load failures'], rows.map(r => [r.name, r.plugin || '—', number(r.invocations), number(r.failures ?? 0)])) : empty('No skill uses or failed loads match these filters.'))
-      + note(`Skill activity ignores the model filter, matching Breakdown → Skills. ${number(skills?.unattributedUses ?? 0)} uses and ${number(skills?.unattributedFailures ?? 0)} failures are included with provider unverified. ${number(skills?.omitted ?? 0)} uses and ${number(skills?.omittedFailures ?? 0)} failed loads were omitted for rejected or mixed billing-provider evidence. Context sources are not joined to uses by display name.`)
-      + insight('A loaded skill has a footprint; an installed skill may have none.',
-        'Review large instruction or skill sources for detail that could be loaded only when needed. Keep reusable guidance that helps the agent do the task correctly.',
-        'current context after one change and whether the workflow still succeeds. Uses and failures do not price a skill or identify unused skills polluting context.');
+      + (all.length ? section('How skills were loaded', splitBar
+        ? splitBar + note('A preloaded skill was loaded when the conversation\'s context was set up, so it takes up context whether or not the task goes on to need it. An invoked skill was loaded during the conversation, when the agent or you asked for it.')
+        : empty('No recorded skill uses match these filters, only failed loads.')) : '')
+      + section('Most-used skills in selected history', rows.length ? mostUsed() : empty('No skill uses or failed loads match these filters.'))
+      + section('Current instruction, skill and plugin footprint', footprint())
+      + `<ul class="footnote token-skill-notes">${caveats.map(caveat => `<li>${esc(caveat)}</li>`).join('')}</ul>`
+      + insight(...found);
   }
   if (id === 'prompts') {
     const p = report.promptCredits || {}, w = p.work || {};

@@ -113,7 +113,9 @@ test('all ten token sections render measured insights and keep context kinds dis
   assert.match(skillView, /&lt;Plugin&gt;/);
   assert.match(skillView, /ignores the model filter/);
   assert.match(skillView, /3 entries were omitted/);
-  assert.doesNotMatch(skillView, /PARENT|skill tool MCP|ACTUAL_RESULT|ACTUAL_MCP/);
+  // Plugin sources now sit beside skill sources; every other kind stays out of this view.
+  assert.match(skillView, /Plugin sources<\/h4>.*PARENT/);
+  assert.doesNotMatch(skillView, /skill tool MCP|ACTUAL_RESULT|ACTUAL_MCP/);
   const resultView = renderTokenTopic('results', report, { ...formats, context });
   assert.match(resultView, /ACTUAL_RESULT/);
   assert.doesNotMatch(resultView, /ACTUAL_SKILL|ACTUAL_DEFINITION/);
