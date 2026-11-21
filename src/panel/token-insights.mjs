@@ -209,17 +209,81 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
         'input per subagent call, the subagent share of calls and total credits for similar work. These calls are already part of usage totals. Only calls with an explicit sub-agent initiator are counted, and calls with no recorded initiator may hide more. Parent links and the value of delegation are not inferred.');
   }
   if (id === 'output') {
-    const rows = measuredModels('outputRequests', 'outputTokens');
+    const rows = measuredModels('outputRequests', 'outputTokens'), e = report.efficiency || {}, mix = e.outputMix;
+    const exact = value => number(value, { simplify: false }), whole = value => number(value, { maximumFractionDigits: value < 10 ? 1 : 0 });
+    const seconds = value => value < 1000 ? `${number(value, { maximumFractionDigits: 0 })} ms` : `${number(value / 1000, { maximumFractionDigits: 1 })} s`;
+    const withCalls = (value, count, total, format) => `${measured(value, count, total, format)} (${coverage(count, total)})`;
+    const rework = 'Less reasoning is not automatically more efficient if it leads to rework.';
+
+    // How output is spread across calls, by the size of one call's output.
+    const long = mix?.concentration, longCalls = long ? `Calls over ${exact(long.over)} output tokens were ${percent(long.callShare)} of measured calls and produced ${percent(long.tokenShare)} of output.` : '';
+    const sizeName = b => b.max == null ? `Over ${exact(b.min - 1)} tokens` : b.min ? `${exact(b.min)} to ${exact(b.max)} tokens` : `Up to ${exact(b.max)} tokens`;
+    const spreadBars = mix?.outputRequests ? barList(mix.buckets.map(b => ({ label: sizeName(b), value: b.tokenShare,
+      detail: `${number(b.calls)} ${b.calls === 1 ? 'call' : 'calls'}, ${percent(b.callShare)} of measured calls · ${number(b.tokens)} output tokens` })), { format: value => measured(value, mix.outputRequests, mix.requests, percent), total: 100 }) : '';
+    const spread = !mix?.outputRequests ? '' : section('How output is spread across calls',
+      (long ? `<p>${esc(longCalls)}</p>` : '')
+      + (spreadBars || empty('Every call with a known output count reported zero output tokens, so there is no spread to show.'))
+      + note(`Each bar is a group's share of all output tokens, and the line under it gives the same group's share of calls. Calls are grouped by the output of one model call, reasoning included. ${mix.outputRequests < mix.requests ? `${number(mix.requests - mix.outputRequests)} of ${number(mix.requests)} model calls have no known output count and are in no group.` : 'Every model call in these filters has a known output count.'}`));
+
+    // Effort levels are compared inside one model only, and only where each level has enough calls.
+    const levelOrder = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], enough = 30, byModel = new Map();
+    for (const r of e.efforts || []) {
+      let group = byModel.get(r.name);
+      if (!group) byModel.set(r.name, group = { name: r.name, levels: [], matched: 0, requests: 0, unknown: 0 });
+      const rank = levelOrder.indexOf(r.effort);
+      group.requests += r.requests || 0;
+      if (rank < 0) group.unknown += r.requests || 0;
+      else if (r.reasoningRequests >= enough && valid(r.reasoningShare)) { group.levels.push({ rank, row: r }); group.matched += r.reasoningRequests; }
+    }
+    const comparable = [...byModel.values()].filter(group => group.levels.length > 1).sort((a, b) => b.matched - a.matched || String(a.name).localeCompare(String(b.name)));
+    const compared = comparable.slice(0, 5);
+    for (const group of compared) group.levels.sort((a, b) => a.rank - b.rank);
+    const effortSection = !(e.efforts || []).length ? '' : section('Reasoning by effort level', compared.length
+      ? table(['Model', 'Effort', 'Reasoning share', 'Output / call', 'Average call duration'], compared.flatMap(group => group.levels.map(({ row: r }) => [group.name, r.effort,
+        withCalls(r.reasoningShare, r.reasoningRequests, r.requests, percent), withCalls(r.averageOutput, r.outputRequests, r.requests, whole), withCalls(r.averageDuration, r.durationRequests, r.requests, seconds)])))
+        + note(`Compare rows of the same model only. A level is listed when at least ${number(enough)} of its calls report both reasoning and output, and a model needs two such levels.${comparable.length > compared.length ? ` Showing ${number(compared.length)} of ${number(comparable.length)} models with comparable levels.` : ''} Calls with no recorded effort level are left out, because unknown is not a level: ${number(compared.reduce((sum, group) => sum + group.unknown, 0))} of ${number(compared.reduce((sum, group) => sum + group.requests, 0))} calls on the models shown. The calls at each level were different work, so a gap between levels is not the effect of effort alone.`)
+      : empty(`No model has two recorded effort levels with at least ${number(enough)} calls each that report both reasoning and output, so levels are not compared here. Calls with no recorded effort level are not counted as a level.`));
+
+    const speed = s.durationRequests > 0 ? section('Speed and call duration by model',
+      metrics(metric('Output tokens per second of call time', s.outputPerSecond, coverage(s.paceRequests), whole, partial(s.paceRequests)),
+        metric('Average call duration', s.averageDuration, coverage(s.durationRequests), seconds, partial(s.durationRequests)))
+      + (rows.length ? table(['Model', 'Output tokens per second of call time', 'Speed coverage', 'Average call duration', 'Duration coverage'], rows.map(r => [r.name, measured(r.outputPerSecond, r.paceRequests, r.requests, whole), coverage(r.paceRequests, r.requests), measured(r.averageDuration, r.durationRequests, r.requests, seconds), coverage(r.durationRequests, r.requests)])) : '')
+      + note('Speed is output tokens divided by the whole recorded duration of the call, which includes the wait before the first token. It is not a streaming rate. A call counts toward speed only when it records an output count and a duration above zero. Short calls spend more of their time waiting, so a model used for small outputs shows a lower figure. Compare models on similar work.'))
+      : s.outputRequests > 0 ? section('Speed and call duration by model', empty('No call durations were recorded for these filters, so speed is unavailable.')) : '';
+
+    const trends = trendRow(e.trend, point => point.averageOutput, { label: 'Output per call', format: whole })
+      + trendRow(e.trend, point => point.reasoningShare, { label: 'Reasoning share of output', format: percent });
+    const overTime = trends ? section('Output and reasoning over time', trends)
+      : s.outputRequests > 0 ? section('Output and reasoning over time', empty('A trend line needs at least four days or weeks with measurements in the selected range.')) : '';
+
+    // The observation comes from the clearest evidence on screen: an effort gap inside one model,
+    // then a few long calls holding most of the output, then the overall reasoning share.
+    let gap = null;
+    for (const group of compared) {
+      const ordered = group.levels.slice().sort((a, b) => a.row.reasoningShare - b.row.reasoningShare), low = ordered[0], high = ordered.at(-1);
+      const size = high.row.reasoningShare - low.row.reasoningShare;
+      if (size >= 10 && (!gap || size > gap.size)) gap = { size, name: group.name, upper: high.rank > low.rank ? high.row : low.row, lower: high.rank > low.rank ? low.row : high.row };
+    }
+    const concentrated = long && long.tokenShare >= 2 * long.callShare;
+    const finding = gap ? insight(`On ${gap.name}, ${percent(gap.upper.reasoningShare)} of matched output was reported reasoning at effort level ${gap.upper.effort} and ${percent(gap.lower.reasoningShare)} at effort level ${gap.lower.effort}.`,
+        'Run one routine task you know well at each of these two levels on this model, with the same validation checks.',
+        `reasoning share, output per call, call duration and credits for the two runs, and whether either needed rework. The recorded calls at each level were different work, so this gap is not the effect of effort alone. ${rework}`)
+      : concentrated ? insight(longCalls,
+        'For the next task that would need a long generation, ask for a targeted change or a short summary first, then request the full text only where you need it.',
+        `output per call and the share of output from calls over ${exact(long.over)} tokens on similar work. Long output can be what the task needs, and it can include tool-call arguments such as a file being written. ${rework}`)
+      : insight(s.reasoningShare == null ? 'Reasoning share needs matched output measurements.' : `${percent(s.reasoningShare)} of matched output was reported reasoning.`,
+        'Specify the deliverable and useful level of detail. For routine work, compare an available lighter model while keeping the same validation checks.',
+        `output and credits per completed comparable task. ${rework}`);
+
     return metrics(metric('Generated output', s.outputRequests ? s.outputTokens : null, coverage(s.outputRequests), number, partial(s.outputRequests)),
       metric('Reported reasoning', s.reasoningRequests ? s.reasoningTokens : null, coverage(s.reasoningRequests), number, partial(s.reasoningRequests)),
       metric('Reasoning share', s.reasoningShare, 'Only calls with valid reasoning and output counts', percent, partial(s.reasoningRequests)),
       metric('Other output, matched calls', s.otherOutput, 'Not necessarily user-visible answer text', number, partial(s.reasoningRequests)))
       + bars([{ label: 'Reasoning', value: s.reasoningRequests ? s.reasoningTokens : null, color: 'var(--s5)' }, { label: 'Other output', value: s.otherOutput, color: 'var(--s2)' }], partial(s.reasoningRequests))
-      + (rows.length ? section('Output by model', table(['Model', 'Output / call', 'Output coverage', 'Reasoning share', 'Reasoning coverage'], rows.map(r => [r.name, measured(r.averageOutput, r.outputRequests, r.requests), coverage(r.outputRequests, r.requests), measured(r.reasoningShare, r.reasoningRequests, r.requests, percent), coverage(r.reasoningRequests, r.requests)]))) : empty('No output measurements were recorded for these filters.'))
       + note('Reasoning is part of output. The split subtracts only on the same measured calls; it can cover fewer calls than Generated output. Other output can include tool-call arguments and is not an answer-length estimate.')
-      + insight(s.reasoningShare == null ? 'Reasoning share needs matched output measurements.' : `${percent(s.reasoningShare)} of matched output was reported reasoning.`,
-        'Specify the deliverable and useful level of detail. For routine work, compare an available lighter model while keeping the same validation checks.',
-        'output and credits per completed comparable task. Less reasoning is not automatically more efficient if it leads to rework.');
+      + overTime + spread
+      + (rows.length ? section('Output by model', table(['Model', 'Output / call', 'Output coverage', 'Reasoning share', 'Reasoning coverage'], rows.map(r => [r.name, measured(r.averageOutput, r.outputRequests, r.requests), coverage(r.outputRequests, r.requests), measured(r.reasoningShare, r.reasoningRequests, r.requests, percent), coverage(r.reasoningRequests, r.requests)]))) : empty('No output measurements were recorded for these filters.'))
+      + effortSection + speed + finding;
   }
   if (id === 'drivers') {
     const all = (report.sessions || []).filter(r => valid(r.credits)).slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name));

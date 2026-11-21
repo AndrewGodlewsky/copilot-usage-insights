@@ -5,8 +5,10 @@
 // { query, start, end, now, sessionLabels, activity, records } and returns { add, finish };
 // finish() is reported as report.efficiency[key].
 import { createDelegationTopic } from './efficiency-delegation.mjs';
+import { createOutputMix } from './efficiency-output.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
+  { key: 'outputMix', create: createOutputMix },
 ];
 const toolTopics = [
 ];

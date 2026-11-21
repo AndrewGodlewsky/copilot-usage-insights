@@ -9,9 +9,23 @@ const SOURCE = 'Synthetic demo';
 const NAMES = { 'claude-sonnet-4.5': 'Claude Sonnet 4.5', 'gpt-5.1': 'GPT-5.1', 'gpt-5-mini': 'GPT-5 mini', 'claude-opus-4.5': 'Claude Opus 4.5', 'gemini-3-pro': 'Gemini 3 Pro' };
 const mainAgent = e => !e.agentId && !e.data?.parentToolCallId && !e.data?.usage?.parentToolCallId;
 
+// [output tokens per second once generation starts, how much the model reasons] per demo model.
+const OUTPUT_PROFILE = { 'claude-sonnet-4.5': [75, 1], 'gpt-5.1': [60, 1.15], 'gpt-5-mini': [140, .7], 'claude-opus-4.5': [45, 1.25], 'gemini-3-pro': [95, .9] };
+// Gives a call the output a history shows: most calls are short and a few are long generations,
+// a higher effort level reasons more, and the call's time follows what it generated. A call the
+// generator left without an output count, or without reasoning, keeps that gap.
+function shapeOutput(u, effort, rand) {
+  if (!Number.isFinite(u.outputTokens)) return;
+  const [speed, weight] = OUTPUT_PROFILE[u.model] || [80, 1], size = rand();
+  const other = Math.round(size < .42 ? 30 + rand() * 170 : size < .8 ? 200 + rand() * 800 : size < .95 ? 1000 + rand() * 3000 : 4000 + rand() * 8000);
+  u.reasoningTokens = u.reasoningTokens ? Math.round(({ high: 900, medium: 300 }[effort] ?? 550) * weight * (.3 + rand() * 1.4)) : 0;
+  u.outputTokens = other + u.reasoningTokens;
+  u.duration = Math.round(500 + rand() * 2000 + u.outputTokens / speed * 1000 * (.75 + rand() * .5));
+}
+
 // Adds the settings and compaction events the scale generator leaves out, then shrinks later
 // input the way a compacted conversation would. Returns journal lines.
-function enrich(session, rand) {
+function enrich(session, rand, outputRand) {
   const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
   const out = [], pick = list => list[Math.floor(rand() * list.length)], childCalls = new Map();
   // An empty effort stands for a producer that does not record one.
@@ -46,6 +60,7 @@ function enrich(session, rand) {
     if (e.type === 'session.usage_record') {
       const u = e.data.usage, recorded = u.inputTokens;
       if (effort) u.reasoningEffort = effort;
+      shapeOutput(u, effort, outputRand);
       if (removed && Number.isFinite(recorded)) {
         const smaller = Math.max((u.toolTokenCount || 0) + 1500, recorded - removed), scale = smaller / recorded;
         u.inputTokens = smaller;
@@ -72,13 +87,14 @@ function enrich(session, rand) {
 }
 
 export function demoData(now = new Date()) {
-  const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11);
+  // Output shaping draws from its own sequence so the settings and compactions above stay as they were.
+  const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11), outputRand = mulberry32(23);
   const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], skillExcludedSessions: [], coverageEntries: [] };
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
   let files = 0;
   for (const session of history.sessions()) {
     const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl` });
-    for (const line of enrich(session, rand)) parser.push(line);
+    for (const line of enrich(session, rand, outputRand)) parser.push(line);
     const snapshot = parser.snapshot();
     files++;
     for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);

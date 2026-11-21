@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.113** expands Biggest spend drivers: how concentrated charges are, how each top session compares with a typical one, the projects, models and days holding the most credits, and a button to open a top session in Breakdown. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.114** expands Reasoning and generated output with trends over time, the spread of output between short and long calls, effort levels compared within the same model, and output speed by model. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -318,7 +318,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | Skills and instruction footprint | Current custom-instruction tokens and attributed skills alongside historical uses and failed loads |
 | Work behind each prompt | Average model calls, AI credits, tokens, and the largest call count among eligible prompts |
 | Delegated work | Main-conversation, subagent, and unrecorded shares of calls, tokens, and credits; a per-call comparison of subagent and main-conversation calls; the models each side ran on; and the conversations that delegated most |
-| Reasoning and generated output | Output volume and the reasoning/other-output split on calls with both measurements |
+| Reasoning and generated output | Output volume and the reasoning/other-output split on calls with both measurements; output per call and reasoning share over time; how output is spread between short and long calls; effort levels compared within one model; and output speed and call duration by model |
 | Biggest spend drivers | How many session groups make up half and 80% of recorded credits; the five largest with their calls and credits per call against a typical group, each opening in Breakdown; and the projects, models, and days holding the most credits |
 
 Historical measurements reuse the existing filtered report. **Work behind each prompt** reuses complete prompt accounting: groups are formed before filtering and dated by the user's submission, including reliably linked continuations and delegated work. Its token average includes only eligible prompts with input and output recorded for every included call; cached input is counted once. Model filters explicitly show selected-model contributions. These prompt-date totals can differ from request-date totals elsewhere. **Delegated work** instead groups request-date usage by the recorded initiator; unknown initiators remain unknown, and this does not establish parent links.

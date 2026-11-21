@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.114",
+    "summary": "Reasoning and generated output now shows how output per call and reasoning share change over time, how output is spread between short and long calls, how effort levels compare within the same model, and how fast each model generates."
+  },
+  {
     "version": "0.1.113",
     "summary": "Biggest spend drivers now shows how concentrated your charges are, how each top session compares with a typical one in calls and credits per call, and which projects, models and days hold the most credits. Each top session opens in Breakdown."
   },
