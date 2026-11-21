@@ -1189,6 +1189,8 @@ $('efficiency-growth').oninput = event => {
 };
 let patternTopic = 'findings';
 const patternPanelNames = ['findings', 'habits', 'growth', 'recovery', 'models', 'detail'];
+// Topics in the shared detail panel that have no measurement yet. Every other one reads the selected history.
+const unmeasuredPatternTopics = ['repetition'];
 const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topic', PATTERN_TOPICS, patternTopic, id => {
   patternTopic = id;
   renderSelectedPatternTopic();
@@ -1201,7 +1203,7 @@ function renderSelectedPatternTopic() {
   const topic = PATTERN_TOPICS.find(item => item.id === patternTopic);
   $('pattern-topic-title').textContent = topic.label;
   $('pattern-topic-question').textContent = topic.question;
-  $('pattern-topic-scope').textContent = patternTopic === 'growth' || patternTopic === 'compaction' ? 'Selected history · current filters' : 'Measurement not available yet';
+  $('pattern-topic-scope').textContent = unmeasuredPatternTopics.includes(patternTopic) ? 'Measurement not available yet' : 'Selected history · current filters';
   $('pattern-topic-body').innerHTML = renderTokenTopic(patternTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
 }
 function openTokenContext() {
