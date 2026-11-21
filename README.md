@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.118** expands the Efficiency Overview with the token mix (uncached input, cache reads, cache writes and output), the largest model, project and conversations, input and credits per call over time, and an index of the other sections with each one's headline figure. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.119** expands Work behind each prompt with the typical prompt beside the average, prompts grouped by how many model calls they needed, the share of credits held by the heaviest tenth, what the work consisted of, and the five heaviest prompts, each opening its conversation in Breakdown. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -316,7 +316,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
 | Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model; reuse by time since the previous call, on a conversation's first call in range, and after a model change; reuse over time; and the conversations with the most input not read from cache |
 | Skills and instruction footprint | Recorded skill uses split by how each was loaded (preloaded at start, invoked by the agent, invoked by you), per-skill conversations, projects, last use and failed loads, alongside current instruction tokens and skill and plugin sources |
-| Work behind each prompt | Average model calls, AI credits, tokens, and the largest call count among eligible prompts |
+| Work behind each prompt | Typical and average model calls, tokens and AI credits per eligible prompt; prompts grouped by how many calls they needed; the share of credits held by the heaviest tenth; calls started by the message, agent continuations and subagent calls; and the five heaviest prompts, each opening its conversation in Breakdown |
 | Delegated work | Main-conversation, subagent, and unrecorded shares of calls, tokens, and credits; a per-call comparison of subagent and main-conversation calls; the models each side ran on; and the conversations that delegated most |
 | Reasoning and generated output | Output volume and the reasoning/other-output split on calls with both measurements; output per call and reasoning share over time; how output is spread between short and long calls; effort levels compared within one model; and output speed and call duration by model |
 | Biggest spend drivers | How many session groups make up half and 80% of recorded credits; the five largest with their calls and credits per call against a typical group, each opening in Breakdown; and the projects, models, and days holding the most credits |

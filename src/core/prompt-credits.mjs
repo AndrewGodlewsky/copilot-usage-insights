@@ -1,4 +1,4 @@
-import { dayOfMs } from './query.mjs';
+import { dayOfMs, dayKey } from './query.mjs';
 import { createConversationAccumulator } from './conversations.mjs';
 import { createContextGrowthAccumulator } from './context-growth.mjs';
 
@@ -109,6 +109,82 @@ const sub = (map, id) => { let inner = map.get(id); if (!inner) map.set(id, inne
 const sameList = (a, b) => { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; };
 const EMPTY = [];
 const ELIGIBLE = 0, ATTRIBUTION = 1, ACCOUNTING = 2, UNFINISHED = 3;
+// What a linked call was: work under a parent tool call is a subagent's, whatever its own
+// initiator says. Every other call keeps the initiator Copilot recorded, or none.
+const ROLES = ['initial', 'continuation', 'subagent', 'unrecorded'];
+const INITIAL = 0, CONTINUATION = 1, SUBAGENT = 2, UNRECORDED = 3;
+const CALL_BINS = ['1 call', '2 to 5 calls', '6 to 15 calls', '16+ calls'];
+const HEAVIEST = 5;
+
+// The spread behind the per-prompt averages, over the same eligible prompts and the same
+// selected charges. Charges of eligible prompts are complete, so each total is exact. The
+// per-prompt totals fill one numeric buffer for the length of the pass; only a few numbers
+// and the heaviest prompts are reported.
+function promptSpread() {
+  const callCounts = [], bins = CALL_BINS.map(() => ({ prompts: 0, nano: 0 })), roles = ROLES.map(() => ({ requests: 0, nano: 0 })), top = [];
+  let totals = new Float64Array(1024), count = 0, delegatedPrompts = 0;
+  // A total order, so equal charges rank the same however the history was read.
+  const outranks = (nano, prompt, other) => nano !== other.nano ? nano > other.nano
+    : prompt.sample.ms !== other.prompt.sample.ms ? prompt.sample.ms > other.prompt.sample.ms
+    : prompt.sessionId !== other.prompt.sessionId ? prompt.sessionId < other.prompt.sessionId : prompt.sample.promptId < other.prompt.sample.promptId;
+  const credits = nano => nano / 1e9;
+  return {
+    add(prompt, charges, tokens) {
+      let nano = 0, delegated = false;
+      for (const r of charges) {
+        const role = roles[r.role];
+        nano += r.nano; role.requests++; role.nano += r.nano;
+        if (r.role === SUBAGENT) delegated = true;
+      }
+      const calls = charges.length, bin = bins[calls <= 1 ? 0 : calls <= 5 ? 1 : calls <= 15 ? 2 : 3];
+      bin.prompts++; bin.nano += nano;
+      callCounts[calls] = (callCounts[calls] || 0) + 1;
+      if (delegated) delegatedPrompts++;
+      if (count === totals.length) { const grown = new Float64Array(count * 2); grown.set(totals); totals = grown; }
+      totals[count++] = nano;
+      if (nano > 0 && (top.length < HEAVIEST || outranks(nano, prompt, top[top.length - 1]))) {
+        let at = top.length;
+        while (at > 0 && outranks(nano, prompt, top[at - 1])) at--;
+        top.splice(at, 0, { prompt, nano, requests: calls, tokens });
+        if (top.length > HEAVIEST) top.pop();
+      }
+    },
+    finish(labels) {
+      const sorted = totals.subarray(0, count).sort(), low = Math.floor((count - 1) / 2), high = Math.floor(count / 2), heavy = Math.floor(count / 10);
+      const spread = { medianRequests: null, bins: bins.map((b, i) => ({ label: CALL_BINS[i], prompts: b.prompts, credits: b.prompts ? credits(b.nano) : null })),
+        medianCredits: null, heavyPrompts: heavy, heavyCredits: null, heavyShare: null, halfPrompts: null };
+      let total = 0;
+      for (let i = 0; i < count; i++) total += sorted[i];
+      if (count) {
+        let seen = 0, lower;
+        for (let calls = 0; calls < callCounts.length; calls++) {
+          if (!callCounts[calls]) continue;
+          seen += callCounts[calls];
+          if (lower === undefined && seen > low) lower = calls;
+          if (seen > high) { spread.medianRequests = (lower + calls) / 2; break; }
+        }
+        spread.medianCredits = credits((sorted[low] + sorted[high]) / 2);
+      }
+      // A tenth needs at least ten prompts; a share needs a charge above zero.
+      if (heavy) {
+        let sum = 0;
+        for (let i = count - heavy; i < count; i++) sum += sorted[i];
+        spread.heavyCredits = credits(sum);
+        if (total > 0) spread.heavyShare = sum / total * 100;
+      }
+      if (total > 0) {
+        let sum = 0, prompts = 0;
+        for (let i = count - 1; i >= 0 && sum * 2 < total; i--) { sum += sorted[i]; prompts++; }
+        spread.halfPrompts = prompts;
+      }
+      const mix = { delegatedPrompts };
+      ROLES.forEach((name, i) => { mix[name] = { requests: roles[i].requests, credits: roles[i].requests ? credits(roles[i].nano) : null }; });
+      const heaviest = top.map(({ prompt, nano, requests, tokens }) => ({ day: dayKey(prompt.day), session: prompt.sessionId, sessionName: labels?.get(prompt.sessionId) ?? null,
+        project: prompt.project, requests, tokens, credits: credits(nano) }));
+      return { spread, mix, heaviest };
+    },
+  };
+}
 
 // Links every model call to the prompt that caused it. `all` is one closed set of sessions in
 // time order: nothing outside it shares a receipt with it, so sets can be solved independently.
@@ -373,10 +449,14 @@ function attributeSessions(all, records, recordByKey) {
   for (const group of groups.values()) {
     if (!group.prompts.length) continue;
     const receiptEvents = [...group.receipts.values()];
+    // Receipts of interactions that ran under a parent tool call; most groups have none.
+    let delegated = null;
+    for (const node of group.nodes) if (node.scope) for (const key of node.receipts.keys()) (delegated ??= new Set()).add(key);
     const charges = receiptEvents.map(r => {
       const record = recordByKey.get(r.receiptKey);
       const measured = record && Number.isSafeInteger(record.inputTotal) && record.inputTotal >= 0 && Number.isSafeInteger(record.output) && record.output >= 0;
-      return { model: r.model, nano: r.nano, tokens: measured ? record.inputTotal + record.output : -1 };
+      return { model: r.model, nano: r.nano, tokens: measured ? record.inputTotal + record.output : -1,
+        role: delegated?.has(r.receiptKey) ? SUBAGENT : r.initiator === 'user' ? INITIAL : r.initiator === 'agent' ? CONTINUATION : UNRECORDED };
     });
     const linksKnown = group.prompts.length === 1 && !group.nodes.some(n => n.bad);
     const doubtful = group.prompts.length !== 1 || group.nodes.some(n => n.bad || n.events.some(e => uncertain.has(e.sessionId)));
@@ -536,6 +616,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const models = query.models && new Set(query.models), work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const conversations = createConversationAccumulator(records, query, start, end, now);
   const contextGrowth = createContextGrowthAccumulator(query, start, end, now);
+  const spread = promptSpread();
   let previousCharges, selectedCharges, groupModels;
   let groupVisible = false, groupCount = 0, groupUncertain = 0;
   const projectCount = name => projectPrompts.get(name) || projectPrompts.set(name, { name, count: 0, uncertain: 0 }).get(name);
@@ -595,6 +676,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
         let tokens = 0, measured = true;
         for (const r of selected) { nano.add(r.nano); if (r.tokens < 0) measured = false; else tokens += r.tokens; }
         if (measured) { work.tokenPrompts++; work.tokens = (work.tokens ?? 0) + tokens; }
+        spread.add(prompt, selected, measured ? tokens : null);
       }
     }
     for (const r of outcome.unassigned) {
@@ -616,5 +698,5 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   if (result.eligiblePrompts) { result.credits = nano.number() / 1e9; result.averageCredits = result.credits / result.eligiblePrompts; }
   work.averageRequests = result.eligiblePrompts ? work.requests / result.eligiblePrompts : null;
   work.averageTokens = work.tokenPrompts ? work.tokens / work.tokenPrompts : null;
-  return result;
+  return Object.assign(result, spread.finish(options?.sessionLabels));
 }

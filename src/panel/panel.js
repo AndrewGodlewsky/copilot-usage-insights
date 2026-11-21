@@ -1132,6 +1132,7 @@ const showTokenTopic = createTopicExplorer('token', 'efficiency-topic', TOKEN_TO
 });
 function renderSelectedTokenTopic() {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
+  const promptFocused = document.activeElement?.dataset.promptSession;
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
@@ -1146,6 +1147,8 @@ function renderSelectedTokenTopic() {
   $('token-topic-scope').textContent = ['tools', 'results', 'skills'].includes(tokenTopic) ? 'Selected history + current conversation snapshot' : 'Selected history · current filters';
   $('token-topic-body').innerHTML = renderTokenTopic(tokenTopic, state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
   if (contextFocused) ($('token-topic-body').querySelector('[data-token-context]') || $('efficiency-topic')).focus({ preventScroll: true });
+  // A refresh redraws the heaviest prompts; keep the keyboard on the same conversation if it is still listed.
+  else if (promptFocused !== undefined) ([...$('token-topic-body').querySelectorAll('[data-prompt-session]')].find(button => button.dataset.promptSession === promptFocused) || $('efficiency-topic')).focus({ preventScroll: true });
 }
 let growthMode = 'input', growthPattern = '', growthSession = '', growthPrompt = 1;
 function growthOptions() { return { number, width: $('efficiency-growth').clientWidth, mode: growthMode, pattern: growthPattern,
@@ -1216,7 +1219,10 @@ $('token-detail-panel').onclick = event => {
   // A spend-driver row opens its session in Breakdown. The model filter stays as the user set it.
   const row = event.target.closest('[data-token-session]')?.dataset;
   if (row?.tokenSession !== undefined && row.tokenProject !== undefined) return inspectEfficiency({ project: row.tokenProject, session: row.tokenSession });
-  if (event.target.closest('[data-token-context]')) openTokenContext();
+  if (event.target.closest('[data-token-context]')) return openTokenContext();
+  // A heaviest-prompt row opens its conversation in Breakdown, keeping the current model filter.
+  const prompt = event.target.closest('[data-prompt-session]')?.dataset;
+  if (prompt?.promptSession) return inspectEfficiency({ model: $('model').value, project: prompt.promptProject, session: prompt.promptSession });
 };
 $('token-overview-panel').onclick = event => {
   const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;

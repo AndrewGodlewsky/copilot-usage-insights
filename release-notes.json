@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.119",
+    "summary": "Work behind each prompt now shows the shape behind the averages: the typical prompt beside the average, prompts grouped by how many model calls they needed, the share of credits held by the heaviest tenth, and what the work consisted of. The five heaviest prompts open their conversation in Breakdown."
+  },
+  {
     "version": "0.1.118",
     "summary": "Overview now shows what your tokens were made of (uncached input, cache reads, cache writes and output), which model, project and conversations used the most, and whether input and credits per call are changing. It ends with an index of the other sections, each with its headline figure."
   },

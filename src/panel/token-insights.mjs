@@ -441,18 +441,58 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
       + insight(...found);
   }
   if (id === 'prompts') {
-    const p = report.promptCredits || {}, w = p.work || {};
+    // Every figure here uses one set: eligible prompts, and under a model filter only the
+    // selected models' calls and charges for them. `spread`, `mix` and `heaviest` come from the
+    // same pass as the averages; a report without them keeps the averages alone.
+    const p = report.promptCredits || {}, w = p.work || {}, d = p.spread, mix = p.mix;
     const incomplete = p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0;
+    const eligible = p.eligiblePrompts ?? 0, selected = p.modelFiltered ? ' on the selected models' : '';
+    // Charges per prompt are not final while older history is still loading.
+    const charged = value => p.pending ? null : value;
+    const part = (value, total, of) => { const portion = share(value, total); return portion == null ? '' : `${percent(portion)} of ${of}`; };
+    const details = (...items) => items.filter(Boolean).join(' · ');
+    const spreadBars = d ? barList((d.bins || []).map(b => ({ label: b.label, value: b.prompts,
+      detail: details(part(b.prompts, eligible, 'eligible prompts'), part(charged(b.credits), p.credits, 'their credits')) })), { format: number, total: eligible }) : '';
+    const kinds = [['initial', 'Started by the message'], ['continuation', 'Agent continuations'], ['subagent', 'Subagent calls'], ['unrecorded', 'Initiator not recorded']];
+    const mixBars = mix ? barList(kinds.filter(([key]) => key !== 'unrecorded' || mix[key]?.requests > 0).map(([key, label]) => ({ label, value: mix[key]?.requests,
+      detail: details(part(mix[key]?.requests, w.requests, 'linked calls'), part(charged(mix[key]?.credits), p.credits, 'credits'),
+        key === 'subagent' && mix.subagent?.requests > 0 ? `in ${number(mix.delegatedPrompts ?? 0)} of ${number(eligible)} eligible prompts` : '') })), { format: number, total: w.requests }) : '';
+    const rows = p.pending ? [] : (p.heaviest || []).slice(0, 5), openable = rows.some(r => r.session && r.sessionName);
+    const conversation = r => r.session && r.sessionName
+      ? `<button class="model-toggle cell-text token-prompt-open" data-prompt-session="${esc(r.session)}" data-prompt-project="${esc(r.project ?? '')}" title="Open this conversation in Breakdown">${esc(r.sessionName)}<span class="sr-only">: open this conversation in Breakdown</span></button>`
+      : `<span class="cell-text">${esc(r.sessionName || 'Unnamed conversation')}</span>`;
+    const heaviest = rows.length ? `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Conversation', 'Project', 'Date', 'Model calls', 'Tokens', 'AI credits'].map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r =>
+      `<tr><td class="text-cell">${conversation(r)}</td><td class="text-cell"><span class="cell-text">${esc(r.project || 'Unknown project')}</span></td><td>${esc(r.day || 'Unavailable')}</td><td>${esc(coverageValue(r.requests, false, number))}</td><td>${esc(coverageValue(r.tokens, false, number))}</td><td>${esc(coverageValue(r.credits, false, credits))}</td></tr>`).join('')}</tbody></table></div>`
+      + note(`The ${rows.length === 1 ? 'eligible prompt' : `${number(rows.length)} eligible prompts`} with the largest complete recorded charge, largest first. No prompt text is read or shown.${openable ? ' Choose a conversation to open it in Breakdown.' : ''}${p.modelFiltered ? ' Each row counts only the selected models\' part of that prompt.' : ''} Tokens show only when every linked call has a complete count.`)
+      : empty(p.pending ? 'Charges per prompt are still being verified while older history loads.' : 'No eligible prompt has a recorded charge above zero in these filters.');
+    // How far the heaviest tenth sits from the typical prompt, when both are measured.
+    const multiple = d && !p.pending && d.heavyPrompts > 0 && valid(d.heavyCredits) && d.medianCredits > 0 ? d.heavyCredits / d.heavyPrompts / d.medianCredits : null;
+    const observation = w.averageRequests == null ? 'Complete prompt chains are needed for this comparison.'
+      : multiple != null ? `The heaviest tenth of prompts averaged ${number(multiple, { maximumFractionDigits: 1 })} times the credits of a typical prompt${selected}.`
+      : d && !p.pending && valid(d.heavyShare) ? `The heaviest tenth of prompts held ${percent(d.heavyShare)} of credits${selected}. A typical prompt recorded no charge.`
+      : valid(d?.medianRequests) ? `A typical prompt led to ${number(d.medianRequests)} model calls${selected}. The largest led to ${number(w.maxRequests)}.`
+      : `One submitted prompt led to ${number(w.averageRequests)} model calls on average${selected}.`;
     return (p.modelFiltered ? '<p class="token-topic-status">Selected-model contribution only</p>' : '')
-      + metrics(metric('Model calls / prompt', w.averageRequests, `${number(p.eligiblePrompts ?? 0)} of ${number(p.prompts ?? 0)} prompts eligible`, number, incomplete),
-        metric('AI credits / prompt', p.averageCredits, 'Complete recorded charges only', credits, incomplete),
-        metric('Tokens / prompt', w.averageTokens, `${number(w.tokenPrompts ?? 0)} eligible prompts with complete token counts`, number, incomplete || w.tokenPrompts < p.eligiblePrompts),
-        metric('Most calls for one prompt', w.maxRequests, 'Within the eligible prompt set', number, incomplete))
+      + metrics(...(d ? [metric('Typical calls / prompt', d.medianRequests, 'Half of eligible prompts needed this many or fewer', number, incomplete)] : []),
+        metric(d ? 'Average calls / prompt' : 'Model calls / prompt', w.averageRequests, `${number(eligible)} of ${number(p.prompts ?? 0)} prompts eligible`, number, incomplete),
+        metric('Most calls for one prompt', w.maxRequests, 'Within the eligible prompt set', number, incomplete),
+        metric('Tokens / prompt', w.averageTokens, `Average of ${number(w.tokenPrompts ?? 0)} eligible prompts with complete token counts`, number, incomplete || w.tokenPrompts < p.eligiblePrompts))
       + note(`Includes initial calls, agent continuations, and subagent work with reliable parent links. ${number(w.requests ?? 0)} linked calls in this view. Tokens include cached input once. Prompts are dated by submission, grouping all linked work before filters; model filters show only selected-model contributions.`)
+      + (d ? section('How many model calls prompts needed', (spreadBars || empty('No eligible prompts in these filters, so there is no spread to show. Unavailable figures are not zero.'))
+        + (valid(d.medianRequests) && w.averageRequests > d.medianRequests ? note(`The average (${number(w.averageRequests)}) is above the typical prompt (${number(d.medianRequests)}). That happens when a smaller number of prompts need many more calls than the rest.`) : '')) : '')
+      + section('Where the credits go', metrics(...(d ? [metric('Typical credits / prompt', charged(d.medianCredits), 'Half of eligible prompts used this much or less', credits, incomplete)] : []),
+        metric(d ? 'Average credits / prompt' : 'AI credits / prompt', charged(p.averageCredits), 'Complete recorded charges only', credits, incomplete),
+        ...(d ? [metric('Held by the heaviest tenth', charged(d.heavyShare), d.heavyPrompts > 0 ? details(`${number(d.heavyPrompts)} of ${number(eligible)} eligible prompts`, valid(charged(d.heavyCredits)) && valid(p.credits) ? `${credits(d.heavyCredits)} of ${credits(p.credits)} credits` : '') : 'Needs at least 10 eligible prompts', percent, incomplete),
+          metric('Prompts behind half the credits', charged(d.halfPrompts), valid(d.halfPrompts) ? `The fewest prompts that together hold half, out of ${number(eligible)}` : 'Needs a recorded charge above zero', number, incomplete)] : []))
+        + (d ? note(`${p.pending ? 'Charges per prompt are still being verified while older history loads. ' : ''}Eligible prompts only: every linked call has a complete charge. A heavy prompt is often a large task. This shows where credits went, not whether the work was needed.`) : ''))
+      + (mix ? section('What the work consists of', mixBars ? mixBars + note('A call counts as subagent work when it is linked to a parent tool call. Every other call uses the initiator Copilot recorded: the call a message starts, then the calls the agent makes as it continues. Nothing is inferred from timing.')
+        : empty('No linked calls from eligible prompts in these filters.')) : '')
+      + (d ? section('Heaviest prompts by credits', heaviest) : '')
       + section('Accounting coverage', table(['Excluded for attribution', 'Incomplete charges', 'Unfinished work', 'Unlinked requests'], [[number(p.excluded?.attribution ?? 0), number(p.excluded?.accounting ?? 0), number(p.excluded?.unfinished ?? 0), number(p.unlinkedRequests ?? 0)]]))
-      + insight(w.averageRequests == null ? 'Complete prompt chains are needed for this comparison.' : `One submitted prompt led to ${number(w.averageRequests)} model calls on average${p.modelFiltered ? ' on the selected models' : ''}.`,
-        'For a comparable task, state the goal, boundaries, and validation steps up front, then let the agent complete the connected work.',
-        'calls, tokens, and credits per eligible prompt alongside the result. More calls may be necessary for a harder task; this does not measure prompt quality.');
+      + insight(observation,
+        rows.length ? 'Pick one of the heaviest prompts listed above and recall the task. For the next task of that kind, state the goal, boundaries, and validation steps up front, then let the agent complete the connected work.'
+          : 'For a comparable task, state the goal, boundaries, and validation steps up front, then let the agent complete the connected work.',
+        `calls, tokens, and credits ${rows.length ? 'for the new prompt against the typical and heaviest values here' : 'per eligible prompt'}, alongside the result. More calls may be necessary for a harder task; this does not measure prompt quality.`);
   }
   if (id === 'delegation') {
     const by = report.efficiency?.byInitiator || [], initiator = key => by.find(r => r.id === key);
