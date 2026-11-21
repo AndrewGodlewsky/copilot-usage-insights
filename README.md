@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.121** expands Calls and recovery to show what followed each failed tool call: how often the next call succeeded, the longest run of failures in a row, the time recorded in failed calls, and which operations fail most often and at what rate. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.122** expands Tool and MCP footprint with definition tokens over time, the footprint grouped by how many tools were available, the projects with the largest footprint per call, and tools available on a typical call beside the tools actually executed. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -314,7 +314,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | --- | --- |
 | Overview | Matched input/output balance and request averages; the token mix (uncached input, cache read, cache write, output); the largest model, project and conversations by token share; input and credits per call over time; and an index of the other sections with each one's headline figure |
 | Always-loaded context | The current conversation's room left against its allowance, what fills it, setup beside conversation, the largest sources you can change grouped by kind, and the snapshot beside your selected history |
-| Tool and MCP footprint | Definition tokens and available tools per call, input share, and model comparisons |
+| Tool and MCP footprint | Definition tokens and available tools per call, input share and how both change over time; the footprint grouped by how many tools were available; the projects and models with the largest footprint per call; and tools available on a typical call beside the different tools actually executed |
 | Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
 | Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model; reuse by time since the previous call, on a conversation's first call in range, and after a model change; reuse over time; and the conversations with the most input not read from cache |
 | Skills and instruction footprint | Recorded skill uses split by how each was loaded (preloaded at start, invoked by the agent, invoked by you), per-skill conversations, projects, last use and failed loads, alongside current instruction tokens and skill and plugin sources |

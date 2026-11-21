@@ -251,14 +251,64 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
   }
   if (id === 'tools') {
     const rows = measuredModels('toolRequests', 'toolTokens');
+    const fp = report.efficiency?.toolFootprint, trend = report.efficiency?.trend;
+    const figure = value => valid(value) ? number(value) : 'Unavailable';
+    const tools = n => `${number(n)} ${n === 1 ? 'tool' : 'tools'}`;
+
+    // Does the footprint move with how many tools were available? Groups of neighbouring counts.
+    const groups = fp?.buckets || [], groupName = g => g.min === g.max ? tools(g.min) : `${number(g.min)} to ${number(g.max)} tools`;
+    const noCount = fp ? fp.requests - fp.countCalls : null, unmatched = fp ? fp.countCalls - fp.pairedCalls : null;
+    const byCount = groups.length
+      ? table(['Tools available', 'Calls with a count', 'Calls measured', 'Definitions / call', 'Input share'],
+        groups.map(g => [groupName(g), number(g.calls), number(g.measured), figure(g.averageTokens), percent(g.share)]))
+        + note(`Covers ${coverage(fp.pairedCalls, fp.requests)}: the calls that record both how many tools were available and their definition tokens. ${[noCount && `${number(noCount)} calls record no tool count`, unmatched && `${number(unmatched)} record a count but no usable definition size`].filter(Boolean).map(x => x + ". ").join("")}Calls missing either are left out. Groups hold about a third of the calls that record a count and never split one count.`)
+      : empty(fp?.countCalls ? 'Every call that records a tool count shows the same count, so there is nothing to compare between groups.' : 'No calls in these filters record how many tools were available, so footprint cannot be grouped by it. Missing counts are not zero.');
+
+    // Projects with the largest definition footprint per call, from a stated minimum sample.
+    const projects = fp?.projects || [];
+    const byProject = projects.length
+      ? table(['Project', 'Measured calls', 'Definitions / call', 'Input share', 'Tools available / call'],
+        projects.map(p => [p.name, number(p.calls), number(p.averageTokens), percent(p.share), p.averageAvailable == null ? 'Unavailable' : number(p.averageAvailable, { maximumFractionDigits: 1 })]))
+        + note(`Showing ${number(projects.length)} of ${number(fp.listedProjects)} projects with at least ${number(fp.minimumProjectCalls)} calls that record definition tokens, largest per call first. ${fp.measuredProjects > fp.listedProjects ? `${number(fp.measuredProjects - fp.listedProjects)} projects with fewer calls are not listed. ` : ""}Projects also differ in model and task, so a gap is not proof that a project's tool setup causes it.`)
+      : empty(`No project has at least ${number(fp?.minimumProjectCalls ?? 20)} calls that record definition tokens in these filters.`);
+
+    // Available on one call against executed over the whole history: two scopes, stated as such.
+    const executed = report.tools?.rows, servers = report.mcp?.rows;
+    const against = metrics(
+      metric('Tools available, half of calls', fp?.medianAvailable ?? null, `Half of calls had this many or fewer · ${coverage(fp?.countCalls ?? 0)}`, number, partial(fp?.countCalls ?? 0)),
+      metric('Different tools executed', Array.isArray(executed) ? executed.length : null, `Whole selected history, not one call · ${number(report.tools?.calls ?? 0)} tool calls`),
+      metric('MCP servers with executed tools', Array.isArray(servers) ? servers.length : null, 'Whole selected history'))
+      + note('These count different things. The first is per model call. The others cover every call in the selected dates. An available tool that was not executed in this period may be needed on another task, so this is not a count of unused or wasted tools. Tool names are counted as recorded: an MCP tool is one per server and tool name.')
+      + note(`Tool definitions are usually served from cache after the first call of a conversation, so their input tokens are not all processed fresh. The history has no cache split by content, so this view cannot say how much of the definitions was read from cache.${report.tools?.omitted ? ` ${number(report.tools.omitted)} tool calls were omitted for missing or mixed provider attribution.` : ''}`);
+
+    // The sentence follows the clearest evidence: groups of tool counts, then a project that stands out.
+    const solid = groups.filter(g => g.measured >= (fp?.minimumGroupCalls ?? 20) && valid(g.averageTokens));
+    const low = solid.reduce((a, b) => a && a.averageTokens <= b.averageTokens ? a : b, null), high = solid.reduce((a, b) => a && a.averageTokens >= b.averageTokens ? a : b, null);
+    const stands = projects[0] && valid(s.averageToolTokens) && s.averageToolTokens > 0 && projects[0].averageTokens >= s.averageToolTokens * 1.25 ? projects[0] : null;
+    const experiment = 'Try one task with an MCP server you do not need disconnected, then look at definition tokens per call.';
+    const sentence = solid.length >= 2 && low.averageTokens > 0 && high.averageTokens >= low.averageTokens * 1.25
+      ? [`Calls with ${groupName(high)} carried ${number(high.averageTokens)} definition tokens each, against ${number(low.averageTokens)} on calls with ${groupName(low)}.`,
+        `${experiment} Calls with more tools available can also differ in model or project, which this comparison does not separate.`,
+        'definition tokens per call and input share on the same model, and whether the agent still had the tools it needed.']
+      : stands
+        ? [`${stands.name} averaged ${number(stands.averageTokens)} definition tokens per call, against ${number(s.averageToolTokens)} across all measured calls.`,
+          `${experiment} Tool and MCP setup often differs by project, but so can the model and the task.`,
+          'definition tokens per call for that project on the same model, and whether the agent still had the tools it needed.']
+        : [s.toolShare == null ? 'Tool-definition overhead is not measurable in this history.' : `${percent(s.toolShare)} of matched input described available tools.`,
+          `${experiment} A tool can add definitions even when it is never called.`,
+          'definition tokens per call and input share on the same model. Fewer definitions are useful only if the needed tools remain available.'];
+
     return metrics(metric('Definitions / call', s.averageToolTokens, coverage(s.toolRequests), number, partial(s.toolRequests)),
       metric('Share of measured input', s.toolShare, 'Tool and input counts from the same calls', percent, partial(s.toolRequests)),
       metric('Definition tokens', s.toolRequests ? s.toolTokens : null, 'Already included in input tokens', number, partial(s.toolRequests)),
-      metric('Available tools / call', s.averageAvailableTools, coverage(s.toolCountRequests), number, partial(s.toolCountRequests)))
+      metric('Available tools / call', s.averageAvailableTools, coverage(s.toolCountRequests), value => number(value, { maximumFractionDigits: 1 }), partial(s.toolCountRequests)))
+      + trendRow(trend, point => point.averageToolTokens, { label: 'Definition tokens per call', format: number })
+      + trendRow(trend, point => point.toolShare, { label: 'Share of input described tools', format: percent })
+      + section('Footprint by how many tools were available', byCount)
+      + section('Projects with the largest footprint per call', byProject)
       + (rows.length ? section('Models carrying the most tool-definition tokens', table(['Model', 'Measured calls', 'Definitions / call', 'Input share'], rows.map(r => [r.name, coverage(r.toolRequests, r.requests), measured(r.averageToolTokens, r.toolRequests, r.requests), measured(r.toolShare, r.toolRequests, r.requests, percent)]))) : empty('No paired tool-definition and input measurements in these filters.'))
-      + insight(s.toolShare == null ? 'Tool-definition overhead is not measurable in this history.' : `${percent(s.toolShare)} of matched input described available tools.`,
-        'Inspect which definitions occupy the current conversation. Try disabling an unrelated integration for a comparable task; a tool can add definitions even when it is never called.',
-        'definition tokens per call and input share on the same model. Fewer definitions are useful only if the needed tools remain available.')
+      + section('Available against executed', against)
+      + insight(...sentence)
       + section('Current tool and MCP sources', contextStamp() + (current ? sources(['toolDefinition', 'mcpServer'], 'Largest attributed tool and MCP sources') + inspect : inspect))
       + note('Historical definitions do not distinguish built-in from MCP tokens. Current MCP source totals can mix definitions and attributed messages; these rows are not a definition-only or historical bill.');
   }

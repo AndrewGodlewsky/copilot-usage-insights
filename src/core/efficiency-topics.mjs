@@ -10,12 +10,14 @@ import { createCacheTiming } from './efficiency-cache.mjs';
 import { createTokenMix } from './efficiency-overview.mjs';
 import { createCompactionTopic } from './efficiency-compaction.mjs';
 import { createRecoveryTopic } from './efficiency-recovery.mjs';
+import { createToolFootprint } from './efficiency-tools.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
   { key: 'cacheTiming', create: createCacheTiming },
   { key: 'tokenMix', create: createTokenMix },
   { key: 'compaction', create: createCompactionTopic },
+  { key: 'toolFootprint', create: createToolFootprint },
 ];
 const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },
