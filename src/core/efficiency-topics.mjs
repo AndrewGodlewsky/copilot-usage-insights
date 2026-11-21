@@ -15,6 +15,7 @@ import { createModelMix } from './efficiency-models.mjs';
 import { createGrowthSummary } from './efficiency-growth.mjs';
 import { createToolMaterial } from './efficiency-results.mjs';
 import { createTransitionsTopic } from './efficiency-transitions.mjs';
+import { createRepetitionTopic } from './efficiency-repetition.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -28,6 +29,7 @@ const requestTopics = [
 ];
 const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },
+  { key: 'repetition', create: createRepetitionTopic },
 ];
 
 // A topic that needs both sides (it relates model calls to tool calls by time) registers here and

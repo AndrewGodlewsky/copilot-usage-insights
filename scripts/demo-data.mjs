@@ -1,5 +1,6 @@
 import { createSyntheticHistory, mulberry32 } from './synthetic-history.mjs';
 import { createReceiptParser } from '../src/core/copilot.mjs';
+import { createCallFingerprint } from '../src/node/call-fingerprint.mjs';
 
 // Synthetic usage only. No user transcripts or account data belong in previews.
 // Journals come from the deterministic generator and pass through the real parser, so the demo
@@ -23,11 +24,29 @@ function shapeOutput(u, effort, rand) {
   u.duration = Math.round(500 + rand() * 2000 + u.outputTokens / speed * 1000 * (.75 + rand() * .5));
 }
 
+// What a demo tool call asks for: [how often it asks again for something its conversation already
+// asked for, what a new request looks like]. Reads, searches and commands come back to the same
+// things now and then; an edit or a new file is different every time, and a large new file is
+// longer than the parser compares. Every path, pattern and command here is made up.
+const DEMO_AREAS = ['cart', 'checkout', 'search', 'account', 'billing', 'catalog'];
+const DEMO_COMMANDS = ['npm test', 'npm run build', 'git status', 'git diff', 'npm run lint'];
+const DEMO_FILE = 'export const value = 1;\n'.repeat(220);
+const DEMO_REQUESTS = {
+  view: [.14, n => ({ path: `src/${DEMO_AREAS[n % DEMO_AREAS.length]}/module-${n}.ts` })],
+  grep: [.1, n => ({ pattern: `handle${n}`, path: 'src' })],
+  glob: [.07, n => ({ pattern: `src/**/*-${n}.ts` })],
+  bash: [.3, (n, again) => ({ command: again() < .7 ? DEMO_COMMANDS[Math.floor(again() * DEMO_COMMANDS.length)] : `npm test -- case-${n}` })],
+  lookup: [.1, n => ({ query: `topic ${n}` })],
+  create: [0, (n, again) => ({ path: `src/new-${n}.ts`, file_text: again() < .45 ? DEMO_FILE : 'export {};\n' })],
+  other: [0, n => ({ path: `src/file-${n}.ts`, old_str: `value = ${n}`, new_str: `value = ${n + 1}` })],
+};
+
 // Adds the settings and compaction events the scale generator leaves out, then shrinks later
 // input the way a compacted conversation would. Returns journal lines.
 // `breaks` is its own random stream: it puts pauses of minutes or hours before some prompts,
 // never moving the session past `latest`, and decides how little the next call reads from cache.
-function enrich(session, rand, outputRand, breaks, latest, flaky) {
+// `again` is its own random stream too: it decides what each tool call asks for.
+function enrich(session, rand, outputRand, breaks, latest, flaky, again) {
   const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
   const out = [], pick = list => list[Math.floor(rand() * list.length)], childCalls = new Map();
   // Tool outcomes worth a closer look: a browser tool that often fails, a shell that now and then
@@ -43,6 +62,24 @@ function enrich(session, rand, outputRand, breaks, latest, flaky) {
       if (flaky() < .018) { failing = 2 + Math.floor(flaky() * 4); return 'failed'; }
     }
     return flaky() < .012 ? 'unrecorded' : '';
+  };
+  // The scale generator fills tool arguments with noise, so no two calls would ever match. Here
+  // each call is given a request once, so a replayed line stays identical. After a compaction the
+  // next few file reads mostly go back to files this conversation has already read.
+  const asked = new Map(), pools = new Map();
+  let requests = 0, rereads = 0;
+  const request = (name, mcpTool) => {
+    const kind = mcpTool ? 'lookup' : Object.hasOwn(DEMO_REQUESTS, name) ? name : 'other', [chance, make] = DEMO_REQUESTS[kind];
+    let pool = pools.get(name);
+    if (!pool) pools.set(name, pool = []);
+    const reread = kind === 'view' && rereads > 0;
+    if (reread) rereads--;
+    // An ordinary repeat goes back to one of the last few requests; a reread after a compaction
+    // goes back to anything read so far.
+    if (pool.length && again() < (reread ? .5 : chance)) return pool[pool.length - 1 - Math.floor(again() * (reread ? pool.length : Math.min(pool.length, 6)))];
+    const made = make(requests++, again);
+    pool.push(made);
+    return made;
   };
   // An empty effort stands for a producer that does not record one.
   let effort = rand() < .2 ? '' : rand() < .6 ? 'medium' : 'high', model = '', input = 0, removed = 0, cold = false, serial = 0;
@@ -81,7 +118,7 @@ function enrich(session, rand, outputRand, breaks, latest, flaky) {
           compactionTokensUsed: { provider: { id: 'copilot', kind: 'copilot' }, model, modelDisplayName: NAMES[model] || model, inputTokens: input, outputTokens: 900 + Math.floor(rand() * 1400),
             cacheReadTokens: Math.floor(input * .8), cacheWriteTokens: 0, duration: 4000 + Math.floor(rand() * 9000), requestCount: 1,
             copilotUsage: { totalNanoAiu: Math.round(input * 900 + 2e7) }, aiCreditsStatus: 'complete' } }, ms - 600);
-        if (!failed) { removed += input - post; input = post; cold = true; }
+        if (!failed) { removed += input - post; input = post; cold = true; rereads = 1 + Math.floor(again() * 2); }
       }
     }
     if (e.type === 'session.usage_record') {
@@ -114,7 +151,12 @@ function enrich(session, rand, outputRand, breaks, latest, flaky) {
         u.cacheWriteTokens = Math.min(fresh - u.cacheReadTokens, Math.floor(u.cacheWriteTokens * scale));
       }
     }
-    if (e.type === 'tool.execution_start') tools.set(e.data.toolCallId, e.data.toolName);
+    if (e.type === 'tool.execution_start') {
+      const id = e.data.toolCallId;
+      tools.set(id, e.data.toolName);
+      if (!asked.has(id)) asked.set(id, request(e.data.toolName, e.data.mcpToolName));
+      e.data.arguments = asked.get(id);
+    }
     if (e.type === 'tool.execution_complete') {
       const id = e.data.toolCallId;
       if (!fates.has(id)) fates.set(id, fate(tools.get(id)));
@@ -129,13 +171,13 @@ function enrich(session, rand, outputRand, breaks, latest, flaky) {
 export function demoData(now = new Date()) {
   // Output shaping draws from its own sequence so the settings and compactions above stay as they were.
   const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11), outputRand = mulberry32(23);
-  const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000, flaky = mulberry32(31);
+  const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000, flaky = mulberry32(31), again = mulberry32(37);
   const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], compactionEvents: [], skillExcludedSessions: [], coverageEntries: [] };
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
   let files = 0;
   for (const session of history.sessions()) {
-    const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl` });
-    for (const line of enrich(session, rand, outputRand, breaks, latest, flaky)) parser.push(line);
+    const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl`, createFingerprint: createCallFingerprint });
+    for (const line of enrich(session, rand, outputRand, breaks, latest, flaky, again)) parser.push(line);
     const snapshot = parser.snapshot();
     files++;
     for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);

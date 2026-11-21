@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.129",
+    "summary": "Repeated exploration is now measured. It shows how often the agent made exactly the same tool call again in one conversation, which reads and searches repeat most, how soon, and how many came after a compaction. Calls are compared while your history is read; their arguments are never stored or shown."
+  },
+  {
     "version": "0.1.128",
     "summary": "Findings now draws on the other Efficiency views: cache reuse after long pauses and after a model change, credits held by the heaviest prompts, failed tool calls in a row, repeated compaction, and input late in long conversations. Each finding opens the view that holds the detail."
   },

@@ -230,3 +230,5 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 /* Findings: measured patterns from the other Efficiency views. */
 .efficiency-findings-status{margin:14px 0 0;max-width:88ch}#efficiency-findings:empty{display:none}
 #efficiency-insights:not(:empty)+#efficiency-findings>.efficiency-insight:first-child{border-top:1px solid var(--border);margin-top:18px;padding-top:18px}
+/* Repeated exploration: the group name above each set of bars. */
+.repetition-caption{margin-top:14px;color:var(--muted-fg);font-size:calc(12px * var(--text-scale));font-weight:600}.repetition-caption+.token-bar-list{margin-top:8px}

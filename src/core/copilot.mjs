@@ -3,6 +3,7 @@ import { linkId, intern, promptEvent, promptEventTypes, createPromptEventSet } f
 import { createCoverageCollector, coverageTime } from './coverage.mjs';
 import { recordedEffort, modelChange } from './model-settings.mjs';
 import { compactionEvent } from './efficiency-compaction.mjs';
+import { createRepeatMemory, REPEAT_LIMITS } from './efficiency-repetition.mjs';
 export const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 export const textValue = value => typeof value === 'string' ? value : '';
 export const normalizeSessionName = value => textValue(value).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 256);
@@ -63,7 +64,11 @@ function leadingType(line) {
   return /^[a-z0-9_.]+$/.test(name) ? name : '';
 }
 
-export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false, backgroundActivity = false }) {
+// `createFingerprint` is called once and must return a one-way function of a string, keyed with
+// a secret of its own. With it, each tool call is told whether an identical call came earlier
+// in its conversation. Without it, no call is compared.
+export function createReceiptParser({ sessionId: initialSession, source, logFile = '', skipUnused = false, backgroundActivity = false, createFingerprint }) {
+  const repeats = typeof createFingerprint === 'function' ? createRepeatMemory(createFingerprint()) : null;
   let sessionId = initialSession, cwd = '', project = '', label = 'Unknown project', revision = 0;
   let invalid = 0, invalidSkills = 0, invalidTools = 0, excluded = 0, unclassified = 0, hasCheckpoint = false;
   let summaryNeedsCoverage = false, reviewOrigin = false;
@@ -157,12 +162,23 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         if (starting) {
           if (!tools.has(key)) {
             revision++;
-            const outcome = toolOutcomes.get(key);
+            const outcome = toolOutcomes.get(key), server = intern(textValue(e.data?.mcpConfigServerName) || textValue(e.data?.mcpServerName)), mcpTool = intern(textValue(e.data?.mcpToolName));
+            // Was an identical call (same name and arguments) recorded earlier in this conversation?
+            // The arguments are read for that here and only two numbers are kept: how many earlier
+            // identical calls there were, and when the latest of them started. The text built from
+            // the arguments lasts for this one statement. A replayed line never reaches this point,
+            // so a call is not a repeat of itself. Not compared, and left as null: a call inside a
+            // subagent, which has a context of its own; a call with no recorded arguments; a line
+            // over the size limit; and calls past the limits on what one parser remembers.
+            let repeat = null, repeatOfMs = null;
+            if (repeats && line.length <= REPEAT_LIMITS.eventChars && !e.agentId && !e.data.parentToolCallId && e.data.arguments != null && repeats.open(sessionId)) {
+              ({ repeat, repeatOfMs } = repeats.note(JSON.stringify([name, server, mcpTool, e.data.arguments]), ms));
+            }
             tools.set(key, { key, sessionId, ms, ts: new Date(ms).toISOString(), name: intern(name), project: label,
-              model: intern(textValue(e.data?.model)), server: intern(textValue(e.data?.mcpConfigServerName) || textValue(e.data?.mcpServerName)),
-              mcpTool: intern(textValue(e.data?.mcpToolName)),
+              model: intern(textValue(e.data?.model)), server, mcpTool,
               skillName: name === 'skill' ? textValue(e.data?.arguments?.skill).trim() : '',
               success: outcome ? outcome.success : null, completedMs: outcome ? outcome.completedMs : null,
+              repeat, repeatOfMs,
             });
           }
         } else if (!toolOutcomes.has(key) || ms > toolOutcomes.get(key).completedMs) {

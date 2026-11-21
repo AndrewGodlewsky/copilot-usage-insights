@@ -2,6 +2,7 @@ import { esc } from './charts.mjs';
 import { renderTokenInsight } from './token-insights.mjs';
 import { renderCompactionTopic } from './compaction-topic.mjs';
 import { renderTransitionsTopic } from './transitions-topic.mjs';
+import { renderRepetitionTopic } from './repetition-topic.mjs';
 
 export const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', iconPath: 'M4 19v-6h3v6m4 0V9h3v10m4 0V5h3v14M3 21h19', group: '', question: 'See the overall balance of input and output.' },
@@ -39,7 +40,6 @@ export function renderTokenTopic(id, report, formats) {
   const metric = (label, value, detail, format = number) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(format(value))}</strong><span class="sub">${esc(detail)}</span></div>`;
   const metrics = (...items) => `<div class="efficiency-metrics">${items.join('')}</div>`;
   const note = text => `<p class="footnote">${esc(text)}</p>`;
-  const unmeasured = text => `<p class="token-topic-status">Not measured yet</p><p>${esc(text)}</p>`;
 
   if (id === 'growth') {
     const growth = report.efficiency?.insights?.find(i => i.kind === 'growth');
@@ -51,6 +51,6 @@ export function renderTokenTopic(id, report, formats) {
   }
   if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary);
   if (id === 'transitions') return renderTransitionsTopic(report.efficiency?.changeDetail, report.efficiency?.efforts, formats);
-  if (id === 'repetition') return unmeasured('Repeated searches or file reads are not identified here yet. Calling the same tool several times is not proof of repeating the same work. A useful comparison also needs evidence about what was requested and whether the underlying material changed.');
+  if (id === 'repetition') return renderRepetitionTopic(report.efficiency?.repetition, formats);
   return '';
 }

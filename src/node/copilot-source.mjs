@@ -12,6 +12,7 @@ import { createVSCodeParser } from '../core/vscode.mjs';
 import { mergeCoverage } from '../core/coverage.mjs';
 import { enhancePromptUsageHome, reviewUsageHome } from './settings.mjs';
 import { inOrder } from './read-queue.mjs';
+import { createCallFingerprint } from './call-fingerprint.mjs';
 
 const MAX_LINE = 8 * 1024 * 1024, CHUNK = 256 * 1024, MAX_NAME_FILE = 64 * 1024;
 // A digest of what was read lets a journal that has grown be continued instead of read again.
@@ -71,6 +72,8 @@ function mergeJournals(snapshots) {
     else if (first !== i) { overlapping.add(first); overlapping.add(i); }
   }
   const seenRecords = new Map(), seenInteractions = new Set(), seenSkills = new Set(), seenChanges = new Set(), seenCompactions = new Set(), seenEvents = createPromptEventSet(), toolAt = new Map(), outcomes = new Map();
+  // For each session in a copied journal: how many of its tool calls each copy holds.
+  const toolHolders = new Map();
   let home, homeSessions, session;
   const keep = r => {
     records.push(r);
@@ -106,6 +109,9 @@ function mergeJournals(snapshots) {
     for (const change of s.modelChanges || []) if (!seenChanges.has(change.key)) { seenChanges.add(change.key); modelChanges.push(change); }
     for (const event of s.compactionEvents || []) if (!seenCompactions.has(event.key)) { seenCompactions.add(event.key); compactionEvents.push(event); }
     for (const tool of s.tools) {
+      let held = toolHolders.get(tool.sessionId);
+      if (!held) toolHolders.set(tool.sessionId, held = new Map());
+      held.set(i, (held.get(i) || 0) + 1);
       const at = toolAt.get(tool.key);
       if (at === undefined) { toolAt.set(tool.key, tools.length); tools.push(tool); }
       else if ((tool.completedMs ?? -Infinity) > (tools[at].completedMs ?? -Infinity)) tools[at] = tool;
@@ -119,6 +125,24 @@ function mergeJournals(snapshots) {
   for (const [key, at] of toolAt) {
     const outcome = outcomes.get(key), tool = tools[at];
     if (outcome && (outcome.success !== tool.success || outcome.completedMs !== tool.completedMs)) tools[at] = { ...tool, ...outcome };
+  }
+  // Whether a call repeats an earlier one is one journal's view of its session. Where copies hold
+  // calls of the same session, the counts stand from the first copy that holds every one of those
+  // calls. When no copy does, an earlier call can sit in a journal that never saw the later one,
+  // so the counts for that session are unknown, not zero.
+  const reference = new Map();
+  for (const [id, held] of toolHolders) if (held.size > 1) reference.set(id, -1);
+  if (reference.size) {
+    const totals = new Map(), counted = new Map();
+    for (const at of toolAt.values()) { const id = tools[at].sessionId; if (reference.has(id)) totals.set(id, (totals.get(id) || 0) + 1); }
+    for (const id of reference.keys()) for (const [i, calls] of toolHolders.get(id)) if (calls === totals.get(id)) { reference.set(id, i); break; }
+    for (const i of new Set(reference.values())) if (i >= 0) for (const tool of snapshots[i].tools) if (reference.get(tool.sessionId) === i) counted.set(tool.key, tool);
+    for (const at of toolAt.values()) {
+      const tool = tools[at];
+      if (!reference.has(tool.sessionId)) continue;
+      const source = counted.get(tool.key), repeat = source?.repeat ?? null, repeatOfMs = source?.repeatOfMs ?? null;
+      if ((tool.repeat ?? null) !== repeat || (tool.repeatOfMs ?? null) !== repeatOfMs) tools[at] = { ...tool, repeat, repeatOfMs };
+    }
   }
   return { recordList: records, compactions: [...compactions.values()], skills, interactions, promptEvents, tools, modelChanges, compactionEvents, receiptSessions, skillExcludedSessions, sessionsByHome, coverage, added };
 }
@@ -198,7 +222,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       if (!prefixMatches) {
         const growing = Date.now() - stat.mtimeMs < RECENT || !!entry && (!force || entry.digest !== null);
         hash = growing ? createHash('sha256') : null;
-        const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused, backgroundActivity: context.backgroundActivity });
+        const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused, backgroundActivity: context.backgroundActivity, createFingerprint: createCallFingerprint });
         entry = { parser, contextKey, environment: context.environment || sourceEnvironment(real).environment, offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
       }
       if (metrics) metrics[prefixMatches ? 'filesAppended' : 'filesRead']++;

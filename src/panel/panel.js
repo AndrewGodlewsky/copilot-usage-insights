@@ -1195,7 +1195,7 @@ $('efficiency-growth').oninput = event => {
 let patternTopic = 'findings';
 const patternPanelNames = ['findings', 'habits', 'growth', 'recovery', 'models', 'detail'];
 // Topics in the shared detail panel that have no measurement yet. Every other one reads the selected history.
-const unmeasuredPatternTopics = ['repetition'];
+const unmeasuredPatternTopics = [];
 const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topic', PATTERN_TOPICS, patternTopic, id => {
   patternTopic = id;
   renderSelectedPatternTopic();

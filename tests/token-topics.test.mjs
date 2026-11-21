@@ -37,7 +37,7 @@ test('topic introductions handle absent measurements without invented zeros', ()
     assert.doesNotMatch(html, /NaN|undefined|Infinity/);
     assert.match(html, /Unavailable|No .*recorded|No comparable/);
   }
-  for (const id of ['repetition']) assert.match(render(id), /Not measured yet/);
+  assert.match(render('repetition'), /No tool call is recorded/);
   assert.match(render('compaction'), /No compaction is recorded/);
   assert.match(render('transitions'), /No recorded model or effort/);
 });
