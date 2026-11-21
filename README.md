@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.122** expands Tool and MCP footprint with definition tokens over time, the footprint grouped by how many tools were available, the projects with the largest footprint per call, and tools available on a typical call beside the tools actually executed. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.123** expands Model comparisons under Worth a closer look: each model's share of calls beside its share of credits, per-call size as a multiple of the lowest-credit model, cache reuse, reasoning and speed by model, and who started each model's calls. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -305,6 +305,8 @@ The section order is **Overview**, then **Always-loaded context**, **Tool and MC
 **Worth a closer look** uses the same compact draggable explorer, starting with **Findings**. Its eight section icons appear on both the track and the blue lens, with the full selected name below. Drag, direct clicks, keyboard controls and Previous / Next work just as in the token explorer. Choose **Conversation habits**, **Context growth**, **Context reduction**, **Calls and recovery**, **Model and effort changes**, **Repeated exploration**, or **Model comparisons**. Findings retains measured observations, practical experiments, comparison guidance, and positive cache-reuse findings.
 
 **Context reduction** counts recorded compactions with their outcome and the reason Copilot recorded for each one. It shows Copilot's own estimate of context size before and after, the usage of the calls that wrote the summaries, the last model call before a compaction beside the first one after (input and cache-read share), how soon input grew back, and the conversations compacted most. Only counts, the outcome and the trigger are kept from a compaction event; its summary text, instructions, error text and checkpoint path are never read. A smaller context does not show what information was kept, and token reductions are not credits returned.
+
+**Model comparisons** sets each model's share of calls beside its share of recorded credits, then compares credits, input and output per call as multiples of the lowest-credit model with at least 20 calls. Further columns show cache-read share, reasoning share of output, average call duration and output per second, each on the calls that record it, and who started each model's calls: the main conversation, subagents, or not recorded. Models were given different work, so this is not a like-for-like benchmark; multiples describe size, not value. The existing per-model table stays below.
 
 Both selections survive refreshes, filter changes, settings changes, and tab changes within the open dashboard. Switching sections makes no requests, scans no logs, and invokes no AI. Reopening starts at Overview and Findings. **AI review** stays separate: neither dashboard appears inside it, and inference requires the explicit Create action.
 

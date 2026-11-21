@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.123",
+    "summary": "Model comparisons now sets each model's share of calls beside its share of credits, compares per-call size against the lowest-credit model, and shows cache reuse, reasoning, speed and who started each model's calls. Models were given different work, so it is not a like-for-like benchmark."
+  },
+  {
     "version": "0.1.122",
     "summary": "Tool and MCP footprint now shows how definition tokens change over time, how they vary with the number of tools available, and which projects carry the most. It also sets the tools available on a typical call beside the tools actually executed."
   },

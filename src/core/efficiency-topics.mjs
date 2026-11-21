@@ -11,6 +11,7 @@ import { createTokenMix } from './efficiency-overview.mjs';
 import { createCompactionTopic } from './efficiency-compaction.mjs';
 import { createRecoveryTopic } from './efficiency-recovery.mjs';
 import { createToolFootprint } from './efficiency-tools.mjs';
+import { createModelMix } from './efficiency-models.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -18,6 +19,7 @@ const requestTopics = [
   { key: 'tokenMix', create: createTokenMix },
   { key: 'compaction', create: createCompactionTopic },
   { key: 'toolFootprint', create: createToolFootprint },
+  { key: 'modelMix', create: createModelMix },
 ];
 const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },

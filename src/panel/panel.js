@@ -4,6 +4,7 @@ import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../core/diagnostics.mjs';
 import { buildEfficiencyReview } from './efficiency.mjs';
 import { renderRecovery } from './recovery.mjs';
+import { renderModelMix } from './model-mix.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
@@ -1252,6 +1253,7 @@ function renderEfficiency() {
   $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
   if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
+  $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
   $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
