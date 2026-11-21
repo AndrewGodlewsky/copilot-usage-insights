@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.126",
+    "summary": "Model and effort changes now shows which models and effort levels change, how each change was made, and how the call right after a model change compares with the one before it, including how much less it read from cache. Effort levels are compared inside one model only."
+  },
+  {
     "version": "0.1.125",
     "summary": "Files, searches, and tool results now shows what kinds of tools the agent ran and how long they took. It also estimates how much input each step added to the conversation, grouped by how many tool calls ran in between. The figure is an estimate, not a per-file bill."
   },

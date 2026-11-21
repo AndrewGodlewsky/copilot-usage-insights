@@ -21,6 +21,7 @@ const modules = ['src/core/query.mjs', 'src/core/format.mjs', 'src/core/provider
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/context-growth.mjs');
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/core/report-wire.mjs');
 modules.splice(modules.indexOf('src/panel/token-topics.mjs'), 0, 'src/panel/compaction-topic.mjs');
+modules.splice(modules.indexOf('src/panel/token-topics.mjs'), 0, 'src/panel/transitions-topic.mjs');
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/recovery.mjs');
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/model-mix.mjs');
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/growth-summary.mjs');

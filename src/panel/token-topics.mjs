@@ -1,6 +1,7 @@
 import { esc } from './charts.mjs';
 import { renderTokenInsight } from './token-insights.mjs';
 import { renderCompactionTopic } from './compaction-topic.mjs';
+import { renderTransitionsTopic } from './transitions-topic.mjs';
 
 export const TOKEN_TOPICS = [
   { id: 'overview', label: 'Overview', iconPath: 'M4 19v-6h3v6m4 0V9h3v10m4 0V5h3v14M3 21h19', group: '', question: 'See the overall balance of input and output.' },
@@ -49,26 +50,7 @@ export function renderTokenTopic(id, report, formats) {
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
   }
   if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary);
-  if (id === 'transitions') {
-    const changes = report.efficiency?.switches, efforts = report.efficiency?.efforts || [];
-    if (!changes && !efforts.length) return '<p class="muted">No recorded model or effort measurements for these filters.</p>';
-    const n = value => esc(number(value)), credit = value => esc((formats.credits || number)(value));
-    const effortName = value => value === 'unknown' ? 'Unknown' : value;
-    const switchSummary = changes ? metrics(
-      metric('Model changes', changes.modelChanges, 'Explicit changes, excluding no-ops'),
-      metric('Effort changes', changes.effortChanges, 'Both old and new levels recorded'),
-      metric('Sessions with changes', changes.sessions, `${number(changes.events)} distinct change events`),
-      metric('Manual selections', changes.manual, `${number(changes.automatic)} automatic · ${number(changes.unknownSource)} source unknown`),
-    ) : '';
-    const rows = efforts.map(r => `<tr><td class="text-cell">${esc(r.name)}</td><td>${esc(effortName(r.effort))}</td><td>${n(r.requests)}</td><td title="${n(r.creditRequests)} of ${n(r.requests)} calls have complete charges">${credit(r.credits)}</td><td>${credit(r.averageCredits)}</td><td title="${n(r.reasoningRequests)} of ${n(r.requests)} calls have comparable reasoning and output">${r.reasoningShare == null ? 'Unavailable' : n(r.reasoningShare) + '%'}</td><td title="${n(r.durationRequests)} of ${n(r.requests)} calls have recorded duration">${r.averageDuration == null ? 'Unavailable' : n(r.averageDuration / 1000) + ' s'}</td></tr>`).join('');
-    const transitions = (changes?.transitions || []).slice(0, 10).map(r => `<tr><td class="text-cell">${esc(r.fromModel || 'Unknown')} → ${esc(r.toModel || 'Unknown')}</td><td>${esc(effortName(r.fromEffort))} → ${esc(effortName(r.toEffort))}</td><td>${esc({ model_picker: 'Manual', sdk: 'SDK', agent: 'Agent', startup: 'Startup', unknown: 'Unknown' }[r.source])}</td><td>${n(r.count)}</td></tr>`).join('');
-    return switchSummary + note('Selected dates and current filters. Model filters include changes touching that model. Manual selections and automatic changes are separate; model and effort changes can occur in the same event. Missing change events are not inferred from request order.') +
-      (changes?.omitted ? note(`${number(changes.omitted)} change events omitted because provider attribution is missing or mixed.`) : '') +
-      '<h3>Effort by model</h3>' + (rows ? `<div class="table-wrap"><table><thead><tr><th>Model</th><th>Effort</th><th>Model turns</th><th>AI credits</th><th>Credits / turn</th><th>Reasoning / output</th><th>Average duration</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No recorded model calls in these filters.</p>') +
-      note('Compare effort within the same model and similar workload. Averages use complete recorded charges, including zero; hover for coverage. Reasoning is part of output. Unknown effort is not a default level. Cost differences do not establish whether changing effort helped.') +
-      (transitions ? `<h3>Most frequent recorded changes</h3><div class="table-wrap"><table><thead><tr><th>Model</th><th>Effort</th><th>Source</th><th>Changes</th></tr></thead><tbody>${transitions}</tbody></table></div>` : '') +
-      note('Before/after cost and cache comparisons, resumed-session settings and VS Code effort are not measured here yet.');
-  }
+  if (id === 'transitions') return renderTransitionsTopic(report.efficiency?.changeDetail, report.efficiency?.efforts, formats);
   if (id === 'repetition') return unmeasured('Repeated searches or file reads are not identified here yet. Calling the same tool several times is not proof of repeating the same work. A useful comparison also needs evidence about what was requested and whether the underlying material changed.');
   return '';
 }

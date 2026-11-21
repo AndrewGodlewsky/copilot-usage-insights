@@ -21,14 +21,14 @@ export function compactionEvent(e, id, sessionId, project) {
 }
 
 // The middle value: half of the samples are at or above it and half at or below. Sorts in place.
-function middle(values) {
+export function middle(values) {
   if (!values.length) return null;
   values.sort((a, b) => a - b);
   const half = values.length >> 1;
   return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2;
 }
 // Position of the first call, in time order, recorded after `ms`.
-function firstAfter(order, times, ms) {
+export function firstAfter(order, times, ms) {
   let low = 0, high = order.length;
   while (low < high) {
     const mid = (low + high) >> 1;

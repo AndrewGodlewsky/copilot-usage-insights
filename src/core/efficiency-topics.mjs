@@ -14,6 +14,7 @@ import { createToolFootprint } from './efficiency-tools.mjs';
 import { createModelMix } from './efficiency-models.mjs';
 import { createGrowthSummary } from './efficiency-growth.mjs';
 import { createToolMaterial } from './efficiency-results.mjs';
+import { createTransitionsTopic } from './efficiency-transitions.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -23,6 +24,7 @@ const requestTopics = [
   { key: 'toolFootprint', create: createToolFootprint },
   { key: 'modelMix', create: createModelMix },
   { key: 'growthSummary', create: createGrowthSummary },
+  { key: 'changeDetail', create: createTransitionsTopic },
 ];
 const toolTopics = [
   { key: 'recovery', create: createRecoveryTopic },

@@ -33,7 +33,7 @@ test('effort costs stay within each model and keep missing effort and partial ch
   assert.equal(report(snapshot, { models: ['Other'] }).efficiency.efforts.length, 1);
   assert.ok(!JSON.stringify(snapshot).includes('PRIVATE'));
   const html = renderTokenTopic('transitions', result, { number: n => n == null ? 'Unavailable' : String(n), credits: n => n == null ? 'Unavailable' : String(n) });
-  assert.match(html, /Effort by model/); assert.match(html, /Unknown/); assert.match(html, /workload/);
+  assert.match(html, /Effort levels within one model/); assert.match(html, /not counted as a level/); assert.match(html, /at least 10 calls/);
 });
 
 test('only real explicit model and effort changes count; copied, child and no-op events do not', () => {
