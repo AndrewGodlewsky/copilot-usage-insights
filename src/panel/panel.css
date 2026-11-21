@@ -223,3 +223,5 @@ html.light .token-topic-stops button[aria-current=true]{color:var(--lens-ink);ba
 /* Work behind each prompt: a heaviest-prompt row that opens its conversation. */
 .token-prompt-open{text-decoration:underline;text-decoration-color:var(--muted-fg);text-underline-offset:3px}
 .compaction-caption{margin-top:14px;color:var(--muted-fg);font-size:calc(12px * var(--text-scale));font-weight:600}.compaction-caption+.token-bar-list{margin-top:8px}
+/* Calls and recovery: headline measures, per-operation tables and failures in a row. */
+#efficiency-reliability .efficiency-metrics{grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));margin-top:0!important;padding-top:0;border-top:0}#efficiency-reliability .efficiency-metrics .sub{overflow-wrap:anywhere}#efficiency-reliability .token-insight{margin-top:0}#efficiency-reliability .recovery-operations{min-width:720px}#efficiency-reliability .recovery-runs{min-width:620px}#efficiency-reliability .recovery-operations th:first-child,#efficiency-reliability .recovery-runs th:first-child{width:24%}#efficiency-reliability .recovery-runs th:nth-child(2){width:28%}#efficiency-reliability>.footnote{margin-top:14px}

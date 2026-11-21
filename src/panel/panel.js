@@ -2,7 +2,8 @@ import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageV
 import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
 import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../core/diagnostics.mjs';
-import { buildEfficiencyReview, toolOutcomeSummary } from './efficiency.mjs';
+import { buildEfficiencyReview } from './efficiency.mjs';
+import { renderRecovery } from './recovery.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
@@ -1054,14 +1055,7 @@ $('efficiency-conversations').onclick = event => {
   if (data.conversationClose !== undefined || data.conversationClear !== undefined) $('conversation-explore')?.focus({ preventScroll: true });
 };
 function renderEfficiencyReliability() {
-  const report = state.report, rows = toolOutcomeSummary(report.tools), habits = report.efficiency.interactions;
-  const failed = (report.tools?.rows || []).filter(row => row.failures > 0).sort((a, b) => b.failures - a.failures).slice(0, 5);
-  $('efficiency-reliability').innerHTML = rows.some(row => row.calls)
-    ? `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${rows.map(row => `<tr>${textCell(row.name)}<td>${number(row.calls)}</td><td>${number(row.successes)}</td><td>${number(row.failures)}</td><td>${number(row.unknown)}</td><td>${row.successRate == null ? 'Unavailable' : markedValue(row.successRate, row.unknown > 0, value => number(value, { maximumFractionDigits: 1 }) + '%')}</td></tr>`).join('')}</tbody></table></div><p class="footnote">Success rate uses only known outcomes. Calls follow the date and usage filters.</p>${failed.length ? `<details><summary>Tools with the most recorded failures</summary><ul>${failed.map(row => `<li>${esc(row.server ? row.server + ' / ' + (row.mcpTool || row.name) : row.name)}: ${number(row.failures)} failures in ${number(row.calls)} calls</li>`).join('')}</ul></details>` : ''}`
-    : '<p class="muted">No matching tool execution records. Missing records do not mean no tools were used.</p>';
-  $('efficiency-reliability').innerHTML += habits?.reason === 'model-filter'
-    ? '<p class="footnote">Session error counts are unavailable under a model filter.</p>'
-    : habits?.observedSessions ? `<p class="footnote">${number(habits.sessionErrors)} recorded root-session error events. These are incidents, not a count of failed model requests.</p>` : '';
+  $('efficiency-reliability').innerHTML = renderRecovery(state.report, { number, showCoverage: !$('coverage').hidden });
 }
 function showEfficiencySection(section) {
   if (!['tokens', 'patterns', 'review'].includes(section)) return;

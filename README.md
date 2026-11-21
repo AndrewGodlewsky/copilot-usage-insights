@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.120** adds measurements to Context reduction under Worth a closer look: how often conversations were compacted and why, the context size before and after, what the summary calls used, how input and cache reuse changed on the next call, and how soon input grew back. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.121** expands Calls and recovery to show what followed each failed tool call: how often the next call succeeded, the longest run of failures in a row, the time recorded in failed calls, and which operations fail most often and at what rate. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -286,7 +286,7 @@ Use the three buttons at the top: **Where did the tokens go?** (default), **Wort
 
 The **Overview** section in **Where did the tokens go?** shows the input/output split using requests with both counts recorded. The large percentage is the share of measured token volume that was input, including cached input; it is not a share of credits. Select **Cache reuse** for the cache explanation or **Always-loaded context** for the current inspector. Recorded tool outcomes are under **Worth a closer look > Calls and recovery**.
 
-**Calls and recovery** separates MCP tools from other recorded tools, showing calls, successes, failures, unknown outcomes, and success percentages using only known outcomes. A disclosure lists up to five tools with recorded failures. Root-session error events are separate incidents; they are not failed-model-request counts. Model-call failures and retries are not reliably retained. No wasted-call or wasted-token total is inferred: a failed tool can produce a useful recovery.
+**Calls and recovery** shows recorded tool failures and what followed them: failed calls as a share of calls with a known outcome, how often the next call of the same operation in the same conversation succeeded, the longest run of failures in a row, and the time recorded in failed calls. It lists the operations with the most failures, failure rates for operations with at least five known outcomes, and runs of failures with what came next, then separates MCP tools from other recorded tools using only known outcomes. Root-session error events are separate incidents; they are not failed-model-request counts. Model-call failures and retries are not reliably retained. No wasted-call or wasted-token total is inferred: a failed tool can produce a useful recovery, and the next call can be a different request rather than a repeat.
 
 | Measure | Calculation |
 | --- | --- |

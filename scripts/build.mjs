@@ -21,6 +21,7 @@ const modules = ['src/core/query.mjs', 'src/core/format.mjs', 'src/core/provider
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/context-growth.mjs');
 modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/core/report-wire.mjs');
 modules.splice(modules.indexOf('src/panel/token-topics.mjs'), 0, 'src/panel/compaction-topic.mjs');
+modules.splice(modules.indexOf('src/panel/panel.js'), 0, 'src/panel/recovery.mjs');
 const script = modules.map(p => `// ${p}\n${flatten(read(p))}`).join('\n');
 const notice = `<!--\nDerived from Orca Usage Insights by Etherll:\nhttps://github.com/Etherll/orca-usage-insights\n\n${read('LICENSE').trim()}\n\n${read('licenses/aider-Apache-2.0.txt').trim()}\n-->`;
 const html = read('src/panel/panel.html').replace('<!doctype html>', () => `<!doctype html>\n${notice}`).replaceAll('{{PLUGIN_VERSION}}', version).replace('/* PANEL_STYLES */', () => read('src/panel/panel.css') + '\n' + read('src/panel/review-desktop.css')).replace('/* PANEL_SCRIPT */', () => `;(() => {\n'use strict'\nconst BUILD_VERSION = ${JSON.stringify(version)};\nconst RELEASE_NOTES = ${JSON.stringify(releaseNotes).replaceAll('<', '\\u003c')};\n${script}\n})()`);

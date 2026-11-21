@@ -27,9 +27,23 @@ function shapeOutput(u, effort, rand) {
 // input the way a compacted conversation would. Returns journal lines.
 // `breaks` is its own random stream: it puts pauses of minutes or hours before some prompts,
 // never moving the session past `latest`, and decides how little the next call reads from cache.
-function enrich(session, rand, outputRand, breaks, latest) {
+function enrich(session, rand, outputRand, breaks, latest, flaky) {
   const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
   const out = [], pick = list => list[Math.floor(rand() * list.length)], childCalls = new Map();
+  // Tool outcomes worth a closer look: a browser tool that often fails, a shell that now and then
+  // fails several times in a row, and a few calls whose outcome was never recorded. Each call is
+  // decided once, from its own random stream, so a replayed line stays identical and nothing
+  // else in the demo changes.
+  const tools = new Map(), fates = new Map();
+  let failing = 0;
+  const fate = name => {
+    if (name === 'playwright-navigate') return flaky() < .35 ? 'failed' : '';
+    if (name === 'bash') {
+      if (failing > 0) { failing--; return 'failed'; }
+      if (flaky() < .018) { failing = 2 + Math.floor(flaky() * 4); return 'failed'; }
+    }
+    return flaky() < .012 ? 'unrecorded' : '';
+  };
   // An empty effort stands for a producer that does not record one.
   let effort = rand() < .2 ? '' : rand() < .6 ? 'medium' : 'high', model = '', input = 0, removed = 0, cold = false, serial = 0;
   const end = Date.parse(events.findLast(e => typeof e !== 'string')?.timestamp);
@@ -98,6 +112,13 @@ function enrich(session, rand, outputRand, breaks, latest) {
         u.cacheWriteTokens = Math.min(fresh - u.cacheReadTokens, Math.floor(u.cacheWriteTokens * scale));
       }
     }
+    if (e.type === 'tool.execution_start') tools.set(e.data.toolCallId, e.data.toolName);
+    if (e.type === 'tool.execution_complete') {
+      const id = e.data.toolCallId;
+      if (!fates.has(id)) fates.set(id, fate(tools.get(id)));
+      if (fates.get(id) === 'failed') e.data.success = false;
+      else if (fates.get(id) === 'unrecorded') delete e.data.success;
+    }
     out.push(JSON.stringify(e));
   }
   return out;
@@ -106,13 +127,13 @@ function enrich(session, rand, outputRand, breaks, latest) {
 export function demoData(now = new Date()) {
   // Output shaping draws from its own sequence so the settings and compactions above stay as they were.
   const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11), outputRand = mulberry32(23);
-  const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000;
+  const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000, flaky = mulberry32(31);
   const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], compactionEvents: [], skillExcludedSessions: [], coverageEntries: [] };
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
   let files = 0;
   for (const session of history.sessions()) {
     const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl` });
-    for (const line of enrich(session, rand, outputRand, breaks, latest)) parser.push(line);
+    for (const line of enrich(session, rand, outputRand, breaks, latest, flaky)) parser.push(line);
     const snapshot = parser.snapshot();
     files++;
     for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);

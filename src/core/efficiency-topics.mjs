@@ -9,6 +9,7 @@ import { createOutputMix } from './efficiency-output.mjs';
 import { createCacheTiming } from './efficiency-cache.mjs';
 import { createTokenMix } from './efficiency-overview.mjs';
 import { createCompactionTopic } from './efficiency-compaction.mjs';
+import { createRecoveryTopic } from './efficiency-recovery.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
@@ -17,6 +18,7 @@ const requestTopics = [
   { key: 'compaction', create: createCompactionTopic },
 ];
 const toolTopics = [
+  { key: 'recovery', create: createRecoveryTopic },
 ];
 
 const begin = (topics, context) => topics.map(topic => ({ key: topic.key, accumulator: topic.create(context) }));

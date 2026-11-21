@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.121",
+    "summary": "Calls and recovery now shows what followed each failed tool call: how often the next call succeeded, the longest run of failures in a row, the time recorded in failed calls, and which operations fail most often and at what rate. A failed call can lead to a useful recovery, so nothing is labelled as waste."
+  },
+  {
     "version": "0.1.120",
     "summary": "Context reduction is now measured. Under Worth a closer look it shows how often conversations were compacted and why, the context size before and after, what the summary calls used, how input and cache reuse changed on the next call, and how soon input grew back. No summary text is read."
   },
