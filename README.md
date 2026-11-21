@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.115** expands Cache reuse to show when reuse drops (after a pause, at the start of a conversation, or after a model change), with a trend over time and the conversations with the most input not read from cache. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.116** redraws Always-loaded context around the current conversation: room left against the allowance, what fills it, setup beside conversation, the largest sources you can change grouped by kind, and the snapshot beside your selected history. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -311,7 +311,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | Section | What you can explore |
 | --- | --- |
 | Overview | Matched input/output balance, request averages, and shortcuts to deeper views |
-| Always-loaded context | Current instructions and tool definitions as a share of occupied context, plus attributed sources |
+| Always-loaded context | The current conversation's room left against its allowance, what fills it, setup beside conversation, the largest sources you can change grouped by kind, and the snapshot beside your selected history |
 | Tool and MCP footprint | Definition tokens and available tools per call, input share, and model comparisons |
 | Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
 | Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model; reuse by time since the previous call, on a conversation's first call in range, and after a model change; reuse over time; and the conversations with the most input not read from cache |

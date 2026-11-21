@@ -23,7 +23,9 @@ export function barList(rows, { format = String, total } = {}) {
 }
 
 // Render from the report and the explicitly requested context snapshot only.
-export function renderTokenInsight(id, report, { number, credits, context, showCoverage = true } = {}) {
+// `contextPart` splits the context view for the panel: 'snapshot' reads the snapshot alone and
+// stays fixed until the next inspection; 'history' also reads the report and follows its filters.
+export function renderTokenInsight(id, report, { number, credits, context, showCoverage = true, contextPart } = {}) {
   const s = report.efficiency?.summary || {}, models = report.efficiency?.models || [];
   const valid = value => Number.isFinite(value) && value >= 0;
   const percent = value => valid(value) ? `${number(value, { maximumFractionDigits: 1 })}%` : 'Unavailable';
@@ -71,13 +73,77 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
   }
   if (id === 'context') {
     if (!current) return contextStamp();
-    const setup = ['systemPrompt', 'customInstructions', 'systemTools', 'mcpTools'].map(category);
-    const setupTokens = setup.every(valid) && setup.reduce((a, b) => a + b, 0) <= context.totalTokens ? setup.reduce((a, b) => a + b, 0) : null;
-    return metrics(metric('Instructions + definitions', setupTokens, 'System, custom instructions, built-in and MCP tool definitions'),
-      metric('Of occupied context', share(setupTokens, context.totalTokens), 'Current snapshot, not a share of historical spend', percent))
-      + insight(setupTokens == null ? 'Some context categories are unavailable.' : `${number(setupTokens)} tokens describe instructions and available tools.`,
-        'Review the largest contributor you control. Move task-specific detail into references loaded when needed, and keep only relevant integrations enabled for the task.',
-        'a new snapshot after one change, then verify the agent still has the instructions and tools it needs. This snapshot does not prove these sources are present on every request.');
+    const total = context.totalTokens;
+    const parts = [['systemPrompt', 'System instructions', 'var(--s1)'], ['customInstructions', 'Custom instructions', 'var(--s2)'], ['systemTools', 'Built-in tool definitions', 'var(--s3)'],
+      ['mcpTools', 'MCP tool definitions', 'var(--s4)'], ['messages', 'Conversation and tool results', 'var(--s5)']].map(([key, label, color]) => ({ key, label, color, value: category(key) }));
+    const [, customInstructions, systemTools, mcpTools, messages] = parts;
+    // A sum is known only when every part is, and only while it fits inside the snapshot total.
+    const sum = list => { const value = list.every(part => part.value != null) ? list.reduce((n, part) => n + part.value, 0) : null; return value != null && value <= total ? value : null; };
+    const attributed = sum(parts), setupTokens = sum(parts.slice(0, 4)), definitions = sum([systemTools, mcpTools]);
+    const ofContext = value => percent(share(value, total));
+
+    const limit = valid(context.limit) && context.limit > 0 ? context.limit : null, left = limit == null ? null : limit - total;
+    const room = section('Room left', limit == null ? empty('Copilot did not report an allowance for this conversation, so the room left is unavailable.')
+      : left < 0 ? empty(`This estimate of ${number(total)} tokens is above the reported allowance of ${number(limit)}, so no room left is shown.`)
+        : `<div class="efficiency-track" role="img" aria-label="${esc(`${percent(total / limit * 100)} of the allowance used, ${percent(left / limit * 100)} left`)}"><span style="width:${(total / limit * 100).toFixed(1)}%;background:var(--s1)"></span></div>`
+          + `<div class="efficiency-flow-labels"><span><i style="background:var(--s1)"></i>Used <b>${esc(number(total))}</b> · ${esc(percent(total / limit * 100))}</span><span><i class="context-room-left"></i>Left <b>${esc(number(left))}</b> · ${esc(percent(left / limit * 100))}</span></div>`
+          + note(`Out of the allowance of ${number(limit)} tokens that Copilot reported for this conversation. Both figures are estimates. This view does not show when Copilot shortens a conversation.`));
+
+    const missing = parts.filter(part => part.value == null), remainder = attributed == null ? null : total - attributed;
+    const mix = section('What fills the context now', attributed != null && total > 0
+      ? `<div class="context-mix">${bars(remainder > 0 ? [...parts, { label: 'Not attributed', value: remainder, color: 'var(--muted-fg)' }] : parts)}</div>`
+        + (remainder > 0 ? note(`Copilot attributed ${number(attributed)} of ${number(total)} tokens to these categories. The rest is shown as not attributed.`) : '')
+      : `<dl class="efficiency-context-categories">${parts.map(part => `<div><dt>${esc(part.label)}</dt><dd>${esc(part.value == null ? 'Unavailable' : number(part.value))}</dd></div>`).join('')}</dl>`
+        + note(missing.length ? `No bar is drawn because ${missing.length === 1 ? 'one category is' : 'some categories are'} unavailable: ${missing.map(part => part.label).join(', ')}. Unavailable is not zero, so a bar of the rest would mislead.`
+          : total > 0 ? 'No bar is drawn because these categories add up to more than the snapshot total.' : 'This snapshot holds no tokens.'));
+
+    const balance = section('Setup against conversation', metrics(
+      metric('Instructions + definitions', setupTokens, 'Setup: system and custom instructions, built-in and MCP tool definitions'),
+      metric('Setup share of context', share(setupTokens, total), 'Of this snapshot, not of historical spend', percent),
+      metric('Conversation and tool results', messages.value, 'User, assistant and tool messages together'),
+      metric('Conversation share of context', share(messages.value, total), 'Of this snapshot only', percent))
+      + note('Setup means instructions and tool definitions. Conversation means what this conversation has added so far, so it grows as the conversation continues.'));
+
+    const kinds = { mcpServer: ['MCP servers', 'You can disconnect a server for tasks that do not need it.'], skill: ['Skills', 'You can shorten a skill, or move detail into files it reads when needed.'],
+      plugin: ['Plugins', 'You can disable a plugin for tasks that do not need it.'], toolDefinition: ['Tool definitions', 'Descriptions of tools the agent can call.'],
+      tool: ['Tool results', 'Context attributed to tools used in this conversation. Targeted searches and excerpts bring in less than whole files.'],
+      subagent: ['Subagents', 'Context attributed to subagents.'], other: ['Other sources', 'Kinds not grouped above. Some are set by Copilot.'] };
+    const entries = context.entries || [], listed = entries.filter(entry => valid(entry.tokens) && entry.tokens > 0), parents = new Map(entries.map(entry => [entry.id, entry.label]));
+    const largest = listed.reduce((max, entry) => Math.max(max, entry.tokens), 0), groups = new Map(Object.keys(kinds).map(kind => [kind, []]));
+    for (const entry of listed) (groups.get(entry.kind) || groups.get('other')).push(entry);
+    const shown = [...groups].filter(([, rows]) => rows.length).map(([kind, rows]) => ({ kind, rows: rows.sort((a, b) => b.tokens - a.tokens || String(a.id).localeCompare(String(b.id))) })).sort((a, b) => b.rows[0].tokens - a.rows[0].tokens);
+    const sourceRow = entry => ({ label: entry.label || entry.id || 'Unnamed source', value: entry.tokens,
+      detail: [share(entry.tokens, total) == null ? '' : `${ofContext(entry.tokens)} of context`, entry.parentId ? `included in ${parents.get(entry.parentId) || 'another source'}` : ''].filter(Boolean).join(' · ') });
+    const changeable = section('Sources you can change', shown.length
+      ? `<div class="context-source-groups">${shown.map(group => `<div class="context-source-group"><h4>${esc(kinds[group.kind][0])}</h4><span class="sub">${esc(kinds[group.kind][1] + (group.rows.length > 3 ? ` Largest 3 of ${number(group.rows.length)}.` : ''))}</span>${barList(group.rows.slice(0, 3).map(sourceRow), { format: number, total: largest })}</div>`).join('')}</div>`
+        + note(`From ${number(listed.length)} attributed sources in this snapshot${context.omitted ? `; ${number(context.omitted)} more were omitted` : ''}. Bars are scaled to the largest source. Parent and child sources can overlap, so do not add rows or groups together.`)
+      : empty('Copilot returned no individual sources in this snapshot. This does not establish that none were loaded.'));
+
+    const prompts = report.promptCredits || {}, callsPerPrompt = prompts.work?.averageRequests;
+    const perPrompt = setupTokens != null && valid(callsPerPrompt) ? setupTokens * callsPerPrompt : null;
+    const history = section('Beside your selected history', metrics(
+      metric('Tool definitions, this conversation', definitions, 'Built-in plus MCP definitions in this snapshot'),
+      metric('Tool definitions per call, selected history', s.averageToolTokens, `Average over ${coverage(s.toolRequests)}`, number, partial(s.toolRequests)))
+      + note('These are two different scopes. The snapshot is one moment in the conversation hosting this dashboard. The history average covers the dates and filters you selected, across conversations and models. A gap between them is expected and is not a finding on its own.')
+      + `<div class="context-illustration"><span class="label">Illustration, not a measurement</span>${perPrompt == null
+        ? `<p>${esc('Unavailable. It needs every setup category in the snapshot and the recorded model calls per prompt in the selected history.')}</p>`
+        : `<strong>${esc(`About ${number(Math.round(perPrompt))} input tokens of setup behind one prompt`)}</strong><p>${esc(`If this setup of ${number(setupTokens)} tokens were sent with every model call, one prompt would carry it ${number(callsPerPrompt, { maximumFractionDigits: 1 })} times. That is the recorded average of model calls per prompt${prompts.modelFiltered ? ' on the selected models' : ''}, measured on ${number(prompts.eligiblePrompts ?? 0)} of ${number(prompts.prompts ?? 0)} prompts. A warm cache would normally serve most of it as cache reads.`)}</p>`
+          + note('One snapshot multiplied by a history average. Treat it as a sense of scale only.')}</div>`);
+
+    // The observation names the largest category the user can change; a missing one could be larger.
+    const mine = [messages, mcpTools, customInstructions], top = mine.every(part => part.value != null) ? mine.reduce((a, b) => b.value > a.value ? b : a) : null;
+    const experiments = {
+      messages: ['When your next task is unrelated to this one, start a new conversation and inspect it after its first request.', 'conversation and tool result tokens in the two snapshots, and whether the agent still had the context it needed. A long conversation can need its history.'],
+      mcpTools: ['Disconnect one MCP server that this task does not need, then inspect again.', 'MCP tool definition tokens in the two snapshots, and whether the agent still has the tools it needs.'],
+      customInstructions: ['Move one task-specific part of your custom instructions into a file the agent reads only when needed, then inspect again.', 'custom instruction tokens in the two snapshots, and whether the agent still follows the guidance.'],
+    };
+    const [action, compare] = top?.value > 0 ? experiments[top.key] : ['Review the largest contributor you control. Move task-specific detail into references loaded when needed, and keep only relevant integrations enabled for the task.',
+      'a new snapshot after one change, then verify the agent still has the instructions and tools it needs.'];
+    const advice = insight(top == null ? 'Some context categories are unavailable.' : top.value > 0 ? `${top.label} are the largest part you can change: ${number(top.value)} tokens, ${ofContext(top.value)} of this context.` : 'The parts you can change hold no tokens in this snapshot.',
+      action, `${compare} This snapshot does not prove these sources are present on every request.`);
+
+    const snapshot = room + mix + balance + changeable, relation = history + advice;
+    return contextPart === 'snapshot' ? snapshot : contextPart === 'history' ? relation : snapshot + relation;
   }
   if (id === 'tools') {
     const rows = measuredModels('toolRequests', 'toolTokens');

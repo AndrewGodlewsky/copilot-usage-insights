@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.116",
+    "summary": "Always-loaded context now draws the current conversation: room left against the allowance, what fills it, setup beside conversation, and the largest sources you can change, grouped by kind. It also sets the snapshot beside your selected history."
+  },
+  {
     "version": "0.1.115",
     "summary": "Cache reuse now shows when reuse drops: after a pause, at the start of a conversation, or after a model change, with the calls and tokens behind each figure. It also lists the conversations with the most input not read from cache and a trend over time."
   },
