@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.112",
+    "summary": "Delegated work now compares a subagent call with a main-conversation call: input, output, credits, cache reuse and duration, with the calls each figure rests on. It also shows which models subagents ran on and which conversations delegated most."
+  },
+  {
     "version": "0.1.111",
     "summary": "Large histories now use less repeated processing and smaller dashboard transfers, with stronger local data protections and a Pause control in Settings. Refresh detects replaced journals more reliably, and logs show the time spent checking growing files without reducing historical verification."
   },

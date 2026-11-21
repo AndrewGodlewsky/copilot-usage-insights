@@ -4,7 +4,9 @@
 // outcome is true, false, or null when no completion is recorded. create(context) receives
 // { query, start, end, now, sessionLabels, activity, records } and returns { add, finish };
 // finish() is reported as report.efficiency[key].
+import { createDelegationTopic } from './efficiency-delegation.mjs';
 const requestTopics = [
+  { key: 'delegation', create: createDelegationTopic },
 ];
 const toolTopics = [
 ];

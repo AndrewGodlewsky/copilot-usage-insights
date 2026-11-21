@@ -143,18 +143,70 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
         'calls, tokens, and credits per eligible prompt alongside the result. More calls may be necessary for a harder task; this does not measure prompt quality.');
   }
   if (id === 'delegation') {
-    const by = report.efficiency?.byInitiator || [], delegated = by.find(r => r.id === 'sub-agent'), unknown = by.find(r => r.id === 'unknown');
+    const by = report.efficiency?.byInitiator || [], initiator = key => by.find(r => r.id === key);
+    const delegated = initiator('sub-agent'), unknown = initiator('unknown'), where = report.efficiency?.delegation;
     const labels = { user: 'User-initiated call', agent: 'Agent continuation', 'sub-agent': 'Subagent', unknown: 'Not recorded' };
     const rows = (report.efficiency?.delegatedModels || []).slice(0, 5);
+    const whole = value => number(Math.round(value)), seconds = value => `${number(value / 1000, { maximumFractionDigits: 1 })} s`;
+    // Coverage counts stay exact: "1.8K of 1.8K" would hide how many calls are missing.
+    const exact = value => number(value ?? 0, { simplify: false }), covered = (count, total, noun = 'model calls') => `${exact(count)} of ${exact(total)} ${noun}`;
+    const lead = text => `<p class="delegation-lead">${esc(text)}</p>`;
+    // One side of the comparison. Sums over its initiator rows come first, then each ratio uses
+    // only the calls that record that measure. A side with calls but no measurement is unavailable.
+    const side = (keys, label, noun, color) => {
+      const sum = field => keys.reduce((n, key) => n + (initiator(key)?.[field] || 0), 0), per = (top, bottom, scale = 1) => sum(bottom) > 0 ? sum(top) / sum(bottom) * scale : null;
+      const requests = sum('requests'), known = (count, value) => count ? value : requests ? null : 0;
+      return { label, noun, color, requests, tokens: known(sum('pairedRequests'), sum('pairedInput') + sum('pairedOutput')), tokenCalls: sum('pairedRequests'),
+        credits: known(sum('creditRequests'), sum('credits')), creditCalls: sum('creditRequests'), perCall: per('credits', 'creditRequests'),
+        input: per('inputTokens', 'inputRequests'), inputCalls: sum('inputRequests'), output: per('outputTokens', 'outputRequests'), outputCalls: sum('outputRequests'),
+        cache: per('cacheRead', 'cacheInput', 100), cacheCalls: sum('cacheRequests'), duration: per('durationTotal', 'durationRequests'), durationCalls: sum('durationRequests') };
+    };
+    const main = side(['user', 'agent'], 'Main conversation', 'main-conversation calls', 'var(--s1)'), sub = side(['sub-agent'], 'Subagents', 'subagent calls', 'var(--s2)');
+    const sides = [main, sub, side(['unknown'], 'Not recorded', 'calls with no recorded initiator', 'var(--muted-fg)')];
+    // One whole split three ways. The denominator is the sum of the parts, so it matches them.
+    const split = (title, basis, field, calls, format = number) => {
+      const total = sides.reduce((n, p) => n + (p[field] || 0), 0), of = p => valid(p[field]) ? p[field] / total * 100 : null;
+      return `<div class="delegation-split"><div class="delegation-split-head"><strong>${esc(title)}</strong><span>${esc(basis)}</span></div>`
+        + (total > 0 ? `<div class="efficiency-track" role="img" aria-label="${esc(`${title}: ${sides.map(p => `${p.label} ${percent(of(p))}`).join('; ')}`)}">${sides.map(p => of(p) ? `<span style="width:${of(p).toFixed(2)}%;background:${p.color}"></span>` : '').join('')}</div>`
+          + `<div class="efficiency-flow-labels">${sides.map(p => `<span><i style="background:${p.color}"></i>${esc(p.label)} <b>${esc(coverageValue(of(p), p[calls] < p.requests, percent, showCoverage))}</b> · ${esc(coverageValue(p[field], false, format))}</span>`).join('')}</div>`
+          : empty(sides.some(p => p.requests && valid(p[field])) ? 'The recorded total is 0, so there are no shares to show.' : 'Not recorded on any call in these filters.')) + '</div>';
+    };
+    // Subagents next to the main conversation for one measure or one model, as two labelled bars.
+    const barRow = (p, value, text, detail, scale) => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${esc(p.label)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${(valid(value) && scale > 0 ? Math.min(100, value / scale * 100) : 0).toFixed(1)}%;background:${p.color}"></i></span><span class="token-bar-value">${esc(text)}</span><span class="token-bar-detail">${esc(detail)}</span></div>`;
+    const pair = (title, a, b) => `<div class="delegation-pair"><h4>${esc(title)}</h4><div class="token-bar-list" role="list">${a}${b}</div></div>`;
+    const perCall = (title, field, calls, format, scale = Math.max(sub[field] || 0, main[field] || 0)) => pair(title, ...[sub, main].map(p => barRow(p, p[field], measured(p[field], p[calls], p.requests, format), covered(p[calls], p.requests, p.noun), scale)));
+    const mix = (title, m) => pair(title, ...[[sub, m.delegatedRequests, where.delegatedRequests], [main, m.mainRequests, where.mainRequests]].map(([p, count, total]) => barRow(p, share(count, total), percent(share(count, total)), covered(count, total, p.noun), 100)));
+    const routed = sub.requests && where?.delegatedRequests ? where.models || [] : [], first = routed[0], top = sub.requests ? where?.topConversations || [] : [], series = where?.series;
+    const callShare = share(sub.requests, s.requests);
     return metrics(metric('Recorded subagent calls', delegated?.requests ?? null, 'Explicit sub-agent initiator only'),
-      metric('Share of model calls', share(delegated?.requests, s.requests), 'Includes unknown initiators in the denominator', percent),
-      metric('Subagent input + output', delegated?.pairedRequests ? delegated.pairedInput + delegated.pairedOutput : null, coverage(delegated?.pairedRequests, delegated?.requests), number, partial(delegated?.pairedRequests, delegated?.requests)),
+      metric('Share of model calls', callShare, `${covered(sub.requests, s.requests)}, counting calls with no recorded initiator in the total`, percent),
+      metric('Conversations with subagent calls', where ? where.delegatedConversations : null, where ? `Of ${exact(where.conversations)} conversations with model calls` : 'Not measured in this report'),
       metric('Unknown initiator', unknown?.requests ?? null, 'May contain additional delegated work'))
-      + (by.length ? section('Who initiated the model calls?', table(['Recorded initiator', 'Calls', 'Measured tokens', 'Complete credits'], by.map(r => [labels[r.id] || r.id, number(r.requests), r.pairedRequests ? `${measured(r.pairedInput + r.pairedOutput, r.pairedRequests, r.requests)} (${coverage(r.pairedRequests, r.requests)})` : 'Unavailable', r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${coverage(r.creditRequests, r.requests)})` : 'Unavailable']))) : empty('No initiator measurements are available.'))
-      + (rows.length ? section('Models used by subagents', table(['Model', 'Calls', 'Input / call', 'Output / call'], rows.map(r => [r.name, number(r.requests), `${measured(r.averageInput, r.inputRequests, r.requests)} (${coverage(r.inputRequests, r.requests)})`, `${measured(r.averageOutput, r.outputRequests, r.requests)} (${coverage(r.outputRequests, r.requests)})`]))) : '')
-      + insight(delegated?.requests ? `${number(delegated.requests)} calls are explicitly labelled as subagent work.` : 'No explicitly labelled subagent calls in this view.',
-        'When delegating, give each agent a bounded task, the relevant context, and a concise return format so the parent does not need to repeat the investigation.',
-        'delegated token volume and total credits for similar work. These calls are already part of usage totals; this table does not infer parent links or the value of delegation.');
+      + (s.requests > 0 && by.length ? section('Share of usage at a glance', split('Model calls', `All ${exact(s.requests)} model calls`, 'requests', 'requests')
+        + split('Measured tokens', `Input, cached input included, plus output on ${covered(s.pairedRequests, s.requests)}`, 'tokens', 'tokenCalls')
+        + split('Recorded AI credits', `Complete charges on ${covered(s.creditRequests, s.requests)}`, 'credits', 'creditCalls', credits)
+        + note('Main conversation is user-initiated calls plus agent continuations. Each bar splits only the calls that record that measure, so the three bars can rest on different calls. The table at the end gives the coverage for each initiator.')) : '')
+      + (sub.requests ? section('A subagent call next to a main-conversation call', lead(!main.requests ? 'No main-conversation calls are in these filters, so subagent calls have nothing to be compared with.'
+          : valid(sub.input) && valid(main.input) ? `A subagent call read ${whole(sub.input)} input tokens on average, against ${whole(main.input)} in the main conversation.`
+          : 'Input per call is not recorded on both sides in these filters.')
+        + `<div class="delegation-pairs">${perCall('Input tokens per call', 'input', 'inputCalls', whole)}${perCall('Output tokens per call', 'output', 'outputCalls', whole)}${perCall('AI credits per call', 'perCall', 'creditCalls', credits)}${perCall('Input read from cache', 'cache', 'cacheCalls', percent, 100)}${perCall('Time per call', 'duration', 'durationCalls', seconds)}</div>`
+        + note('Averages over the calls that record each measure. A lower figure for subagents is not a saving on its own: the result still has to be passed back to the main conversation, and the two sides do different work.')) : '')
+      + (routed.length || rows.length ? section('Which models did the work', (first?.delegatedRequests ? lead(`${percent(share(first.delegatedRequests, where.delegatedRequests))} of subagent calls ran on ${first.name}.${where.mainRequests > 0 ? ` That model handled ${percent(share(first.mainRequests, where.mainRequests))} of main-conversation calls.` : ''}`) : '')
+        + (routed.length ? `<div class="delegation-pairs">${routed.map(m => mix(m.name, m)).join('')}${where.otherModels?.models ? mix(`Other models (${number(where.otherModels.models)})`, where.otherModels) : ''}</div>`
+          + note('Each model\'s share of subagent calls next to its share of main-conversation calls. The counts show where calls ran, not why that model was chosen.') : '')
+        + (rows.length ? table(['Models used by subagents', 'Calls', 'Input / call', 'Output / call'], rows.map(r => [r.name, number(r.requests), `${measured(r.averageInput, r.inputRequests, r.requests)} (${covered(r.inputRequests, r.requests)})`, `${measured(r.averageOutput, r.outputRequests, r.requests)} (${covered(r.outputRequests, r.requests)})`])) : '')) : '')
+      + (where && sub.requests ? section('Where delegation happens', lead(`${covered(where.delegatedConversations, where.conversations, 'conversations')} with model calls had at least one subagent call.`)
+        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [r.name, number(r.delegated), number(r.requests), percent(r.share)]))
+          + note(`The ${exact(top.length)} conversations with the most subagent calls, of ${exact(where.delegatedConversations)} that had any. Together they made ${percent(share(top.reduce((n, r) => n + r.delegated, 0), where.delegatedRequests))} of subagent calls. A conversation here is one recorded session.`) : '')
+        + trendRow(series, p => p.requests > 0 ? p.delegated / p.requests * 100 : null, { label: 'Subagent share of model calls', format: percent })
+        + (series?.earlier ? note(`The line covers the latest ${exact(series.points.length)} ${series.unit === 'week' ? 'weeks' : 'days'} with calls. ${exact(series.earlier)} earlier ones are left out.`) : '')) : '')
+      + (by.length ? section('Who initiated the model calls?', table(['Recorded initiator', 'Calls', 'Measured tokens', 'Complete credits'], by.map(r => [labels[r.id] || r.id, number(r.requests), r.pairedRequests ? `${measured(r.pairedInput + r.pairedOutput, r.pairedRequests, r.requests)} (${covered(r.pairedRequests, r.requests)})` : 'Unavailable', r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${covered(r.creditRequests, r.requests)})` : 'Unavailable']))) : empty('No initiator measurements are available.'))
+      + insight(!sub.requests ? 'No explicitly labelled subagent calls in this view.'
+          : unknown?.requests > sub.requests ? `${number(unknown.requests)} calls have no recorded initiator, more than the ${number(sub.requests)} labelled as subagent work.`
+          : valid(sub.input) && valid(main.input) ? `Subagents made ${percent(callShare)} of model calls and read ${whole(sub.input)} input tokens per call, against ${whole(main.input)} in the main conversation.`
+          : `${percent(callShare)} of model calls (${number(sub.requests)}) are explicitly labelled as subagent work.`,
+        'For the next task you delegate, give the subagent a bounded goal, the context it needs and a concise return format.',
+        'input per subagent call, the subagent share of calls and total credits for similar work. These calls are already part of usage totals. Only calls with an explicit sub-agent initiator are counted, and calls with no recorded initiator may hide more. Parent links and the value of delegation are not inferred.');
   }
   if (id === 'output') {
     const rows = measuredModels('outputRequests', 'outputTokens');

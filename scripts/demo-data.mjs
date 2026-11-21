@@ -13,7 +13,7 @@ const mainAgent = e => !e.agentId && !e.data?.parentToolCallId && !e.data?.usage
 // input the way a compacted conversation would. Returns journal lines.
 function enrich(session, rand) {
   const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
-  const out = [], pick = list => list[Math.floor(rand() * list.length)];
+  const out = [], pick = list => list[Math.floor(rand() * list.length)], childCalls = new Map();
   // An empty effort stands for a producer that does not record one.
   let effort = rand() < .2 ? '' : rand() < .6 ? 'medium' : 'high', model = '', input = 0, removed = 0, cold = false, serial = 0;
   const emit = (type, data, ms) => out.push(JSON.stringify({ type, data, id: `demo-${type}-${session.id}-${serial++}`, timestamp: new Date(ms).toISOString(), parentId: null }));
@@ -55,6 +55,16 @@ function enrich(session, rand) {
         if (mainAgent(e)) cold = false;
       }
       if (mainAgent(e) && Number.isFinite(u.inputTokens)) input = u.inputTokens;
+      // A subagent starts from its own short context, not the parent's history: its tool
+      // definitions, the task, and what it has read so far. Its first call has no warm cache.
+      if (!mainAgent(e) && u.inputTokens > 0) {
+        const child = e.agentId || u.parentToolCallId, call = (childCalls.get(child) || 0) + 1, before = u.inputTokens;
+        childCalls.set(child, call);
+        const fresh = Math.min(before, (u.toolTokenCount || 0) + 1800 + call * 2600), scale = fresh / before;
+        u.inputTokens = fresh;
+        u.cacheReadTokens = call === 1 ? 0 : Math.floor(u.cacheReadTokens * scale);
+        u.cacheWriteTokens = Math.min(fresh - u.cacheReadTokens, Math.floor(u.cacheWriteTokens * scale));
+      }
     }
     out.push(JSON.stringify(e));
   }

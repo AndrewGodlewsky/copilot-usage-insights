@@ -11,7 +11,7 @@ Implementation based on v0.1.68's existing receipts, activity, prompt links, and
 | Cache reuse | Matched uncached input, cache reads and writes; per-model reuse | Missing cache detail is not zero; no inferred cause or savings |
 | Skills and instruction footprint | Current instruction tokens and skill sources; recorded uses/failures | Sources overlap; use counts do not measure tokens or prove skill value. Skill activity retains its existing model-filter exception |
 | Work behind each prompt | Model calls and tokens per eligible prompt alongside credits and exclusions | Reuse whole-prompt eligibility and submission-date semantics; model filters are contributions only |
-| Delegated work | Explicit request-initiator distribution and subagent model usage | Unknown initiators stay unknown; no guessed parent attribution or quality assessment |
+| Delegated work | Shares of calls, tokens and credits by initiator; subagent against main-conversation calls per call (input, output, credits, cache-read share, duration); model routing; conversations with the most subagent calls; subagent share by period | Unknown initiators stay unknown; no guessed parent attribution or quality assessment. A lower per-call figure is not a saving |
 | Reasoning and generated output | Output totals, matched reasoning share and remaining output, model comparisons | Reasoning is a subset of output; subtract only on the same valid measured calls |
 | Biggest spend drivers | Top sessions, recorded credit shares and coverage | Partial charges can change ranking; expensive does not mean wasteful |
 

@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.111** adds a persistent pause control, strengthens local data handling and improves large-history processing and dashboard updates. Refresh detects replaced journals more reliably, and Show logs explains the cost of verifying growing files. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.112** expands Delegated work with a side-by-side comparison of subagent and main-conversation calls, the models subagents ran on, and the conversations that delegated most. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -317,7 +317,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model |
 | Skills and instruction footprint | Current custom-instruction tokens and attributed skills alongside historical uses and failed loads |
 | Work behind each prompt | Average model calls, AI credits, tokens, and the largest call count among eligible prompts |
-| Delegated work | Explicit user, agent-continuation, subagent, and unknown initiators, plus models used by subagents |
+| Delegated work | Main-conversation, subagent, and unrecorded shares of calls, tokens, and credits; a per-call comparison of subagent and main-conversation calls; the models each side ran on; and the conversations that delegated most |
 | Reasoning and generated output | Output volume and the reasoning/other-output split on calls with both measurements |
 | Biggest spend drivers | The five highest recorded session/project charges and their share of recorded spend |
 
