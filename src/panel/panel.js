@@ -1202,7 +1202,12 @@ function openTokenContext() {
   showTokenTopic('context');
   $('efficiency-context-read').focus({ preventScroll: false });
 }
-$('token-detail-panel').onclick = event => { if (event.target.closest('[data-token-context]')) openTokenContext(); };
+$('token-detail-panel').onclick = event => {
+  // A spend-driver row opens its session in Breakdown. The model filter stays as the user set it.
+  const row = event.target.closest('[data-token-session]')?.dataset;
+  if (row?.tokenSession !== undefined && row.tokenProject !== undefined) return inspectEfficiency({ project: row.tokenProject, session: row.tokenSession });
+  if (event.target.closest('[data-token-context]')) openTokenContext();
+};
 $('token-overview-panel').onclick = event => {
   const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;
   if (!topic) return;
@@ -1245,7 +1250,7 @@ function renderEfficiency() {
 }
 async function inspectEfficiency(target) {
   if (!target) return;
-  $('model').value = target.model;
+  if (target.model !== undefined) $('model').value = target.model;
   if (target.project !== undefined) $('project').value = target.project;
   if (target.session !== undefined) {
     options('session', (state.report?.options.sessions || []).filter(v => v.id === target.session), 'All sessions');

@@ -225,13 +225,78 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
     const all = (report.sessions || []).filter(r => valid(r.credits)).slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name));
     if (!all.length) return empty('No session charges are recorded for these filters. Unavailable charges are not zero.') + insight('Start with complete charge records.', 'Try a wider range or check enabled data sources before comparing spend.', 'charge coverage and whether the same workload is represented.');
     const rows = all.slice(0, 5), total = all.reduce((sum, r) => sum + r.credits, 0), top = rows.reduce((sum, r) => sum + r.credits, 0);
-    return metrics(metric('Recorded AI credits', total, 'Includes partial reported charges', credits, !!(report.totals?.missingCredits || report.totals?.partialCredits)),
-      metric('Top five groups', share(top, total), `${number(rows.length)} of ${number(all.length)} groups with charges`, percent, !!(report.totals?.missingCredits || report.totals?.partialCredits)))
-      + section('Largest session / project groups', table(['Session', 'Project', 'Calls', 'AI credits', 'Recorded share'], rows.map(r => [r.name, r.project, number(r.requests), usageValue(r, 'credits', credits, showCoverage), coverageValue(share(r.credits, total), !!(report.totals?.missingCredits || report.totals?.partialCredits), percent, showCoverage)])))
-      + note('Incomplete charges can affect the ranking. Shares use recorded charges only. Unavailable charges are excluded; a session spanning projects can appear more than once.')
-      + insight(total ? `The largest group accounts for ${percent(share(rows[0].credits, total))} of recorded charges.` : 'The recorded charges in this range are zero.',
-        'Start with a high-spend session in Breakdown. Compare its model mix, calls, and context against a similar task before changing models or workflow.',
-        'actual credits for similar completed work, including follow-ups. A costly session can still be valuable; this ranking does not estimate waste.');
+    const incomplete = !!(report.totals?.missingCredits || report.totals?.partialCredits), groups = all.length, unranked = (report.sessions || []).length - groups;
+    const verb = count => count === 1 ? 'makes' : 'make';
+    // Concentration: the fewest of the largest groups whose recorded credits reach a share of the total.
+    const reach = part => {
+      if (!total) return null;
+      let sum = 0, count = 0;
+      while (count < groups && sum < total * part * (1 - 1e-9)) sum += all[count++].credits;
+      return count;
+    };
+    const half = reach(.5), most = reach(.8);
+    // The middle value: half of the measured rows are below it.
+    const middle = values => {
+      const list = values.filter(valid).sort((a, b) => a - b), mid = list.length >> 1;
+      return !list.length ? null : list.length % 2 ? list[mid] : (list[mid - 1] + list[mid]) / 2;
+    };
+    const multiple = (value, typical) => valid(value) && typical > 0 ? Math.round(value / typical * 10) / 10 : null;
+    const versus = (times, what) => times === 1 ? `about the typical ${what}` : `${times === 0 ? `less than ${number(.1)}` : number(times >= 10 ? Math.round(times) : times)} times the typical ${what}`;
+    // A typical group needs enough groups to be described; with fewer, each row shows only its own measures.
+    const enough = groups >= 5, typicalCalls = enough ? middle(all.map(r => r.requests)) : null, typicalRate = enough ? middle(all.map(r => r.averageCredits)) : null;
+    const stat = (label, value, ...details) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd>${details.filter(Boolean).map(detail => `<dd class="token-driver-sub">${esc(detail)}</dd>`).join('')}</div>`;
+    const driver = r => {
+      const calls = multiple(r.requests, typicalCalls), rate = multiple(r.averageCredits, typicalRate), missing = r.missing || {};
+      const compared = [calls != null && versus(calls, 'number of calls'), rate != null && versus(rate, 'credits per call')].filter(Boolean).join(', ');
+      const larger = calls == null || rate == null ? '' : calls >= rate * 1.5 ? 'Larger multiple: call count' : rate >= calls * 1.5 ? 'Larger multiple: credits per call' : 'The two multiples are similar';
+      // Each per-call measure divides by the calls that recorded it, never by all calls.
+      const inputCalls = valid(r.requests) && valid(missing.inputTotal) ? r.requests - missing.inputTotal : null;
+      const splitCalls = valid(r.requests) && valid(missing.cacheRead) && missing.cacheRead === missing.input && missing.cacheRead === missing.cacheWrite ? r.requests - missing.cacheRead : null;
+      const splitInput = splitCalls > 0 ? r.input + r.cacheRead + r.cacheWrite : null;
+      return `<li><div class="token-driver-head"><strong>${esc(r.name)}</strong><span>${esc(r.project ?? 'Project unavailable')} · ${esc(usageValue(r, 'credits', credits, showCoverage))} AI credits</span></div>`
+        + (compared ? `<p>${esc(compared[0].toUpperCase() + compared.slice(1))}.${larger ? ` <span class="token-driver-tag">${esc(larger)}</span>` : ''}</p>` : '')
+        + `<dl class="token-driver-stats">${stat('Calls', number(r.requests), typicalCalls != null && `Typical: ${number(typicalCalls)}`)
+          + stat('Credits per call', coverageValue(r.averageCredits, r.completeCreditRequests < r.requests, credits, showCoverage), valid(r.completeCreditRequests) && `${coverage(r.completeCreditRequests, r.requests)} with a complete charge`, typicalRate != null && `Typical: ${credits(typicalRate)}`)
+          + stat('Input per call', measured(inputCalls > 0 && valid(r.inputTotal) ? Math.round(r.inputTotal / inputCalls) : null, inputCalls, r.requests), inputCalls != null && `${coverage(inputCalls, r.requests)} with an input count`)
+          + stat('Cache-read share', measured(share(r.cacheRead, splitInput), splitCalls, r.requests, percent), splitCalls != null && `${coverage(splitCalls, r.requests)} with a cache split`)}</dl></li>`;
+    };
+    const opener = r => r.id == null || r.project == null ? '' : `<button class="token-driver-open" data-token-session="${esc(r.id)}" data-token-project="${esc(r.project)}">Open in Breakdown<span class="sr-only">: ${esc(r.name)}, ${esc(r.project)}</span></button>`;
+    const ranking = `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Session', 'Project', 'Calls', 'AI credits', 'Recorded share'].map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span>${opener(r)}</td>${[r.project ?? 'Unavailable', number(r.requests), usageValue(r, 'credits', credits, showCoverage), coverageValue(share(r.credits, total), incomplete, percent, showCoverage)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    // Where else recorded credits concentrate. Each list is ranked and shared within its own recorded rows.
+    const ranked = source => (source || []).filter(r => valid(r.credits)).sort((a, b) => b.credits - a.credits || String(a.name ?? a.day).localeCompare(String(b.name ?? b.day)));
+    const spread = (title, source) => {
+      const list = ranked(source), sum = list.reduce((n, r) => n + r.credits, 0), shown = list.slice(0, 5), left = (source || []).length - list.length;
+      const scope = list.length > shown.length ? `Largest ${number(shown.length)} of ${number(list.length)} with charges` : list.length === 1 ? 'The only one with charges' : `All ${number(list.length)} with charges`;
+      // barList formats each drawn row once, in order, so the row's own charge coverage can be marked.
+      let next = 0;
+      const drawn = barList(shown.map(r => ({ label: r.name ?? r.day, value: r.credits, detail: `${coverageValue(share(r.credits, sum), incomplete, percent, showCoverage)} of recorded credits${valid(r.requests) ? ` · ${number(r.requests)} ${r.requests === 1 ? 'call' : 'calls'}` : ''}` })),
+        { total: sum, format: () => usageValue(shown[next++], 'credits', credits, showCoverage) });
+      return drawn && `<div><h4>${esc(title)}</h4><p class="token-driver-sub">${esc(`${scope}${left > 0 ? `; ${number(left)} with no recorded charge ${left === 1 ? 'is' : 'are'} not ranked` : ''}`)}</p>${drawn}</div>`;
+    };
+    const activeDays = (report.daily || []).filter(r => r.requests > 0), days = ranked(activeDays);
+    const where = spread('Projects', report.projects) + spread('Models', report.models) + spread('Days', activeDays);
+    // A day stands out when it holds a fifth of recorded credits and three times a typical day with usage.
+    const dayShare = share(days[0]?.credits, days.reduce((sum, r) => sum + r.credits, 0)), dayTimes = days.length >= 5 ? multiple(days[0].credits, middle(days.map(r => r.credits))) : null;
+    const lookAtOne = 'Start with a high-spend session in Breakdown. Compare its model mix, calls, and context against a similar task before changing models or workflow.';
+    const [observation, action] = !total ? ['The recorded charges in this range are zero.', lookAtOne]
+      : !enough ? [`The largest group accounts for ${percent(share(rows[0].credits, total))} of recorded charges.`, lookAtOne]
+      : half <= Math.max(1, Math.floor(groups / 5)) ? [`Recorded credits are concentrated: ${number(half)} of ${number(groups)} session groups ${verb(half)} up half.`, 'Start with the largest group: open it in Breakdown and compare its model mix, calls, and context against a similar task before changing models or workflow.']
+      : dayTimes >= 3 && dayShare >= 20 ? [`One day stands out: ${days[0].day} holds ${percent(dayShare)} of recorded credits, ${number(dayTimes >= 10 ? Math.round(dayTimes) : dayTimes)} times a typical day with usage.`, 'Narrow the date range to that day to see which sessions and models ran before reading this range as routine. One large task can account for it.']
+      : half >= groups * .4 ? [`Recorded credits are spread out: it takes ${number(half)} of ${number(groups)} session groups to make up half.`, 'No small set of sessions holds most of the charges. Compare projects, models, and credits per call across similar tasks before looking at a single session.']
+      : [`${number(half)} of ${number(groups)} session groups ${verb(half)} up half of recorded credits.`, lookAtOne];
+    return metrics(metric('Recorded AI credits', total, 'Includes partial reported charges', credits, incomplete),
+      metric('Top five groups', share(top, total), `${number(rows.length)} of ${number(groups)} groups with charges`, percent, incomplete),
+      metric('Groups making up half', half, `Of ${number(groups)} session ${groups === 1 ? 'group' : 'groups'} with charges`, number, incomplete),
+      metric('Groups making up 80%', most, `Of ${number(groups)} session ${groups === 1 ? 'group' : 'groups'} with charges`, number, incomplete))
+      + (half == null ? '' : `<p class="token-driver-summary">${esc(groups === 1 ? 'One session group holds all recorded credits in this range.' : `${number(half)} of ${number(groups)} session groups with charges ${verb(half)} up half of recorded credits, and ${number(most)} ${verb(most)} up 80%.`)}</p>`)
+      + section('Largest session / project groups', ranking)
+      + note(`Incomplete charges can affect the ranking. Shares use recorded charges only. Unavailable charges are excluded; a session spanning projects can appear more than once.${unranked > 0 ? ` ${number(unranked)} with no recorded charge ${unranked === 1 ? 'is' : 'are'} not ranked.` : ''}${enough && total ? ' Charges are called concentrated when a fifth of the groups or fewer make up half, and spread out when it takes two in five or more.' : ''}`)
+      + section('How the largest groups compare with a typical one', `<ol class="token-driver-list">${rows.map(driver).join('')}</ol>`
+        + note(enough ? `Typical is the middle value across the ${number(groups)} session groups with charges: half are below it. Credits per call uses calls with a complete charge. The larger multiple is named when one is at least ${number(1.5)} times the other. Multiples describe size, not a cause: a long task can need many calls, and credits per call vary with the model and the input each call carries.`
+          : `A typical group is described from at least five session groups with charges; this range has ${number(groups)}, so only each group's own measures are shown.`))
+      + (where ? section('Where else recorded credits concentrate', `<div class="token-driver-spread">${where}</div>` + note('Each bar is the share of recorded credits held by that row in its own list. The same charges appear in all three lists; do not add them. A typical day is the middle value across days with usage and a recorded charge; a day is called out when it holds at least a fifth of recorded credits and three times a typical day.')) : '')
+      + insight(observation, action,
+        'actual credits for similar completed work, including follow-ups. A costly session can still be valuable; this ranking does not estimate waste, and partial charges can change it.');
   }
   return '';
 }

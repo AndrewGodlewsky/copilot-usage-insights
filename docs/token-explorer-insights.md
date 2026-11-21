@@ -13,7 +13,7 @@ Implementation based on v0.1.68's existing receipts, activity, prompt links, and
 | Work behind each prompt | Model calls and tokens per eligible prompt alongside credits and exclusions | Reuse whole-prompt eligibility and submission-date semantics; model filters are contributions only |
 | Delegated work | Shares of calls, tokens and credits by initiator; subagent against main-conversation calls per call (input, output, credits, cache-read share, duration); model routing; conversations with the most subagent calls; subagent share by period | Unknown initiators stay unknown; no guessed parent attribution or quality assessment. A lower per-call figure is not a saving |
 | Reasoning and generated output | Output totals, matched reasoning share and remaining output, model comparisons | Reasoning is a subset of output; subtract only on the same valid measured calls |
-| Biggest spend drivers | Top sessions, recorded credit shares and coverage | Partial charges can change ranking; expensive does not mean wasteful |
+| Biggest spend drivers | Top sessions, recorded credit shares and coverage; groups making up half and 80% of credits; each top group's calls and credits per call as multiples of the median group; top projects, models and days | Partial charges can change ranking; expensive does not mean wasteful. Multiples describe size, not a cause |
 
 Every view should offer an evidence-led observation and one concrete experiment with a measurement to compare. Lists are bounded, labels wrap, zero/missing/partial values remain distinct, and existing number/theme/text-size settings apply. Keep the current navigation and dedicated Overview, Context, and Cache panels. Leave Worth a closer look and AI Review behavior unchanged.
 

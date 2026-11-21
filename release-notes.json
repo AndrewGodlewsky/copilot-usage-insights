@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.113",
+    "summary": "Biggest spend drivers now shows how concentrated your charges are, how each top session compares with a typical one in calls and credits per call, and which projects, models and days hold the most credits. Each top session opens in Breakdown."
+  },
+  {
     "version": "0.1.112",
     "summary": "Delegated work now compares a subagent call with a main-conversation call: input, output, credits, cache reuse and duration, with the calls each figure rests on. It also shows which models subagents ran on and which conversations delegated most."
   },
