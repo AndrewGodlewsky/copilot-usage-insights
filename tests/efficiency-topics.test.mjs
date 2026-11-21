@@ -57,10 +57,13 @@ test('the efficiency trend has one point per active day and groups long spans in
   assert.deepEqual(untimed.finish().trend.points, []);
 });
 
-test('the topic registry is inert until a topic registers and the report carries its additions', () => {
+test('registered topics see each call and tool event and report under their own keys', () => {
   const topics = createEfficiencyTopics();
-  topics.addRequest(call(base), 1); topics.addTool({ name: 'view' }, true);
-  assert.deepEqual(topics.finish(), {});
+  topics.addRequest(call(base), dayOfMs(base)); topics.addTool({ key: 't', sessionId: 's', ms: base, name: 'view', server: '', mcpTool: '' }, true);
+  const result = topics.finish();
+  // Every topic reports something bounded, even from a single call.
+  for (const [key, value] of Object.entries(result)) assert.ok(value && typeof value === 'object', key);
+  assert.ok(JSON.stringify(result).length < 20000);
   const report = buildReport([call(base, { duration: 1500 })], { range: 'all' }, new Date(base + DAY));
   assert.equal(report.efficiency.trend.points.length, 1);
   assert.equal(report.efficiency.summary.averageDuration, 1500);
