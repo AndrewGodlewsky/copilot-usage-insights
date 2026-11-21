@@ -107,14 +107,55 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
   }
   if (id === 'cache') {
     const rows = measuredModels('cacheRequests', 'cacheInput');
+    // Each measured main-conversation call sits in exactly one of these situations.
+    const timing = report.efficiency?.cacheTiming, situations = timing?.situations || [], situation = key => situations.find(row => row.id === key);
+    const situationNames = { under5: 'Under 5 minutes', mid: '5 to 60 minutes', over60: 'Over 60 minutes', first: 'First call of a conversation in the selected range', modelChange: 'First call after a model change' };
+    const callCount = count => `${number(count)} ${count === 1 ? 'call' : 'calls'}`;
+    const timingBars = (label, keys) => {
+      const drawn = barList(keys.map(situation).filter(Boolean).map(row => ({ label: situationNames[row.id], value: row.share, color: 'var(--s3)',
+        detail: `${callCount(row.calls)} · ${number(row.cacheRead)} of ${number(row.input)} input tokens read from cache` })), { format: percent, total: 100 });
+      return drawn ? `<p class="label cache-timing-group">${esc(label)}</p>${drawn}` : '';
+    };
+    const unmeasured = Object.keys(situationNames).filter(key => !valid(situation(key)?.share)).map(key => situationNames[key].toLowerCase() + (['under5', 'mid', 'over60'].includes(key) ? ' since the previous call' : ''));
+    // A sentence about timing needs enough calls on both sides and a clear difference. The longest
+    // such pause leads, unless calls after a model change hold more input that was not read from cache.
+    const enoughCalls = 10, clearGap = 20, quick = situation('under5');
+    const clearlyLower = key => { const row = situation(key); return quick?.calls >= enoughCalls && valid(quick.share) && row?.calls >= enoughCalls && valid(row.share) && quick.share - row.share >= clearGap ? row : null; };
+    const notRead = row => row ? row.input - row.cacheRead : 0;
+    const longPause = clearlyLower('over60'), shortPause = clearlyLower('mid'), switched = clearlyLower('modelChange');
+    const lower = switched && notRead(switched) > notRead(longPause) + notRead(shortPause) ? switched : longPause || shortPause || switched;
+    const skipped = timing?.mainCalls - timing?.measuredCalls;
+    const when = timing?.measuredCalls
+      ? note(`Compares calls in the main conversation: ${number(timing.measuredCalls)} of ${number(timing.mainCalls)} have a complete cache split.${skipped > 0 ? ` ${skipped === 1 ? 'The other one is' : `The other ${number(skipped)} are`} not compared.` : ''} Subagent calls run in parallel and cannot be put in order, so they are left out, as are calls with no recorded initiator.`)
+        + timingBars('Share of input read from cache, by time since the previous call in the same conversation', ['under5', 'mid', 'over60'])
+        + timingBars('Share of input read from cache on a first call', ['first', 'modelChange'])
+        + (unmeasured.length ? note(`Nothing measured in this selection for: ${unmeasured.join('; ')}. That is not zero reuse.`) : '')
+        + note(`Each call is counted in one row. The time rows cover calls on the same model as the call before them. A conversation's first call in the selected range is not necessarily its true start: earlier calls can fall outside the range or filters. Rows can differ in other ways too, such as how long the conversation already was.${timing.modelFiltered ? ' A model filter is on, so calls on other models are not seen: some pauses look longer than they were and some model changes are missed.' : ''}`)
+        + note(`The summary sentence below compares a row with the under 5 minutes row only when both have at least ${number(enoughCalls)} calls and the shares differ by at least ${number(clearGap)} percentage points.`)
+      : empty('No main-conversation calls with a complete cache split match these filters, so reuse cannot be compared by timing. Missing data is not zero reuse.');
+    const listed = timing?.sessions || [];
+    const conversations = !timing?.measuredCalls ? '' : section('Conversations with the most input not read from cache', listed.length
+      ? table(['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'], listed.map(r => [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), percent(r.share)]))
+        + note(`Showing ${number(listed.length)} of ${number(timing.listedSessions)} conversations with at least ${number(timing.minimumSessionCalls)} measured main-conversation calls. Not read from cache is input minus cache reads, so it includes cache writes. A long conversation can lead this list with ordinary reuse; this is not proof of waste.`)
+      : empty(`No conversation has at least ${number(timing.minimumSessionCalls)} measured main-conversation calls in this selection.`));
     return metrics(metric('Uncached input', s.uncachedInput, 'Complete cache splits only', number, partial(s.cacheRequests)),
       metric('Cache read', s.cacheRequests ? s.cacheRead : null, 'Previously cached input reused', number, partial(s.cacheRequests)),
       metric('Cache write', s.cacheRequests ? s.cacheWrite : null, 'Input recorded as a cache write', number, partial(s.cacheRequests)))
       + bars([{ label: 'Uncached', value: s.uncachedInput, color: 'var(--s1)' }, { label: 'Cache read', value: s.cacheRequests ? s.cacheRead : null, color: 'var(--s3)' }, { label: 'Cache write', value: s.cacheRequests ? s.cacheWrite : null, color: 'var(--s4)' }], partial(s.cacheRequests))
+      + trendRow(report.efficiency?.trend, point => point.cacheHitRate, { label: 'Share of input read from cache', format: percent })
+      + section('When is input reused?', when)
+      + conversations
       + (rows.length ? section('Cache reuse by model', table(['Model', 'Measured calls', 'Input tokens', 'Read share'], rows.map(r => [r.name, coverage(r.cacheRequests, r.requests), measured(r.cacheInput, r.cacheRequests, r.requests), measured(r.cacheHitRate, r.cacheRequests, r.requests, percent)]))) : empty('No complete cache splits were recorded.'))
-      + insight(s.cacheHitRate == null ? 'Missing cache data is not zero reuse.' : `${percent(s.cacheHitRate)} of measured input came from cache.`,
-        s.cacheRead > 0 ? 'Keep stable instructions and relevant context for related follow-ups. Use a fresh conversation when the task actually changes.' : 'Compare related follow-ups on the same model before changing your workflow based on this range.',
-        'weighted cache-read share and actual credits on comparable work. Cache writes prepare context for reuse; they are not themselves cache hits or proof of waste.');
+      + (lower && lower === switched
+        ? insight(`Right after a model change, calls read ${percent(lower.share)} of their input from cache. With no model change and under 5 minutes since the previous call, they read ${percent(quick.share)}.`,
+          'Lower reuse after a model change is consistent with a cache that is not shared between models, but the data does not record why. For one piece of connected work, try choosing the model at the start and keeping it.',
+          'the share read from cache and actual credits on comparable work. Changing model can still be the right choice for a harder step.')
+        : lower ? insight(`After a pause of ${lower === longPause ? 'over 60 minutes' : '5 to 60 minutes'}, calls read ${percent(lower.share)} of their input from cache. With under 5 minutes since the previous call, they read ${percent(quick.share)}.`,
+          'Lower reuse after a pause is consistent with a cache that expired, but the data does not record why. When you come back to a long conversation after a break, try a new conversation with a short summary for one comparable task.',
+          'input tokens and actual credits for the work after the break. A new conversation also starts with little reuse, so look at how much input is processed, not only at the share.')
+        : insight(s.cacheHitRate == null ? 'Missing cache data is not zero reuse.' : `${percent(s.cacheHitRate)} of measured input came from cache.`,
+          s.cacheRead > 0 ? 'Keep stable instructions and relevant context for related follow-ups. Use a fresh conversation when the task actually changes.' : 'Compare related follow-ups on the same model before changing your workflow based on this range.',
+          'weighted cache-read share and actual credits on comparable work. Cache writes prepare context for reuse; they are not themselves cache hits or proof of waste.'));
   }
   if (id === 'skills') {
     const skills = report.skills, rows = (skills?.rows || []).slice().sort((a, b) => b.invocations - a.invocations || a.name.localeCompare(b.name)).slice(0, 5);

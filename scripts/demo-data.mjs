@@ -25,15 +25,25 @@ function shapeOutput(u, effort, rand) {
 
 // Adds the settings and compaction events the scale generator leaves out, then shrinks later
 // input the way a compacted conversation would. Returns journal lines.
-function enrich(session, rand, outputRand) {
+// `breaks` is its own random stream: it puts pauses of minutes or hours before some prompts,
+// never moving the session past `latest`, and decides how little the next call reads from cache.
+function enrich(session, rand, outputRand, breaks, latest) {
   const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
   const out = [], pick = list => list[Math.floor(rand() * list.length)], childCalls = new Map();
   // An empty effort stands for a producer that does not record one.
   let effort = rand() < .2 ? '' : rand() < .6 ? 'medium' : 'high', model = '', input = 0, removed = 0, cold = false, serial = 0;
+  const end = Date.parse(events.findLast(e => typeof e !== 'string')?.timestamp);
+  let shift = 0, stale = false, prompt = '', prompts = 0;
   const emit = (type, data, ms) => out.push(JSON.stringify({ type, data, id: `demo-${type}-${session.id}-${serial++}`, timestamp: new Date(ms).toISOString(), parentId: null }));
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
     if (typeof e === 'string') { out.push(e); continue; }
+    if (e.type === 'user.message' && mainAgent(e) && e.id !== prompt) {
+      prompt = e.id;
+      const roll = prompts++ ? breaks() : 1, wait = Math.round((roll < .07 ? 70 + breaks() * 600 : roll < .2 ? 6 + breaks() * 44 : 0) * 60_000);
+      if (wait && end + shift + wait < latest) { shift += wait; stale = roll < .07 || breaks() < .5; }
+    }
+    if (shift) e.timestamp = new Date(Date.parse(e.timestamp) + shift).toISOString();
     if (e.type === 'user.message' && mainAgent(e)) {
       const ms = Date.parse(e.timestamp);
       let next;
@@ -42,6 +52,7 @@ function enrich(session, rand, outputRand) {
       if (model && next && (next !== model || nextEffort !== effort)) emit('session.model_change', { previousModel: model, newModel: next,
         ...(effort ? { previousReasoningEffort: effort, reasoningEffort: nextEffort } : {}), source: pick(['model_picker', 'model_picker', 'model_picker', 'agent', 'sdk']) }, ms - 3000);
       effort = nextEffort;
+      if (model && next && next !== model) stale = true;
       if (next) model = next;
       if (input > 64000 && model) {
         const attempt = `demo-compaction-${session.id}-${serial}`, trigger = rand() < .2 ? 'manual' : 'threshold', failed = rand() < .08;
@@ -69,6 +80,12 @@ function enrich(session, rand, outputRand) {
         u.cacheWriteTokens = Math.min(smaller - u.cacheReadTokens, Math.floor(u.cacheWriteTokens * scale) + (cold && mainAgent(e) ? Math.floor(smaller * .6) : 0));
         if (mainAgent(e)) cold = false;
       }
+      // The first call after a break or a model change rereads the conversation with little from cache.
+      if (stale && mainAgent(e) && Number.isFinite(u.inputTokens)) {
+        u.cacheReadTokens = Math.floor(u.inputTokens * .12 * breaks());
+        u.cacheWriteTokens = Math.floor((u.inputTokens - u.cacheReadTokens) * (.5 + .4 * breaks()));
+        stale = false;
+      }
       if (mainAgent(e) && Number.isFinite(u.inputTokens)) input = u.inputTokens;
       // A subagent starts from its own short context, not the parent's history: its tool
       // definitions, the task, and what it has read so far. Its first call has no warm cache.
@@ -89,12 +106,13 @@ function enrich(session, rand, outputRand) {
 export function demoData(now = new Date()) {
   // Output shaping draws from its own sequence so the settings and compactions above stay as they were.
   const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11), outputRand = mulberry32(23);
+  const breaks = mulberry32(29), latest = now.getTime() - 30 * 60_000;
   const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], skillExcludedSessions: [], coverageEntries: [] };
   const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
   let files = 0;
   for (const session of history.sessions()) {
     const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl` });
-    for (const line of enrich(session, rand, outputRand)) parser.push(line);
+    for (const line of enrich(session, rand, outputRand, breaks, latest)) parser.push(line);
     const snapshot = parser.snapshot();
     files++;
     for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);

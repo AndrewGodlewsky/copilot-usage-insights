@@ -6,9 +6,11 @@
 // finish() is reported as report.efficiency[key].
 import { createDelegationTopic } from './efficiency-delegation.mjs';
 import { createOutputMix } from './efficiency-output.mjs';
+import { createCacheTiming } from './efficiency-cache.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
+  { key: 'cacheTiming', create: createCacheTiming },
 ];
 const toolTopics = [
 ];

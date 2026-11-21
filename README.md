@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.114** expands Reasoning and generated output with trends over time, the spread of output between short and long calls, effort levels compared within the same model, and output speed by model. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.115** expands Cache reuse to show when reuse drops (after a pause, at the start of a conversation, or after a model change), with a trend over time and the conversations with the most input not read from cache. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -314,7 +314,7 @@ Each token explorer section now provides measurements, an observation, an experi
 | Always-loaded context | Current instructions and tool definitions as a share of occupied context, plus attributed sources |
 | Tool and MCP footprint | Definition tokens and available tools per call, input share, and model comparisons |
 | Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
-| Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model |
+| Cache reuse | Matched uncached input, cache reads/writes, and weighted reuse by model; reuse by time since the previous call, on a conversation's first call in range, and after a model change; reuse over time; and the conversations with the most input not read from cache |
 | Skills and instruction footprint | Current custom-instruction tokens and attributed skills alongside historical uses and failed loads |
 | Work behind each prompt | Average model calls, AI credits, tokens, and the largest call count among eligible prompts |
 | Delegated work | Main-conversation, subagent, and unrecorded shares of calls, tokens, and credits; a per-call comparison of subagent and main-conversation calls; the models each side ran on; and the conversations that delegated most |
