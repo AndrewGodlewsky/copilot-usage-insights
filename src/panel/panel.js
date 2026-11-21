@@ -1135,7 +1135,7 @@ function renderSelectedTokenTopic() {
   const panel = tokenPanelNames.includes(tokenTopic) ? tokenTopic : 'detail';
   for (const name of tokenPanelNames) $(`token-${name}-panel`).hidden = name !== panel;
   if (panel !== 'detail') {
-    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
+    if (panel === 'overview') $('token-overview-insight').innerHTML = renderTokenTopic('overview', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot });
     if (panel === 'cache') $('token-cache-detail').innerHTML = renderTokenTopic('cache', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber });
     if (contextFocused) $('efficiency-topic').focus({ preventScroll: true });
     return;

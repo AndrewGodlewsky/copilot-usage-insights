@@ -7,10 +7,12 @@
 import { createDelegationTopic } from './efficiency-delegation.mjs';
 import { createOutputMix } from './efficiency-output.mjs';
 import { createCacheTiming } from './efficiency-cache.mjs';
+import { createTokenMix } from './efficiency-overview.mjs';
 const requestTopics = [
   { key: 'delegation', create: createDelegationTopic },
   { key: 'outputMix', create: createOutputMix },
   { key: 'cacheTiming', create: createCacheTiming },
+  { key: 'tokenMix', create: createTokenMix },
 ];
 const toolTopics = [
 ];

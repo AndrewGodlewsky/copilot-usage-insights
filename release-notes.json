@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.118",
+    "summary": "Overview now shows what your tokens were made of (uncached input, cache reads, cache writes and output), which model, project and conversations used the most, and whether input and credits per call are changing. It ends with an index of the other sections, each with its headline figure."
+  },
+  {
     "version": "0.1.117",
     "summary": "Skills and instruction footprint now shows how each skill came to be loaded: preloaded at the start of a conversation, invoked by the agent, or invoked by you. Each skill lists its conversations, projects, last use and failed loads, beside the current instruction, skill and plugin sources."
   },

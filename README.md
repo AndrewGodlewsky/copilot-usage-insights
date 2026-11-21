@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.117** expands Skills and instruction footprint to show how each skill was loaded (preloaded at start, invoked by the agent, or invoked by you), with per-skill conversations, projects, last use and failed loads beside the current instruction, skill and plugin sources. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.118** expands the Efficiency Overview with the token mix (uncached input, cache reads, cache writes and output), the largest model, project and conversations, input and credits per call over time, and an index of the other sections with each one's headline figure. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 
@@ -310,7 +310,7 @@ Each token explorer section now provides measurements, an observation, an experi
 
 | Section | What you can explore |
 | --- | --- |
-| Overview | Matched input/output balance, request averages, and shortcuts to deeper views |
+| Overview | Matched input/output balance and request averages; the token mix (uncached input, cache read, cache write, output); the largest model, project and conversations by token share; input and credits per call over time; and an index of the other sections with each one's headline figure |
 | Always-loaded context | The current conversation's room left against its allowance, what fills it, setup beside conversation, the largest sources you can change grouped by kind, and the snapshot beside your selected history |
 | Tool and MCP footprint | Definition tokens and available tools per call, input share, and model comparisons |
 | Files, searches, and tool results | Current conversation and tool-attributed context alongside the most-used tools and their recorded outcomes |
