@@ -1,17 +1,90 @@
-import { normalizeUsage } from '../src/core/copilot.mjs';
+import { createSyntheticHistory, mulberry32 } from './synthetic-history.mjs';
+import { createReceiptParser } from '../src/core/copilot.mjs';
 
 // Synthetic usage only. No user transcripts or account data belong in previews.
-export function demoData(now = new Date()) {
-  const records = [], skills = [];
-  for (let day = 0; day < 70; day++) {
-    if (day % 9 === 5) continue;
-    for (let request = 0; request < 6 + day % 8; request++) {
-      const date = new Date(now); date.setDate(date.getDate() - day); date.setHours(8 + request, 15, 0, 0);
-      const input = 7000 + ((day + request) % 7) * 2700;
-      const sessionId = `demo-session-${day}-${request % 2}`;
-      records.push(normalizeUsage({ provider: { kind: 'copilot' }, model: ['GPT-5.1', 'GPT-5 mini', 'Sonnet'][request % 3], inputTokens: input, outputTokens: 600 + request * 100, cacheReadTokens: Math.floor(input * .55), cacheWriteTokens: Math.floor(input * .2), copilotUsage: { totalNanoAiu: (request + 1) * 77000000 }, aiCreditsStatus: 'complete' }, { key: `${day}-${request}`, timestamp: date.toISOString(), sessionId, project: ['website', 'api', 'documentation'][request % 3], source: 'Synthetic demo' }).record);
-      if (request % 2 === 0) skills.push({ key: `skill-${day}-${request}`, sessionId, ms: date.getTime(), ts: date.toISOString(), project: ['website', 'api', 'documentation'][request % 3], name: ['code-review', 'testing', 'docs'][request % 3], plugin: request % 3 === 2 ? '' : 'demo-development', version: request % 3 === 2 ? '' : '1.0.0' });
+// Journals come from the deterministic generator and pass through the real parser, so the demo
+// carries what a history can: prompts, tools, subagents, skills, model and effort changes, and
+// compactions. Nothing here reads a Copilot home.
+const SOURCE = 'Synthetic demo';
+const NAMES = { 'claude-sonnet-4.5': 'Claude Sonnet 4.5', 'gpt-5.1': 'GPT-5.1', 'gpt-5-mini': 'GPT-5 mini', 'claude-opus-4.5': 'Claude Opus 4.5', 'gemini-3-pro': 'Gemini 3 Pro' };
+const mainAgent = e => !e.agentId && !e.data?.parentToolCallId && !e.data?.usage?.parentToolCallId;
+
+// Adds the settings and compaction events the scale generator leaves out, then shrinks later
+// input the way a compacted conversation would. Returns journal lines.
+function enrich(session, rand) {
+  const events = session.lines.map(line => { try { return JSON.parse(line); } catch { return line; } });
+  const out = [], pick = list => list[Math.floor(rand() * list.length)];
+  // An empty effort stands for a producer that does not record one.
+  let effort = rand() < .2 ? '' : rand() < .6 ? 'medium' : 'high', model = '', input = 0, removed = 0, cold = false, serial = 0;
+  const emit = (type, data, ms) => out.push(JSON.stringify({ type, data, id: `demo-${type}-${session.id}-${serial++}`, timestamp: new Date(ms).toISOString(), parentId: null }));
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (typeof e === 'string') { out.push(e); continue; }
+    if (e.type === 'user.message' && mainAgent(e)) {
+      const ms = Date.parse(e.timestamp);
+      let next;
+      for (let j = i + 1; j < events.length && !next; j++) if (events[j]?.type === 'session.usage_record' && mainAgent(events[j])) next = events[j].data.usage.model;
+      const nextEffort = effort && rand() < .07 ? (effort === 'medium' ? 'high' : 'medium') : effort;
+      if (model && next && (next !== model || nextEffort !== effort)) emit('session.model_change', { previousModel: model, newModel: next,
+        ...(effort ? { previousReasoningEffort: effort, reasoningEffort: nextEffort } : {}), source: pick(['model_picker', 'model_picker', 'model_picker', 'agent', 'sdk']) }, ms - 3000);
+      effort = nextEffort;
+      if (next) model = next;
+      if (input > 64000 && model) {
+        const attempt = `demo-compaction-${session.id}-${serial}`, trigger = rand() < .2 ? 'manual' : 'threshold', failed = rand() < .08;
+        const post = failed ? input : Math.round(input * (.22 + rand() * .2)), system = 4200, definitions = 9000;
+        emit('session.compaction_start', { compactionAttemptId: attempt, currentTokens: input, conversationTokens: input - system - definitions, systemTokens: system,
+          toolDefinitionsTokens: definitions, tokenLimit: 200000, trigger, model }, ms - 2500);
+        emit('session.compaction_complete', { compactionAttemptId: attempt, success: !failed, trigger, tokenLimit: 200000, tokenAccountingBasis: 'local_full_context_estimate',
+          preCompactionTokens: input, preCompactionMessagesLength: 40 + Math.floor(rand() * 160),
+          ...(failed ? {} : { postCompactionTokens: post, tokensRemoved: input - post, messagesRemoved: 30 + Math.floor(rand() * 120) }),
+          compactionTokensUsed: { provider: { id: 'copilot', kind: 'copilot' }, model, modelDisplayName: NAMES[model] || model, inputTokens: input, outputTokens: 900 + Math.floor(rand() * 1400),
+            cacheReadTokens: Math.floor(input * .8), cacheWriteTokens: 0, duration: 4000 + Math.floor(rand() * 9000), requestCount: 1,
+            copilotUsage: { totalNanoAiu: Math.round(input * 900 + 2e7) }, aiCreditsStatus: 'complete' } }, ms - 600);
+        if (!failed) { removed += input - post; input = post; cold = true; }
+      }
     }
+    if (e.type === 'session.usage_record') {
+      const u = e.data.usage, recorded = u.inputTokens;
+      if (effort) u.reasoningEffort = effort;
+      if (removed && Number.isFinite(recorded)) {
+        const smaller = Math.max((u.toolTokenCount || 0) + 1500, recorded - removed), scale = smaller / recorded;
+        u.inputTokens = smaller;
+        // The first call after a compaction rereads the rewritten history without a warm cache.
+        u.cacheReadTokens = cold && mainAgent(e) ? Math.floor(smaller * .08) : Math.floor(u.cacheReadTokens * scale);
+        u.cacheWriteTokens = Math.min(smaller - u.cacheReadTokens, Math.floor(u.cacheWriteTokens * scale) + (cold && mainAgent(e) ? Math.floor(smaller * .6) : 0));
+        if (mainAgent(e)) cold = false;
+      }
+      if (mainAgent(e) && Number.isFinite(u.inputTokens)) input = u.inputTokens;
+    }
+    out.push(JSON.stringify(e));
   }
-  return { records, skills, sources: [{ path: 'Synthetic demo — no account data', state: 'ok', files: 70, records: records.length }], coverage: { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 } };
+  return out;
+}
+
+export function demoData(now = new Date()) {
+  const history = createSyntheticHistory({ seed: 7, records: 2600, days: 45, now, delegation: .25 }), rand = mulberry32(11);
+  const result = { records: [], skills: [], interactions: [], promptEvents: [], tools: [], modelChanges: [], skillExcludedSessions: [], coverageEntries: [] };
+  const coverage = { excluded: 0, unclassified: 0, invalid: 0, invalidSkills: 0, aggregateOnly: 0, fallbackRequests: 0 };
+  let files = 0;
+  for (const session of history.sessions()) {
+    const parser = createReceiptParser({ sessionId: session.id, source: SOURCE, logFile: `${session.id}/events.jsonl` });
+    for (const line of enrich(session, rand)) parser.push(line);
+    const snapshot = parser.snapshot();
+    files++;
+    for (const record of [...snapshot.records, ...snapshot.compactions]) result.records.push(session.name ? { ...record, sessionName: session.name } : record);
+    for (const key of ['skills', 'interactions', 'promptEvents', 'tools', 'modelChanges', 'skillExcludedSessions', 'coverageEntries']) result[key].push(...snapshot[key]);
+    for (const key of ['excluded', 'unclassified', 'invalid', 'invalidSkills']) coverage[key] += snapshot[key];
+  }
+  return { ...result, sources: [{ path: 'Synthetic demo — no account data', state: 'ok', files, records: result.records.length }], coverage };
+}
+
+// A made-up current-context snapshot in the shape the context reader returns.
+export function demoContext(now = new Date()) {
+  const entries = [
+    ['tool', 'view', 11200], ['tool', 'bash', 6400], ['mcpServer', 'github', 4100], ['plugin', 'engineering', 3500], ['tool', 'grep', 3100],
+    ['mcpServer', 'playwright', 2500], ['skill', 'code-review', 2100, 'plugin:engineering'], ['toolDefinition', 'bash', 1900], ['subagent', 'general-purpose', 1700],
+    ['skill', 'testing', 1400, 'plugin:engineering'], ['toolDefinition', 'edit', 1300], ['skill', 'release-notes', 900], ['mcpServer', 'docs', 800], ['toolDefinition', 'view', 700],
+  ].map(([kind, label, tokens, parentId]) => ({ kind, id: `${kind}:${label}`, label, tokens, ...(parentId ? { parentId } : {}) }));
+  return { available: true, checkedAt: now.toISOString(), totalTokens: 61840, limit: 200000, modelId: 'claude-sonnet-4.5', modelSource: 'selected',
+    categories: { systemPrompt: 4200, customInstructions: 3100, systemTools: 9800, mcpTools: 7400, messages: 37340 }, entries, omitted: 0 };
 }

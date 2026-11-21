@@ -1,5 +1,27 @@
 import { esc, usageValue, coverageValue } from './charts.mjs';
 
+// Shared by the Efficiency topic views. Both return '' when there is nothing to draw.
+// A measure over report.efficiency.trend.points: a small line plus the average of the earlier
+// and the later half of the periods that have a value. `pick` returns null for an unmeasured period.
+export function trendRow(trend, pick, { label, format = String } = {}) {
+  const points = (trend?.points || []).map(point => ({ day: point.day, value: pick(point) })).filter(point => Number.isFinite(point.value));
+  if (points.length < 4) return '';
+  const values = points.map(point => point.value), low = Math.min(...values), high = Math.max(...values), range = high - low || 1;
+  const width = 160, height = 34, x = index => 3 + index / (values.length - 1) * (width - 6), y = value => height - 4 - (value - low) / range * (height - 8);
+  const half = Math.floor(values.length / 2), mean = list => list.reduce((sum, value) => sum + value, 0) / list.length;
+  const earlier = mean(values.slice(0, half)), later = mean(values.slice(-half)), unit = trend.unit === 'week' ? 'week' : 'day';
+  const summary = `${format(earlier)} in the earlier ${unit}s, ${format(later)} in the later ${unit}s`;
+  return `<div class="token-trend"><span class="label">${esc(label)} by ${unit}</span><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(`${label} by ${unit}: ${summary}`)}"><polyline points="${values.map((value, index) => `${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ')}"/><circle cx="${x(values.length - 1).toFixed(1)}" cy="${y(values.at(-1)).toFixed(1)}" r="2.5"/></svg><span class="sub">${esc(summary)} · ${esc(points[0].day)} to ${esc(points.at(-1).day)}, ${points.length} ${unit}s with measurements. Averages of each period's value; periods differ in call count.</span></div>`;
+}
+// Labelled horizontal bars for rows of { label, value, detail }. Bars are sized against `total`
+// when given (a share of a whole), otherwise against the largest row.
+export function barList(rows, { format = String, total } = {}) {
+  const drawn = (rows || []).filter(row => Number.isFinite(row.value) && row.value >= 0);
+  const scale = total > 0 ? total : Math.max(0, ...drawn.map(row => row.value));
+  if (!drawn.length || !scale) return '';
+  return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${esc(row.label)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
+}
+
 // Render from the report and the explicitly requested context snapshot only.
 export function renderTokenInsight(id, report, { number, credits, context, showCoverage = true } = {}) {
   const s = report.efficiency?.summary || {}, models = report.efficiency?.models || [];

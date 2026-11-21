@@ -1,4 +1,4 @@
-import { dayOfMs } from './query.mjs';
+import { dayOfMs, dayKey } from './query.mjs';
 import { recordedEffort } from './model-settings.mjs';
 
 export function summarizeInteractions(records, activity, query, start, end, now, copilotSessions) {
@@ -31,7 +31,8 @@ export function summarizeInteractions(records, activity, query, start, end, now,
 }
 
 const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, cacheWrite: 0, creditRequests: 0, creditNano: 0, creditWide: 0n,
-  pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, toolCountRequests: 0, availableTools: 0, reasoningRequests: 0, reasoningTokens: 0, reasoningOutput: 0 });
+  pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, toolCountRequests: 0, availableTools: 0, reasoningRequests: 0, reasoningTokens: 0, reasoningOutput: 0,
+  durationRequests: 0, durationTotal: 0, paceRequests: 0, paceOutput: 0, paceDuration: 0 });
 const known = value => Number.isFinite(value) && value >= 0;
 function addMeasurement(b, r) {
   b.requests++;
@@ -43,6 +44,11 @@ function addMeasurement(b, r) {
   }
   if (known(r.availableToolCount)) { b.toolCountRequests++; b.availableTools += r.availableToolCount; }
   if (known(r.reasoning) && known(r.output) && r.reasoning <= r.output) { b.reasoningRequests++; b.reasoningTokens += r.reasoning; b.reasoningOutput += r.output; }
+  if (known(r.duration)) {
+    b.durationRequests++; b.durationTotal += r.duration;
+    // Output speed needs both counts from the same call.
+    if (r.duration > 0 && known(r.output)) { b.paceRequests++; b.paceOutput += r.output; b.paceDuration += r.duration; }
+  }
   if (r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
     b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead; b.cacheWrite += r.cacheWrite;
   }
@@ -66,6 +72,8 @@ function finishMeasurement(b) {
     reasoningShare: b.reasoningOutput > 0 ? b.reasoningTokens / b.reasoningOutput * 100 : null,
     toolShare: b.toolInput > 0 ? b.toolTokens / b.toolInput * 100 : null,
     cacheHitRate: b.cacheInput > 0 ? b.cacheRead / b.cacheInput * 100 : null,
+    averageDuration: b.durationRequests ? b.durationTotal / b.durationRequests : null,
+    outputPerSecond: b.paceDuration > 0 ? b.paceOutput / b.paceDuration * 1000 : null,
     averageCredits: b.creditRequests ? credits / b.creditRequests : null };
 }
 const compareSamples = (a, b) => a.ms - b.ms || a.key.localeCompare(b.key);
@@ -80,14 +88,54 @@ function keep(list, sample, earliest) {
   if (list.length > 3) { if (earliest) list.pop(); else list.shift(); }
 }
 
+// The measures a trend line can draw, with the counts that say how many calls each rests on.
+const trendFields = ['requests', 'inputRequests', 'outputRequests', 'toolRequests', 'cacheRequests', 'reasoningRequests', 'creditRequests', 'durationRequests',
+  'inputTokens', 'outputTokens', 'credits', 'averageInput', 'averageOutput', 'averageToolTokens', 'toolShare', 'cacheHitRate', 'reasoningShare', 'averageCredits', 'averageDuration', 'outputPerSecond'];
+const TREND_POINTS = 62;
+function mergeMeasurement(into, b) {
+  for (const key of Object.keys(b)) {
+    if (key === 'creditWide') into.creditWide += b.creditWide;
+    else if (key !== 'creditNano') into[key] += b[key];
+    else {
+      if (into.creditNano > Number.MAX_SAFE_INTEGER - b.creditNano) { into.creditWide += BigInt(into.creditNano); into.creditNano = 0; }
+      into.creditNano += b.creditNano;
+    }
+  }
+}
+// One point per day that has calls. A longer span is grouped into weeks counted from its first day.
+function finishTrend(days) {
+  const ordered = [...days].sort((a, b) => a[0] - b[0]);
+  if (!ordered.length) return { unit: 'day', points: [] };
+  const first = ordered[0][0], weekly = ordered.at(-1)[0] - first >= TREND_POINTS, span = weekly ? 7 : 1, points = [];
+  let start = null, total = null;
+  const flush = () => {
+    if (!total) return;
+    const measured = finishMeasurement(total), point = { day: dayKey(start) };
+    for (const key of trendFields) point[key] = measured[key];
+    points.push(point);
+  };
+  for (const [day, b] of ordered) {
+    const bucket = first + Math.floor((day - first) / span) * span;
+    if (bucket !== start) { flush(); start = bucket; total = measurement(); }
+    mergeMeasurement(total, b);
+  }
+  flush();
+  return { unit: weekly ? 'week' : 'day', points };
+}
+
 export function createEfficiencyAccumulator() {
   const total = measurement(), models = new Map(), groups = [], bySession = new Map(), NONE = Symbol('none');
-  const efforts = new Map();
-  let model = NONE, modelTotal, project = NONE, session = NONE, sessionGroups;
+  const efforts = new Map(), days = new Map();
+  let model = NONE, modelTotal, project = NONE, session = NONE, sessionGroups, trendDay = NONE, dayTotal;
   const initiators = new Map(['user', 'agent', 'sub-agent', 'unknown'].map(id => [id, measurement()])), delegatedModels = new Map();
   return {
-    add(r) {
+    add(r, day = dayOfMs(r.ms)) {
       addMeasurement(total, r);
+      // A call with no usable time still counts in the totals; it just has no place on a trend.
+      if (Number.isFinite(day)) {
+        if (day !== trendDay) { trendDay = day; dayTotal = days.get(day); if (!dayTotal) days.set(day, dayTotal = measurement()); }
+        addMeasurement(dayTotal, r);
+      }
       if (r.model !== model) { model = r.model; modelTotal = models.get(model); if (!modelTotal) models.set(model, modelTotal = measurement()); }
       addMeasurement(modelTotal, r);
       // A display group is identifiable only if every record carries the same exact raw ID.
@@ -95,10 +143,8 @@ export function createEfficiencyAccumulator() {
       if (modelTotal.requests === 1) modelTotal.modelId = rawModelId;
       else if (modelTotal.modelId !== rawModelId) modelTotal.modelId = null;
       const effort = recordedEffort(r.effort), effortKey = JSON.stringify([r.model, effort]);
-      if (!efforts.has(effortKey)) efforts.set(effortKey, { name: r.model, effort, ...measurement(), durationRequests: 0, durationTotal: 0 });
-      const effortTotal = efforts.get(effortKey);
-      addMeasurement(effortTotal, r);
-      if (known(r.duration)) { effortTotal.durationRequests++; effortTotal.durationTotal += r.duration; }
+      if (!efforts.has(effortKey)) efforts.set(effortKey, { name: r.model, effort, ...measurement() });
+      addMeasurement(efforts.get(effortKey), r);
       addMeasurement(initiators.get(initiators.has(r.initiator) ? r.initiator : 'unknown'), r);
       if (r.initiator === 'sub-agent') {
         if (!delegatedModels.has(r.model)) delegatedModels.set(r.model, measurement());
@@ -148,8 +194,8 @@ export function createEfficiencyAccumulator() {
         const row = charged[0];
         insights.push({ kind: 'spend', model: row.name, credits: row.credits, share: row.credits / summary.credits * 100, samples: summary.creditRequests, requests: summary.requests });
       }
-      return { summary, models: rows, insights,
-        efforts: [...efforts.values()].map(b => ({ ...finishMeasurement(b), averageDuration: b.durationRequests ? b.durationTotal / b.durationRequests : null }))
+      return { summary, models: rows, insights, trend: finishTrend(days),
+        efforts: [...efforts.values()].map(b => finishMeasurement(b))
           .sort((a, b) => a.name.localeCompare(b.name) || a.effort.localeCompare(b.effort)),
         byInitiator: [...initiators].map(([id, b]) => ({ id, ...finishMeasurement(b) })),
         delegatedModels: [...delegatedModels].map(([name, b]) => ({ name, ...finishMeasurement(b) }))

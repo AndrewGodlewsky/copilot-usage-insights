@@ -1,6 +1,7 @@
 import { normalizeQuery, localDay, dayOfMs, dayKey, dayNumber, parseDateDay, RANGE_DAYS } from './query.mjs';
 import { mcpHistory } from './integrations.mjs';
 import { createEfficiencyAccumulator, summarizeInteractions } from './efficiency.mjs';
+import { createEfficiencyTopics } from './efficiency-topics.mjs';
 import { summarizePromptCredits } from './prompt-credits.mjs';
 import { environmentOf, environmentOptions, selectEnvironment } from './environments.mjs';
 import { summarizeCoverage } from './coverage.mjs';
@@ -123,7 +124,7 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     projectOptions: [...projectOptions], sessionOptions: [...sessionOptions] };
 }
 
-function toolReport(records, copilotSessions, activity, input, start, end, now) {
+function toolReport(records, copilotSessions, activity, input, start, end, now, onTool) {
   const nowMs = now.getTime();
   const selectedModels = input.models && new Set(input.models);
   const excluded = new Set(activity.skillExcludedSessions || []), groups = [], byName = new Map(), projectOptions = new Set();
@@ -157,6 +158,7 @@ function toolReport(records, copilotSessions, activity, input, start, end, now) 
     row.calls++; calls++;
     const outcome = tool.completedMs != null && tool.completedMs >= tool.ms && tool.completedMs <= nowMs ? tool.success : null;
     row[outcome === true ? 'successes' : outcome === false ? 'failures' : 'unknown']++;
+    if (onTool) onTool(tool, outcome);
     if (tool.ts > row.lastUsed) row.lastUsed = tool.ts;
   }
   const rows = groups.map(row => ({ ...row, successRate: row.successes + row.failures ? row.successes / (row.successes + row.failures) * 100 : null }))
@@ -292,6 +294,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   const sessionLabels = new Map(sessionNames(records, activity.cache));
   const totals = bucket(), todayTotal = bucket(), days = new Map(), models = new Map(), projects = new Map(), sessions = new Map(), sessionsByProject = new Map();
   const efficiency = createEfficiencyAccumulator();
+  const topics = createEfficiencyTopics({ query: { ...input, models: q.models }, start, end, now, sessionLabels, activity, records });
   // Only the latest 182 days are drawn; older days matter solely for the length of the streak.
   const calendar = new Map(), activeDays = new Set(), calendarStart = today - 181, rhythm = Array(168).fill(0);
   const get = (map, key) => { let b = map.get(key); if (!b) map.set(key, b = bucket()); return b; };
@@ -303,7 +306,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
     if (calendarDay) add(calendarDay, r, includeCache);
     if (day === today) add(todayTotal, r, includeCache);
     if (day < start || day > end) continue;
-    efficiency.add(r);
+    efficiency.add(r, day); topics.addRequest(r, day);
     add(totals, r, includeCache); add(dayTotal ??= get(days, day), r, includeCache);
     if (r.model !== model) { model = r.model; modelTotal = get(models, model); }
     add(modelTotal, r, includeCache);
@@ -351,7 +354,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   for (const p of projectPrompts) if (p.count) get(projectChoices, p.name);
   const { projectOptions, sessionOptions, ...skills } = skillReport(copilotSessions, activity, input, activityStart, end, now);
   for (const [id, name] of sessionOptions) if (!sessionLabels.has(id)) sessionLabels.set(id, name);
-  const { projectOptions: toolProjects, ...tools } = toolReport(records, copilotSessions, activity, { ...input, models: q.models }, activityStart, end, now);
+  const { projectOptions: toolProjects, ...tools } = toolReport(records, copilotSessions, activity, { ...input, models: q.models }, activityStart, end, now, topics.addTool);
   for (const name of projectOptions) projectOptionSet.add(name);
   for (const name of toolProjects) projectOptionSet.add(name);
   for (const name of projectChoices.keys()) projectOptionSet.add(name);
@@ -365,7 +368,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: { ...efficiency.finish(sessionLabels), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
+    efficiency: { ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) },
     options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

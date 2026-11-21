@@ -1,0 +1,24 @@
+// Efficiency topics that need their own pass over the selected history register here, one line
+// each: { key, create }. A request topic sees every in-range model call as add(record, day).
+// A tool topic sees every in-range, provider-attributed tool call as add(tool, outcome), where
+// outcome is true, false, or null when no completion is recorded. create(context) receives
+// { query, start, end, now, sessionLabels, activity, records } and returns { add, finish };
+// finish() is reported as report.efficiency[key].
+const requestTopics = [
+];
+const toolTopics = [
+];
+
+const begin = (topics, context) => topics.map(topic => ({ key: topic.key, accumulator: topic.create(context) }));
+export function createEfficiencyTopics(context = {}) {
+  const requests = begin(requestTopics, context), tools = begin(toolTopics, context);
+  return {
+    addRequest(record, day) { for (let i = 0; i < requests.length; i++) requests[i].accumulator.add(record, day); },
+    addTool(tool, outcome) { for (let i = 0; i < tools.length; i++) tools[i].accumulator.add(tool, outcome); },
+    finish() {
+      const result = {};
+      for (const { key, accumulator } of [...requests, ...tools]) result[key] = accumulator.finish();
+      return result;
+    },
+  };
+}
