@@ -56,7 +56,7 @@ The canvas tab is labeled **Usage Insights**. Copilot controls the tab width, ic
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.129** adds measurements to Repeated exploration under Worth a closer look: how often the agent made exactly the same tool call again in one conversation, which reads and searches repeat most, how soon, and how many came after a compaction. Calls are compared while your history is read; their arguments are never stored or shown. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.130** makes AI review work again after the GitHub Copilot app update to 1.5.0, which made Refresh models, Reconnect to GitHub and Create AI review report that the Copilot SDK was unavailable or incompatible. Earlier versions of the app keep working. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ### WSL histories on Windows
 

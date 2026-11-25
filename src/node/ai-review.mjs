@@ -52,12 +52,15 @@ export function runtimeEnvironment(source = process.env) {
   const allowed = /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|HOME|USERPROFILE|LOCALAPPDATA|APPDATA|XDG_CONFIG_HOME|XDG_CACHE_HOME|LANG|LC_ALL|GH_TOKEN|GITHUB_TOKEN|GH_HOST|GITHUB_HOST|GH_CONFIG_DIR|HTTPS_PROXY|HTTP_PROXY|ALL_PROXY|NO_PROXY|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR)$/i;
   return Object.fromEntries(Object.entries(source).filter(([key, value]) => allowed.test(key) && typeof value === 'string'));
 }
+// Desktop 1.0.115 renamed forStdio to forSpawnedStdio and moved the helper's process options onto it.
+const stdioFactory = sdk => ['forSpawnedStdio', 'forStdio'].find(name => typeof sdk?.RuntimeConnection?.[name] === 'function');
+export const supportedSdk = sdk => typeof sdk?.CopilotClient === 'function' && !!stdioFactory(sdk);
 async function desktopRuntime(check) {
   const executable = hostRuntime(undefined, undefined, undefined, undefined, check);
   try {
     const path = await realpath(executable), name = '@github/copilot-sdk';
     const sdk = await import(name);
-    if (typeof sdk.CopilotClient !== 'function' || typeof sdk.RuntimeConnection?.forStdio !== 'function') throw fail('sdk');
+    if (!supportedSdk(sdk)) throw fail('sdk');
     return { sdk, path };
   } catch { throw fail('sdk'); }
 }
@@ -152,12 +155,18 @@ export function createReviewService(parent, { runtime = desktopRuntime, recorder
       step('runtime');
       const { sdk, path } = await deadline(runtime(), 15_000, signal);
       check();
+      const factory = stdioFactory(sdk);
+      if (!factory) throw fail('sdk');
       directory = await mkdtemp(join(tmpdir(), 'usage-insights-review-'));
       const workspace = join(directory, 'workspace'), home = join(directory, 'home');
       await mkdir(workspace); check();
-      client = new sdk.CopilotClient({ mode: 'empty', workingDirectory: workspace, baseDirectory: home,
-        connection: sdk.RuntimeConnection.forStdio({ path, args: ['--no-auto-update'] }),
-        env: runtimeEnvironment(), useLoggedInUser: true, logLevel: 'error', builtinPluginDirectories: [] });
+      const args = ['--no-auto-update'], env = runtimeEnvironment();
+      // The newer client rejects env and workingDirectory; the earlier factory accepts neither directory.
+      client = factory === 'forSpawnedStdio'
+        ? new sdk.CopilotClient({ mode: 'empty', runtime: sdk.RuntimeConnection.forSpawnedStdio({ path, args, env, workingDirectory: workspace, baseDirectory: home }),
+          github: { useLoggedInUser: true }, observability: { logLevel: 'error' }, plugins: { builtinDirectories: [] } })
+        : new sdk.CopilotClient({ mode: 'empty', workingDirectory: workspace, baseDirectory: home, connection: sdk.RuntimeConnection.forStdio({ path, args }),
+          env, useLoggedInUser: true, logLevel: 'error', builtinPluginDirectories: [] });
       step('start');
       await deadline(client.start(), 30_000, signal);
       step('usage');

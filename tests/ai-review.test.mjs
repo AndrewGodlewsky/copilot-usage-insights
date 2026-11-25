@@ -1,22 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, rm, realpath, mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createReviewService, hostRuntime, runtimeEnvironment } from '../src/node/ai-review.mjs';
+import { createReviewService, hostRuntime, runtimeEnvironment, supportedSdk } from '../src/node/ai-review.mjs';
 import { createDiagnostics } from '../src/core/diagnostics.mjs';
 import { prepareInsightReview } from '../src/node/review-evidence.mjs';
 import { finalizeInsightReview } from '../src/node/review-insights.mjs';
 import { reviewFixture, reviewNow } from './fixtures/review.mjs';
 
+// Doubles for the desktop SDK generations, reduced to what the helper touches. Desktop 1.0.115 renamed
+// the stdio factory, and its client rejects env and workingDirectory anywhere but on the connection.
+const sdkContracts = {
+  modern: {
+    RuntimeConnection: { forSpawnedStdio: ({ path, args, env, workingDirectory, baseDirectory } = {}) => ({ kind: 'spawned-stdio', path, args, env, workingDirectory, baseDirectory }) },
+    home(options) {
+      if ('env' in options || 'workingDirectory' in options) throw new Error('PRIVATE-client-options');
+      return options.runtime.baseDirectory;
+    },
+  },
+  legacy: { RuntimeConnection: { forStdio: ({ path, args, env } = {}) => ({ kind: 'stdio', path, args, env }) }, home: options => options.baseDirectory },
+  unknown: { RuntimeConnection: { forTcp: () => ({ kind: 'tcp' }) }, home: () => undefined },
+};
+
 function fixture(t, overrides = {}) {
-  const state = { login: 'person', tools: [], selected: 'model-a', provider: 'copilot', policy: 'enabled', sent: [], stopped: 0, prepared: 0, flushed: 0, ...overrides };
+  const state = { sdk: 'modern', login: 'person', tools: [], selected: 'model-a', provider: 'copilot', policy: 'enabled', sent: [], stopped: 0, prepared: 0, flushed: 0, ...overrides };
+  const contract = sdkContracts[state.sdk];
   const models = () => ({ list: [{ id: 'model-a', name: 'Model A', provider: { kind: state.provider }, policy: { state: state.policy }, capabilities: { supports: { reasoningEffort: !!state.efforts } }, supportedReasoningEfforts: state.efforts }, ...(state.extraModels || [])] });
   const parent = { rpc: { model: { list: async () => models() }, gitHubAuth: { getStatus: async () => ({ isAuthenticated: true, login: 'person', host: 'github.com' }) } } };
   const sdk = {
-    RuntimeConnection: { forStdio: options => options },
+    RuntimeConnection: contract.RuntimeConnection,
     CopilotClient: class {
-      constructor(options) { state.options = options; }
+      constructor(options) { state.home = contract.home(options); state.options = options; }
       async start() { if (state.startFailure) throw new Error('PRIVATE-start'); }
       async forceStop() { state.stopped++; state.release?.(); if (state.stopFailure) throw new Error('PRIVATE-stop'); }
       async createSession(config) {
@@ -52,8 +67,8 @@ function fixture(t, overrides = {}) {
   });
   t.after(async () => {
     await service.close();
-    if (state.options) {
-      const folder = dirname(state.options.baseDirectory);
+    if (state.home) {
+      const folder = dirname(state.home);
       assert.equal(await realpath(dirname(folder)), await realpath(tmpdir()));
       await rm(folder, { recursive: true, force: true });
     }
@@ -157,7 +172,7 @@ test('cancelling or timing out a stalled sample read returns baseline and cleans
     assert.equal(result.enrichment, timeout ? 'timed-out' : 'cancelled');
     assert.equal(result.emptyReason, first.emptyReason); assert.equal(result.usage.credits, 0);
     assert.equal(f.state.sent.length, 1); assert.equal(f.state.flushed, 1); assert.equal(f.state.stopped, 1);
-    await assert.rejects(access(f.state.options.baseDirectory));
+    await assert.rejects(access(f.state.home));
   }
 });
 async function waitFor(predicate) {
@@ -170,13 +185,50 @@ test('host accepts only tested desktop bootstrap forms and sanitizes inherited e
   for (const args of [[exe, ['relative/extension_bootstrap.mjs'], 42, env], [exe, ['extension_bootstrap.mjs'], 43, env], [join(tmpdir(), 'node.exe'), ['extension_bootstrap.mjs'], 42, env]]) assert.throws(() => hostRuntime(...args), { code: 'REVIEW_RUNTIME' });
   assert.deepEqual(runtimeEnvironment({ PATH: 'path', GH_TOKEN: 'secret', NODE_OPTIONS: '--inject', COPILOT_CLI_PATH: 'other', COPILOT_SDK_PATH: 'sdk', OPENAI_API_KEY: 'secret' }), { PATH: 'path', GH_TOKEN: 'secret' });
 });
+test('the SDK check accepts both desktop generations and rejects a build without a client or a stdio factory', () => {
+  const CopilotClient = class {};
+  assert.equal(supportedSdk({ CopilotClient, RuntimeConnection: { forSpawnedStdio() {} } }), true);
+  assert.equal(supportedSdk({ CopilotClient, RuntimeConnection: { forStdio() {} } }), true);
+  assert.equal(supportedSdk({ CopilotClient, RuntimeConnection: { forTcp() {}, forInProcess() {} } }), false);
+  assert.equal(supportedSdk({ CopilotClient }), false);
+  assert.equal(supportedSdk({ RuntimeConnection: { forSpawnedStdio() {} } }), false);
+});
+test('desktop 1.0.115 SDK: the spawned stdio connection carries the helper executable, sanitized environment and isolated directories', async t => {
+  process.env.USAGE_INSIGHTS_TEST_MARKER = 'PRIVATE-env'; t.after(() => { delete process.env.USAGE_INSIGHTS_TEST_MARKER; });
+  const { state, service } = fixture(t);
+  assert.deepEqual(await service.review(input), { text: 'Review response', model: 'model-a' });
+  const { runtime } = state.options;
+  assert.equal(runtime.kind, 'spawned-stdio'); assert.equal(runtime.path, '/verified/copilot'); assert.deepEqual(runtime.args, ['--no-auto-update']);
+  assert.ok(runtime.env && !('USAGE_INSIGHTS_TEST_MARKER' in runtime.env));
+  assert.equal(basename(runtime.workingDirectory), 'workspace'); assert.equal(basename(runtime.baseDirectory), 'home');
+  assert.equal(dirname(runtime.workingDirectory), dirname(runtime.baseDirectory));
+  assert.equal(state.options.mode, 'empty');
+  assert.equal(state.options.github.useLoggedInUser, true); assert.deepEqual(state.options.plugins.builtinDirectories, []);
+});
+test('desktop 1.0.106 SDK: the earlier stdio factory and client-level process options still start the helper', async t => {
+  process.env.USAGE_INSIGHTS_TEST_MARKER = 'PRIVATE-env'; t.after(() => { delete process.env.USAGE_INSIGHTS_TEST_MARKER; });
+  const { state, service } = fixture(t, { sdk: 'legacy' });
+  assert.deepEqual(await service.review(input), { text: 'Review response', model: 'model-a' });
+  const { connection } = state.options;
+  assert.equal(connection.kind, 'stdio'); assert.equal(connection.path, '/verified/copilot'); assert.deepEqual(connection.args, ['--no-auto-update']);
+  assert.ok(state.options.env && !('USAGE_INSIGHTS_TEST_MARKER' in state.options.env));
+  assert.equal(basename(state.options.workingDirectory), 'workspace'); assert.equal(basename(state.options.baseDirectory), 'home');
+  assert.equal(dirname(state.options.workingDirectory), dirname(state.options.baseDirectory));
+  assert.equal(state.options.mode, 'empty');
+  assert.equal(state.options.useLoggedInUser, true); assert.deepEqual(state.options.builtinPluginDirectories, []);
+});
+test('an SDK with no known stdio factory is reported as incompatible before any helper is created', async t => {
+  const { state, service } = fixture(t, { sdk: 'unknown' });
+  await assert.rejects(service.review(input), { code: 'REVIEW_SDK' });
+  assert.equal(state.options, undefined); assert.equal(state.sent.length, 0); assert.equal(state.prepared, 0);
+});
 test('catalog filters attribution/policy; reconnect checks a new helper without inference or saved prompts', async t => {
   const { state, service } = fixture(t);
   assert.equal((await service.catalog()).models.length, 1);
   assert.equal(state.options, undefined);
   assert.equal((await service.reconnect('model-a')).verified, true);
   assert.equal(state.sent.length, 0); assert.equal(state.prepared, 0); assert.equal(state.stopped, 1);
-  await assert.rejects(access(state.options.baseDirectory));
+  await assert.rejects(access(state.home));
   state.provider = 'custom'; await assert.rejects(service.catalog(), { code: 'REVIEW_CATALOG' });
 });
 test('review uses only selected Copilot model and explicit snapshot; accounts before send, retention before cleanup', async t => {
@@ -189,7 +241,7 @@ test('review uses only selected Copilot model and explicit snapshot; accounts be
   assert.equal(state.config.enableManagedSettings, true); assert.equal(state.config.enforceManagedModelDefaults, true);
   assert.equal(state.config.onPermissionRequest().kind, 'denied-by-rules');
   assert.equal(state.recorded, true); assert.ok(state.flushed); assert.equal(state.stopped, 1);
-  await assert.rejects(access(state.options.baseDirectory));
+  await assert.rejects(access(state.home));
 });
 for (const [changes, code] of [
   [{ login: 'other' }, 'ACCOUNT'], [{ provider: 'custom' }, 'MODEL'], [{ policy: 'disabled' }, 'MODEL'],
@@ -212,7 +264,7 @@ test('cancel rejects promptly, stops only its helper, flushes and removes owned 
   await waitFor(() => state.sent.length);
   await assert.rejects(service.review(input), { code: 'REVIEW_BUSY' });
   service.cancel(); await rejected; assert.equal(state.stopped, 1); assert.ok(state.flushed);
-  await assert.rejects(access(state.options.baseDirectory));
+  await assert.rejects(access(state.home));
 });
 test('shutdown waits for owned work and timeout cannot return a partial success', async t => {
   const { state, service } = fixture(t, { hold: true, timeoutMs: 60 });
@@ -221,7 +273,7 @@ test('shutdown waits for owned work and timeout cannot return a partial success'
   const other = fixture(t, { hold: true });
   const rejected = assert.rejects(other.service.review(input), { code: 'REVIEW_CANCELLED' });
   await waitFor(() => other.state.sent.length); await other.service.close(); await rejected;
-  assert.ok(other.state.flushed); await assert.rejects(access(other.state.options.baseDirectory));
+  assert.ok(other.state.flushed); await assert.rejects(access(other.state.home));
 });
 test('generation errors are sanitized and any recorded usage is flushed', async t => {
   const { state, service, diagnostics } = fixture(t, { generateFailure: true });
@@ -232,7 +284,7 @@ test('generation errors are sanitized and any recorded usage is flushed', async 
 for (const [changes, code] of [[{ flushFailure: true }, 'USAGE'], [{ stopFailure: true }, 'CLEANUP']]) test(`preserves recovery files on ${code.toLowerCase()} failure`, async t => {
   const { state, service } = fixture(t, changes);
   await assert.rejects(service.review(input), { code: `REVIEW_${code}` });
-  await access(dirname(state.options.baseDirectory));
+  await access(dirname(state.home));
 });
 test('missing and oversized answers fail without retry or exposing response text', async t => {
   for (const output of [' ', 'x'.repeat(65537)]) {
@@ -249,5 +301,5 @@ test('cancellation during accounting preparation never starts inference or block
 test('stalled final accounting has a bounded wait and preserves recovery files', async t => {
   const { state, service } = fixture(t, { flushHold: true, storageTimeoutMs: 30 });
   await assert.rejects(service.review(input), { code: 'REVIEW_USAGE' });
-  await service.close(); await access(dirname(state.options.baseDirectory)); state.releaseStorage();
+  await service.close(); await access(dirname(state.home)); state.releaseStorage();
 });

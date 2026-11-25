@@ -1,5 +1,9 @@
 [
   {
+    "version": "0.1.130",
+    "summary": "AI review works again after the GitHub Copilot app update to 1.5.0, which made Refresh models, Reconnect to GitHub and Create AI review report that the Copilot SDK was unavailable or incompatible. Earlier versions of the app keep working."
+  },
+  {
     "version": "0.1.129",
     "summary": "Repeated exploration is now measured. It shows how often the agent made exactly the same tool call again in one conversation, which reads and searches repeat most, how soon, and how many came after a compaction. Calls are compared while your history is read; their arguments are never stored or shown."
   },
