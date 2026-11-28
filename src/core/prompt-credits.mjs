@@ -733,7 +733,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   }
   finishGroupModels();
   result.projectPrompts = [...projectPrompts.values()];
-  result.conversations = conversations.finish();
+  result.conversations = conversations.finish(options?.sessionLabels);
   result.contextGrowth = contextGrowth.finish(options?.sessionLabels);
   if (habits) result.habits = habits.finish();
   result.modelPrompts = [...modelPrompts.values()];

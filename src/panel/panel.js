@@ -1051,6 +1051,7 @@ $('efficiency-conversations').onclick = event => {
   const button = event.target.closest('button');
   if (!button) return;
   const data = button.dataset;
+  if (data.conversationOpenSession) return inspectEfficiency({ project: data.conversationOpenProject || '', session: data.conversationOpenSession });
   if (data.conversationBucket !== undefined) {
     const bucket = Number(data.conversationBucket);
     if (!Number.isInteger(bucket) || bucket < 0 || bucket > (conversationTopic === 'returning' ? 2 : 3)) return;

@@ -58,6 +58,14 @@ test('examples are opt-in metadata, filtered without fetching and never invent m
   assert.match(html, /Work is shared, incomplete/); assert.match(html, /2 additional events/);
   assert.match(html, /No prompt text is loaded/); assert.match(html, /not a representative sample/);
   assert.match(renderConversations(measured(), { examplesOpen: true, bucket: 3 }), /None of the bounded examples match/);
+  const named = measured();
+  named.examples[0] = { ...named.examples[0], sessionId: 'sess-1', name: 'Fix <auth> bug', project: 'RepoA' };
+  const namedHtml = renderConversations(named, { examplesOpen: true, bucket: 1 });
+  assert.match(namedHtml, /Fix &lt;auth&gt; bug/);
+  assert.doesNotMatch(namedHtml, /<auth>/);
+  assert.match(namedHtml, /data-conversation-open-session="sess-1"/);
+  assert.match(namedHtml, /data-conversation-open-project="RepoA"/);
+  assert.match(namedHtml, /Open in Breakdown/);
 });
 
 test('formatter and escaped data work across every focused view and missing measurements', () => {

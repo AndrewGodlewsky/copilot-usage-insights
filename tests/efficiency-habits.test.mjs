@@ -9,8 +9,8 @@ import { demoData } from '../scripts/demo-data.mjs';
 const now = new Date(2026, 10, 16), MIN = 60_000;
 // One confirmed prompt. `credits` set means complete, finished work with that many calls.
 let serial = 0;
-const prompt = (sessionId, ms, { day = 5, calls = 0, nano = 0, tokens = 10, human = true, project = 'p', promptId } = {}) => ({
-  sessionId, project, day, provider: true, identity: human, humanDelivery: human, delivery: 'idle',
+const prompt = (sessionId, ms, { day = 5, calls = 0, nano = 0, tokens = 10, human = true, project = 'p', promptId, delivery = 'idle' } = {}) => ({
+  sessionId, project, day, provider: true, identity: human, humanDelivery: human, delivery,
   sample: { ms, promptId: promptId ?? `m${serial++}` },
   charges: Array.from({ length: calls }, () => ({ nano: nano / Math.max(1, calls), tokens })) });
 const run = (prompts, { query = {}, start = 1, end = 10, interactions } = {}) => {
@@ -94,6 +94,36 @@ test('project and session filters apply, and a model filter hides the measures',
   assert.equal(run(list, { query: { project: 'x' } }).prompts, 2);
   assert.equal(run(list, { query: { session: 't' } }).prompts, 1);
   assert.deepEqual(run(list, { query: { models: ['m'] } }), { reason: 'model-filter' });
+});
+
+test('delivery bins aggregate work by prompt timing and keep ineligible steering honest', () => {
+  const list = [
+    prompt('s', 0, { calls: 2, nano: 2e9, tokens: 100, delivery: 'idle' }),
+    prompt('s', MIN, { delivery: 'steering' }), // shared billing group: eligible === 0
+    prompt('s', 2 * MIN, { calls: 4, nano: 4e9, tokens: 200, delivery: 'queued' }),
+    prompt('s', 3 * MIN, { calls: 1, nano: 1e9, tokens: 50, delivery: 'unknown' }),
+  ];
+  const d = run(list);
+  assert.deepEqual(d.delivery.map(b => [b.label, b.prompts, b.eligible]), [
+    ['Started while idle', 1, 1],
+    ['Steering', 1, 0],
+    ['Queued', 1, 1],
+    ['Unknown delivery', 1, 1],
+  ]);
+  assert.equal(d.delivery[0].medianCredits, 2);
+  assert.equal(d.delivery[1].medianCredits, null);
+  assert.equal(d.delivery[1].averageCredits, null);
+  assert.equal(d.delivery[2].medianCalls, 4);
+  const html = renderHabitsTopic(d, { number });
+  assert.match(html, /How prompt timing relates to work/);
+  assert.match(html, /Started while idle/);
+  assert.match(html, /Steering/);
+  assert.match(html, /0 of 1/);
+  assert.match(html, /Unknown delivery/);
+  assert.match(html, /not prompt quality/);
+  // When there are no unknown-delivery prompts, Unknown delivery row is omitted
+  const knownOnly = run(list.slice(0, 3));
+  assert.doesNotMatch(renderHabitsTopic(knownOnly, { number }), /Unknown delivery/);
 });
 
 test('empty input yields an empty, finite result', () => {

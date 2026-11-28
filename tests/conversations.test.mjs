@@ -31,7 +31,25 @@ test('conversation depth counts distinct sessions and prompts, with descriptive 
   assert.equal(c.medianPrompts, 5.5); assert.equal(c.averagePrompts, 7.5);
   assert.equal(c.workSessions, 6); assert.equal(c.workPrompts, 45); assert.equal(c.modelCalls, 45);
   assert.deepEqual(c.workMatrix, [[1, 2, 3], [0, 0, 0], [0, 0, 0]]);
-  assert.doesNotMatch(JSON.stringify(c), /PRIVATE|s0|p0/);
+  const { examples, ...summary } = c;
+  assert.doesNotMatch(JSON.stringify(summary), /PRIVATE|s0|p0/);
+  assert.doesNotMatch(JSON.stringify(c), /PRIVATE|p0/);
+  assert.ok(examples.length > 0 && examples.every(e => typeof e.sessionId === 'string' && typeof e.name === 'string' && typeof e.project === 'string'));
+});
+
+test('conversation examples carry local session names and single-project scope only', () => {
+  const day = localDay(reviewNow);
+  const a = createConversationAccumulator([], {}, day, day, reviewNow);
+  a.add({ sessionId: 's-one', project: 'ProjA', day, provider: true, identity: true, humanDelivery: true, delivery: 'idle', sample: { ms: reviewNow.getTime() - 1000 }, charges: [{}] }, true);
+  a.add({ sessionId: 's-multi', project: 'ProjA', day, provider: true, identity: true, humanDelivery: true, delivery: 'idle', sample: { ms: reviewNow.getTime() - 500 }, charges: [{}] }, true);
+  a.add({ sessionId: 's-multi', project: 'ProjB', day, provider: true, identity: true, humanDelivery: true, delivery: 'idle', sample: { ms: reviewNow.getTime() - 200 }, charges: [{}] }, true);
+  const res = a.finish(new Map([['s-one', 'Refactor parser'], ['s-multi', 'Cross-repo chat']]));
+  const one = res.examples.find(e => e.sessionId === 's-one');
+  const multi = res.examples.find(e => e.sessionId === 's-multi');
+  assert.equal(one.name, 'Refactor parser');
+  assert.equal(one.project, 'ProjA');
+  assert.equal(multi.name, 'Cross-repo chat');
+  assert.equal(multi.project, '');
 });
 
 test('work grid distinguishes human interaction from calls between prompts without treating calls as tasks', () => {

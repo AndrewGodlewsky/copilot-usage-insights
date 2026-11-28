@@ -26,7 +26,8 @@ export function renderHabitsTopic(data, { number, credits = number } = {}) {
   if (!data.usable) return section('What your habits show', empty('No conversation in these dates has prompts that can be confirmed as yours with a known time, so these measures are unavailable.')
     + note(data.uncertain ? `${of(data.uncertain, data.conversations)} conversations include a submission that could not be confirmed as a prompt from you, so they are left out. Try a wider date range.` : 'Try a wider date range.'));
 
-  const lengthRows = data.length || [], position = data.position || [], pause = data.pause || [], chars = data.chars || [];
+  const lengthRows = data.length || [], position = data.position || [], pause = data.pause || [], delivery = data.delivery || [], chars = data.chars || [];
+  const deliveryRows = delivery.filter((b, index) => index < 3 || b.prompts > 0);
   let html = `<div class="efficiency-metrics">${metric('Conversations', n(data.usable), data.uncertain ? `${n(data.uncertain)} more left out: a submission could not be confirmed as yours` : 'With confirmed prompts in these dates')}`
     + `${metric('Prompts', n(data.prompts), `${of(data.eligible, data.prompts)} have complete work figures`)}`
     + `${metric('Credits recorded', data.eligible ? cr(data.credits) : 'Unavailable', 'Only for prompts with complete work figures')}</div>`;
@@ -41,6 +42,11 @@ export function renderHabitsTopic(data, { number, credits = number } = {}) {
 
   html += section('Pauses before a prompt', table(workHeaders('Time since your previous prompt'), pause.map(workRow))
     + note(`${n(data.firstPrompts)} first prompts have no earlier prompt and are not listed. The pause is measured from your previous prompt, so it includes the time the agent spent working on it. A prompt whose work is shared with another prompt, or cannot be linked to it reliably, has no work figures. The Cache reuse view, under Where did the tokens go, shows cache reads by pause.`));
+
+  if (deliveryRows.some(b => b.prompts > 0)) {
+    html += section('How prompt timing relates to work', table(workHeaders('How your prompt arrived'), deliveryRows.map(workRow))
+      + note('Delivery describes when your message arrived, not prompt quality. Steering prompts often share a billing group with the prompt already running, so they are counted here without separate work figures.'));
+  }
 
   html += section('Prompt length', data.measuredChars
     ? table(workHeaders('Length of your prompt'), chars.map(workRow))

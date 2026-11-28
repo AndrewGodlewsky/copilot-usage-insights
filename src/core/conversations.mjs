@@ -22,7 +22,7 @@ function conversationWindow(start, end, examples) {
     distribution: bins(['1 call', '2–5 calls', '6–15 calls', '16+ calls']) };
   let userStops = 0;
   const session = id => {
-    if (!sessions.has(id)) sessions.set(id, { active: false, prompts: 0, deliveryPrompts: 0, unconfirmedDelivery: 0, uncertain: 0, complete: 0, calls: 0, days: new Set(), prior: false,
+    if (!sessions.has(id)) sessions.set(id, { id, active: false, prompts: 0, deliveryPrompts: 0, unconfirmedDelivery: 0, uncertain: 0, complete: 0, calls: 0, days: new Set(), projects: new Set(), prior: false,
       delivery: { idle: 0, steering: 0, queued: 0, unknown: 0 }, events: [], eventCount: 0, latest: -Infinity, workBins: [0, 0, 0, 0] });
     return sessions.get(id);
   };
@@ -32,11 +32,19 @@ function conversationWindow(start, end, examples) {
     if (s.events.length < 16) s.events.push({ ms, ...event });
   };
   return {
-    record(record, day) { if (day >= start && day <= end) session(record.sessionId).active = true; },
+    record(record, day) {
+      if (day >= start && day <= end) {
+        const s = session(record.sessionId);
+        s.active = true;
+        if (record.project) s.projects.add(record.project);
+      }
+    },
     stop(item) {
       if (item.day < start || item.day > end) return;
       userStops++; stopSessions.add(item.sessionId);
-      remember(session(item.sessionId), item.ms, { kind: 'stop' });
+      const s = session(item.sessionId);
+      if (item.project) s.projects.add(item.project);
+      remember(s, item.ms, { kind: 'stop' });
     },
     add(prompt, complete) {
       if (prompt.day > end) return;
@@ -44,6 +52,7 @@ function conversationWindow(start, end, examples) {
       const s = session(prompt.sessionId), human = confirmedHuman(prompt);
       if (prompt.day < start) { if (human) s.prior = true; return; }
       s.active = true;
+      if (prompt.project) s.projects.add(prompt.project);
       if (prompt.humanDelivery) {
         s.deliveryPrompts++; s.delivery[['idle', 'steering', 'queued'].includes(prompt.delivery) ? prompt.delivery : 'unknown']++;
       } else s.unconfirmedDelivery++;
@@ -58,7 +67,7 @@ function conversationWindow(start, end, examples) {
         callCounts.set(calls, (callCounts.get(calls) || 0) + 1);
       }
     },
-    finish() {
+    finish(labels) {
       const result = { windowed: Number.isFinite(start), sessions: 0, countedSessions: 0, uncertainSessions: 0, withoutPrompts: 0, prompts: 0,
         medianPrompts: null, averagePrompts: null, multiDaySessions: 0, priorSessions: 0,
         distribution: bins(['1 prompt', '2–5 prompts', '6–15 prompts', '16+ prompts']),
@@ -109,7 +118,8 @@ function conversationWindow(start, end, examples) {
       if (delivery.classifiedSessions) delivery.averageSteering = classifiedSteering / delivery.classifiedSessions;
       result.steering.topSessions = steering.length; result.steering.topMessages = steering.reduce((a, b) => a + b, 0);
       if (examples) {
-        result.examples = recent.map((s, index) => ({ index, prompts: s.prompts, days: s.days.size, uncertain: !!s.uncertain,
+        result.examples = recent.map((s, index) => ({ index, sessionId: s.id, name: labels?.get(s.id) || 'Unnamed conversation',
+          project: s.projects.size === 1 ? [...s.projects][0] : '', prompts: s.prompts, days: s.days.size, uncertain: !!s.uncertain,
           delivery: { ...s.delivery }, workBins: s.workBins.slice(), events: s.events.slice().sort((a, b) => a.ms - b.ms), eventsOmitted: s.eventCount - s.events.length }));
         result.examplesOmitted = exampleCount - recent.length;
       }
@@ -130,8 +140,8 @@ export function createConversationAccumulator(records, query, start, end, now) {
   return {
     add(prompt, complete) { if (prompt.provider && matches(prompt)) { current.add(prompt, complete); previous?.add(prompt, complete); } },
     stop(item) { if (matches(item)) { current.stop(item); previous?.stop(item); } },
-    finish() {
-      const result = current.finish();
+    finish(labels) {
+      const result = current.finish(labels);
       result.comparison = previous ? { startDate: dayKey(previousStart), endDate: dayKey(start - 1), previous: previous.finish() } : null;
       return result;
     },
