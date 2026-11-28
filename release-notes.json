@@ -1,5 +1,9 @@
 [
   {
+    "version": "2.3.0",
+    "summary": "Expanded AI review cards now put the Close button cleanly in the top-right corner, lead with a plain-language What this means summary beside an accented Try this and How to tell if it helped action box, display numbers as compact scannable chips, and tuck detailed caveats into a collapsible notes drawer."
+  },
+  {
     "version": "2.2.0",
     "summary": "AI review removes the verbose model-reference block from the header and overhauls insight cards with equal row heights, cleaner rounded percentages, compact zero-safe comparison bars, readable status and confidence labels, observation previews, and a clearer expanded detail layout."
   },

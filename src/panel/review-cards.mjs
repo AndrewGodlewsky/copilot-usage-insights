@@ -91,23 +91,52 @@ export function renderReviewCards(result, { number = n => Number(n).toLocaleStri
     return `<span class="review-trend"><svg viewBox="0 0 220 56" aria-hidden="true" focusable="false">${areaPoints ? `<polygon class="review-trend-area" points="${areaPoints}"/>` : ''}${coords.length > 1 ? `<polyline class="review-trend-line" points="${points}" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>` : ''}${coords.length ? `<circle class="review-trend-dot" cx="${coords[0][0]}" cy="${coords[0][1]}" r="3"/><circle class="review-trend-dot is-end" cx="${coords.at(-1)[0]}" cy="${coords.at(-1)[1]}" r="3.5"/>` : ''}</svg><span class="review-trend-endpoints"><span>${esc(first.display)}</span><span class="review-trend-arrow" aria-hidden="true">→</span><span class="sr-only"> to </span><span>${esc(last.display)}</span>${endUnit ? `<span class="review-unit">${esc(endUnit)}</span>` : ''}</span></span>`;
   };
 
-  const measurement = e => `<div class="review-evidence"><div class="review-evidence-head"><strong>${esc(e.label)}</strong><span class="review-evidence-samples">${esc(number(e.samples))} of ${esc(number(e.total))} samples</span></div><p class="review-evidence-values">${e.template === 'statistic' || e.template === 'share' ? esc(formatEvidenceText(e.value, e.unit, formatters)) : e.values.map(p => `${esc(p.label)}: ${esc(formatEvidenceText(p.value, e.unit, formatters))}`).join(' · ')}</p>${e.limitation ? `<p class="footnote">${esc(e.limitation)}</p>` : ''}</div>`;
+  const measurement = e => {
+    const sampleNote = Number.isFinite(e.samples) && Number.isFinite(e.total) ? `${number(e.samples)} of ${number(e.total)} samples` : '';
+    let body;
+    if (e.template === 'statistic' || e.template === 'share') {
+      body = `<p class="review-evidence-stat">${esc(formatEvidenceText(e.value, e.unit, formatters))}</p>`;
+    } else {
+      const unitLabel = e.unit?.startsWith('%') ? e.unit.slice(1).trim() : (e.unit || '');
+      const chips = (e.values || []).map(p => {
+        const raw = Number(p.value) || 0;
+        const { display } = formatMetric(p.value, e.unit, formatters);
+        return `<span class="review-chip${raw === 0 ? ' is-zero' : ''}"><span class="review-chip-label">${esc(p.label)}</span><b class="review-chip-value">${esc(display)}</b></span>`;
+      }).join('');
+      body = `<div class="review-metric-chips">${chips}${unitLabel ? `<span class="review-chip-unit">${esc(unitLabel)}</span>` : ''}</div>`;
+    }
+    return `<div class="review-evidence"><div class="review-evidence-head"><strong>${esc(e.label)}</strong>${sampleNote ? `<span class="review-evidence-samples">${esc(sampleNote)}</span>` : ''}</div>${body}</div>`;
+  };
 
   const chevron = `<svg class="review-expand-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.5 6.25 8 9.75l3.5-3.5"/></svg>`;
+  const closeIcon = `<svg class="review-close-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.25 4.25 11.75 11.75M11.75 4.25 4.25 11.75"/></svg>`;
 
   return `<div class="review-card-grid">${result.cards.map(card => {
     const assessment = assessments[card.assessment] || assessments.neutral;
     const e = card.evidence || {};
+    const allEvidence = [e, ...(card.supportingEvidence || [])].filter(Boolean);
     const sampleText = Number.isFinite(e.samples) && Number.isFinite(e.total)
       ? (e.samples === e.total ? `${number(e.samples)} samples` : `${number(e.samples)}/${number(e.total)} samples`)
       : '';
-    const detailItems = [
-      ['Confidence', (card.confidenceReason || '') + (card.confidenceLimited ? ' Confidence is limited by sparse or incomplete recorded evidence.' : '')],
-      ['Other explanations', card.alternatives],
-      ['Compare afterward', card.compare],
-      ['What is missing', card.missing],
-    ].filter(([, text]) => text);
-    return `<details class="review-insight" data-assessment="${assessment.tone}"><summary><span class="review-card-top"><span class="review-assessment" data-assessment="${assessment.tone}" aria-label="${assessment.label}" title="${assessment.label}"><span class="review-assessment-dot" aria-hidden="true"></span><span>${assessment.label}</span></span>${sampleText ? `<span class="review-sample-meta">${esc(sampleText)}</span>` : ''}</span><span class="review-card-heading"><span class="review-card-title">${esc(card.title)}</span></span><span class="review-card-visual">${graphic(e, card.title)}</span>${card.observation ? `<span class="review-card-preview">${esc(card.observation)}</span>` : ''}<span class="review-confidence">${confidenceDial(card.confidence)}<span class="review-expand" aria-hidden="true"><span class="review-expand-more">Details</span><span class="review-expand-less">Hide</span>${chevron}</span></span></summary><div class="review-card-detail"><p class="review-card-observation">${esc(card.observation)}</p>${card.experiment ? `<div class="review-experiment"><strong>Try this</strong><p>${esc(card.experiment)}</p></div>` : ''}<div class="review-evidence-list">${measurement(e)}${(card.supportingEvidence || []).map(measurement).join('')}</div><dl class="review-detail-grid">${detailItems.map(([label, text]) => `<div><dt>${esc(label)}</dt><dd>${esc(text)}</dd></div>`).join('')}</dl></div></details>`;
+    const safeConfidence = ['low', 'medium', 'high'].includes(card.confidence) ? card.confidence : 'low';
+    const confidenceTitle = `${safeConfidence[0].toUpperCase() + safeConfidence.slice(1)} confidence`;
+    const confidenceText = (card.confidenceReason || '') + (card.confidenceLimited ? ' Confidence is limited by sparse or incomplete recorded evidence.' : '');
+
+    // Deduplicate limitation notes so repeated caveats aren't shown multiple times.
+    const seenNotes = new Set();
+    const limitationNotes = [];
+    for (const item of allEvidence) {
+      const note = item.limitation?.trim();
+      if (!note || seenNotes.has(note)) continue;
+      seenNotes.add(note);
+      limitationNotes.push({ label: item.label, note });
+    }
+    const caveatCount = limitationNotes.length + (card.missing ? 1 : 0);
+    const caveatHint = [confidenceTitle, caveatCount ? `${caveatCount} ${caveatCount === 1 ? 'note' : 'notes'}` : ''].filter(Boolean).join(' · ');
+
+    const caveatsSection = (confidenceText || card.missing || limitationNotes.length) ? `<details class="review-caveats"><summary><span class="review-caveats-title">Confidence &amp; measurement notes</span><span class="review-caveats-meta">${esc(caveatHint)}${chevron}</span></summary><div class="review-caveats-body"><dl class="review-detail-grid">${confidenceText ? `<div><dt>Why ${esc(safeConfidence)} confidence</dt><dd>${esc(confidenceText)}</dd></div>` : ''}${card.missing ? `<div><dt>What isn't measured</dt><dd>${esc(card.missing)}</dd></div>` : ''}</dl>${limitationNotes.length ? `<div class="review-limitations"><span class="review-sub-label">Sample &amp; scope notes</span><ul>${limitationNotes.map(({ label, note }) => `<li><strong>${esc(label)}:</strong> ${esc(note)}</li>`).join('')}</ul></div>` : ''}</div></details>` : '';
+
+    return `<details class="review-insight" data-assessment="${assessment.tone}"><summary><span class="review-card-top"><span class="review-card-badges"><span class="review-assessment" data-assessment="${assessment.tone}" aria-label="${assessment.label}" title="${assessment.label}"><span class="review-assessment-dot" aria-hidden="true"></span><span>${assessment.label}</span></span><span class="review-open-confidence">${esc(confidenceTitle)}</span></span><span class="review-card-top-right">${sampleText ? `<span class="review-sample-meta">${esc(sampleText)}</span>` : ''}<span class="review-close-control" aria-hidden="true"><span>Close</span>${closeIcon}</span></span></span><span class="review-card-heading"><span class="review-card-title">${esc(card.title)}</span></span><span class="review-card-visual">${graphic(e, card.title)}</span>${card.observation ? `<span class="review-card-preview">${esc(card.observation)}</span>` : ''}<span class="review-confidence">${confidenceDial(card.confidence)}<span class="review-expand" aria-hidden="true"><span>Details</span>${chevron}</span></span></summary><div class="review-card-detail"><div class="review-detail-lead"><div class="review-takeaway"><span class="review-section-label">What this means</span><p class="review-card-observation">${esc(card.observation)}</p>${card.alternatives ? `<p class="review-alternatives"><strong>Other possible reasons:</strong> ${esc(card.alternatives)}</p>` : ''}</div>${card.experiment || card.compare ? `<div class="review-action-box" data-assessment="${assessment.tone}">${card.experiment ? `<div class="review-experiment"><span class="review-section-label">Try this</span><p>${esc(card.experiment)}</p></div>` : ''}${card.compare ? `<div class="review-compare"><span class="review-sub-label">How to tell if it helped</span><p>${esc(card.compare)}</p></div>` : ''}</div>` : ''}</div><div class="review-metrics-section"><span class="review-section-label">Numbers behind this insight</span><div class="review-evidence-list">${allEvidence.map(measurement).join('')}</div></div>${caveatsSection}</div></details>`;
   }).join('')}</div>`;
 }
 

@@ -879,9 +879,9 @@ function renderReviewResult(force = false) {
   $('review-result-note').textContent = [stale ? 'This review uses a previous date range. Create another review to update it.' : '', followUpNotice].filter(Boolean).join(' ');
   $('review-result-note').hidden = !$('review-result-note').textContent;
   if (force || reviewResultFormat !== state.simplifyNumbers) {
-    const open = [...$('review-answer').querySelectorAll('details[open]')].map(node => [...node.parentElement.children].indexOf(node));
+    const open = [...$('review-answer').querySelectorAll('details.review-insight[open]')].map(node => [...node.parentElement.children].indexOf(node));
     $('review-answer').innerHTML = renderReviewCards(reviewResult, { number, credits: creditNumber });
-    const cards = $('review-answer').querySelectorAll('details');
+    const cards = $('review-answer').querySelectorAll('details.review-insight');
     for (const index of open) if (cards[index]) cards[index].open = true;
     reviewResultFormat = state.simplifyNumbers;
   }

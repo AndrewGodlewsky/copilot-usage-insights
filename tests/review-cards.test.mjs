@@ -78,3 +78,43 @@ test('comparison cards render zero values cleanly without stub bars and highligh
   assert.match(html, /style="width:100%"/);
   assert.match(html, /review-card-preview/);
 });
+
+test('expanded card puts close control in top corner, leads with meaning and action, and tucks caveats away', () => {
+  const html = renderReviewCards({
+    cards: [{
+      ...card,
+      assessment: 'positive',
+      confidence: 'high',
+      evidence: {
+        template: 'comparison',
+        label: 'How prompts reach the agent',
+        unit: 'prompts',
+        values: [{ label: 'Started while idle', value: 35 }, { label: 'Steering', value: 0 }],
+        samples: 37,
+        total: 37,
+        limitation: 'Confirmed human delivery <only>.',
+      },
+      supportingEvidence: [{
+        template: 'share',
+        label: 'Sessions containing steering',
+        unit: '% of classified sessions',
+        value: 0,
+        samples: 8,
+        total: 9,
+        limitation: 'Confirmed human delivery <only>.',
+      }],
+    }],
+  });
+  assert.match(html, /review-card-top-right[^>]*>.*review-close-control/);
+  assert.match(html, /What this means/);
+  assert.match(html, /Try this/);
+  assert.match(html, /How to tell if it helped/);
+  assert.match(html, /Numbers behind this insight/);
+  assert.match(html, /review-chip is-zero/);
+  assert.match(html, /<details class="review-caveats">/);
+  assert.match(html, /Confidence &amp; measurement notes/);
+  assert.match(html, /Confirmed human delivery &lt;only&gt;\./);
+  // Duplicate limitation strings across metrics are deduplicated to one entry.
+  assert.equal((html.match(/Confirmed human delivery &lt;only&gt;\./g) || []).length, 1);
+  assert.doesNotMatch(html, /<only>/);
+});
