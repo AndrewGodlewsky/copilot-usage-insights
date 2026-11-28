@@ -143,17 +143,17 @@ test('projects, models and days each list at most five rows with their own charg
   const daily = [{ day: '2026-06-01', credits: 0, requests: 0 }, { day: '2026-06-02', credits: 6, requests: 5, partialCredits: 1 }, { day: '2026-06-03', credits: 2, requests: 2 }];
   const html = render({ sessions: even(6), projects, models, daily }), shown = text(html);
   assert.match(shown, /Where else recorded credits concentrate/);
-  assert.match(shown, /Projects Largest 5 of 8 with charges Repo 0 8 /);
+  assert.match(shown, /Projects Largest 5 of 8 with charges Repo 0 : open in Breakdown 8 /);
   assert.equal((html.match(/class="token-bar-row"/g) || []).length, 9);
   assert.doesNotMatch(html, /Repo [567]|2026-06-01|NaN|undefined|Infinity/);
-  assert.match(html, /<span class="token-bar-label">Repo 0<\/span><span class="token-bar-track" aria-hidden="true"><i style="width:22\.2%"><\/i><\/span>/, 'the bar is the share of recorded credits');
+  assert.match(html, /<span class="token-bar-label"><button class="model-toggle token-bar-button" data-driver-project="Repo 0" title="Open in Breakdown">Repo 0<span class="sr-only">: open in Breakdown<\/span><\/button><\/span><span class="token-bar-track" aria-hidden="true"><i style="width:22\.2%"><\/i><\/span>/, 'the bar is the share of recorded credits');
   // Two models tie on credits; only the one with an incomplete charge is marked.
-  assert.match(html, /<span class="token-bar-label">Model A<\/span><span[^>]*><i[^>]*><\/i><\/span><span class="token-bar-value">5 \*<\/span><span class="token-bar-detail">50% of recorded credits · 10 calls<\/span>/);
-  assert.match(html, /<span class="token-bar-label">Model B<\/span><span[^>]*><i[^>]*><\/i><\/span><span class="token-bar-value">5<\/span><span class="token-bar-detail">50% of recorded credits · 4 calls<\/span>/);
+  assert.match(html, /<span class="token-bar-label"><button class="model-toggle token-bar-button" data-driver-model="Model A" title="Open in Breakdown">Model A<span class="sr-only">: open in Breakdown<\/span><\/button><\/span><span[^>]*><i[^>]*><\/i><\/span><span class="token-bar-value">5 \*<\/span><span class="token-bar-detail">50% of recorded credits · 10 calls<\/span>/);
+  assert.match(html, /<span class="token-bar-label"><button class="model-toggle token-bar-button" data-driver-model="Model B" title="Open in Breakdown">Model B<span class="sr-only">: open in Breakdown<\/span><\/button><\/span><span[^>]*><i[^>]*><\/i><\/span><span class="token-bar-value">5<\/span><span class="token-bar-detail">50% of recorded credits · 4 calls<\/span>/);
   assert.match(shown, /Models All 2 with charges; 1 with no recorded charge is not ranked/);
   assert.doesNotMatch(html, /Model C/);
   assert.match(shown, /Days All 2 with charges 2026-06-02 6 \* 75% of recorded credits · 5 calls 2026-06-03 2 25% of recorded credits · 2 calls/);
-  assert.match(text(render({ sessions: even(6), models: [{ name: 'Solo', credits: 2, requests: 1 }] })), /Models The only one with charges Solo 2 100% of recorded credits · 1 call /);
+  assert.match(text(render({ sessions: even(6), models: [{ name: 'Solo', credits: 2, requests: 1 }] })), /Models The only one with charges Solo : open in Breakdown 2 100% of recorded credits · 1 call /);
   assert.match(shown, /The same charges appear in all three lists; do not add them\./);
   const partial = render({ sessions: even(6), models, totals: { missingCredits: 1 } });
   assert.match(partial, /50% \* of recorded credits · 4 calls/, 'shares are marked when any charge in the range is incomplete');
@@ -167,8 +167,8 @@ test('names are escaped everywhere, including the Breakdown button', () => {
   const sessions = [{ ...group(hostile, 9, 4, 1), id: `"><img src=x>`, project: hostile }, ...even(5)];
   const html = render({ sessions, projects: [{ name: hostile, credits: 9, requests: 4 }], models: [{ name: hostile, credits: 9, requests: 4 }], daily: [{ day: hostile, credits: 9, requests: 4 }] });
   assert.doesNotMatch(html, /<img|onerror="/);
-  // Ranking row: name, project, button label twice and its project attribute. Card: name and project. Then one label per list.
-  assert.equal((html.match(/&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/g) || []).length, 10);
+  // Ranking row: name, project, button label twice and its project attribute. Card: name and project. Concentration lists: project (attr + text), model (attr + text), day.
+  assert.equal((html.match(/&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/g) || []).length, 12);
   const [first, ...others] = buttons(html);
   assert.deepEqual(first, { session: '"><img src=x>', project: hostile, label: `${hostile}, ${hostile}` });
   assert.equal(others.length, 4);
@@ -266,4 +266,29 @@ test('a spend-driver row opens its session in Breakdown and leaves the model fil
   assert.equal(requests.length, before);
   get('token-detail-panel').onclick({ target: { closest: () => ({ dataset: { tokenContext: 'true' } }) } });
   assert.equal(document.activeElement, get('efficiency-context-read'));
+});
+
+test('driver cards show user prompts and credits per 1M tokens, and project/model concentration bars open Breakdown', async () => {
+  const sessions = [
+    group('Rich', 40, 20, 2, { userPrompts: 4, uncertainPrompts: 0, creditsPerMillionTokens: 12.5, creditTokenRequests: 20 }),
+    group('Uncertain', 20, 10, 2, { userPrompts: 2, uncertainPrompts: 1, creditsPerMillionTokens: 8, creditTokenRequests: 5 }),
+    ...even(5),
+  ];
+  const [rich, uncertain] = cards(render({ sessions }));
+  assert.match(rich, /User prompts 4 5 calls \/ prompt/);
+  assert.match(rich, /Credits \/ 1M tokens 12\.5 20 of 20 model calls with complete charge &amp; tokens/);
+  assert.match(uncertain, /User prompts 2 \* 1 uncertain/);
+  assert.match(uncertain, /Credits \/ 1M tokens 8 \* 5 of 10 model calls with complete charge &amp; tokens/);
+
+  const records = history(), report = { ...buildReport(records, {}, now), sources: [], coverage: {} };
+  const { get, requests } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  get('token-topic-stops').onclick({ target: { closest: () => ({ dataset: { tokenStop: 'drivers' } }) } });
+  await get('token-detail-panel').onclick({ target: { closest: selector => selector === '[data-driver-project]' ? { dataset: { driverProject: 'P & "Q" <one>' } } : null } });
+  assert.equal(get('breakdown-view').hidden, false);
+  assert.equal(requests.at(-1).input.project, 'P & "Q" <one>');
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  await get('token-detail-panel').onclick({ target: { closest: selector => selector === '[data-driver-model]' ? { dataset: { driverModel: 'Model A' } } : null } });
+  assert.equal(get('breakdown-view').hidden, false);
+  assert.deepEqual(requests.at(-1).input.models, ['Model A']);
 });

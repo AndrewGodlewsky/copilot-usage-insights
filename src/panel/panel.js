@@ -1227,6 +1227,10 @@ $('token-detail-panel').onclick = event => {
   // A spend-driver row opens its session in Breakdown. The model filter stays as the user set it.
   const row = event.target.closest('[data-token-session]')?.dataset;
   if (row?.tokenSession !== undefined && row.tokenProject !== undefined) return inspectEfficiency({ project: row.tokenProject, session: row.tokenSession });
+  const driverProject = event.target.closest('[data-driver-project]')?.dataset.driverProject;
+  if (driverProject !== undefined) return inspectEfficiency({ project: driverProject });
+  const driverModel = event.target.closest('[data-driver-model]')?.dataset.driverModel;
+  if (driverModel !== undefined) return inspectEfficiency({ model: driverModel });
   if (event.target.closest('[data-token-context]')) return openTokenContext();
   // A heaviest-prompt row opens its conversation in Breakdown, keeping the current model filter.
   const prompt = event.target.closest('[data-prompt-session]')?.dataset;

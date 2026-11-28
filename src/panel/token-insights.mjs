@@ -19,7 +19,10 @@ export function barList(rows, { format = String, total } = {}) {
   const drawn = (rows || []).filter(row => Number.isFinite(row.value) && row.value >= 0);
   const scale = total > 0 ? total : Math.max(0, ...drawn.map(row => row.value));
   if (!drawn.length || !scale) return '';
-  return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${esc(row.label)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
+  const labelHtml = row => row.action
+    ? `<button class="model-toggle token-bar-button" ${row.action.attr}="${esc(row.action.value)}" title="${esc(row.action.title)}">${esc(row.label)}<span class="sr-only">: ${esc(row.action.sr)}</span></button>`
+    : esc(row.label);
+  return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${labelHtml(row)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
 }
 
 // Render from the report and the explicitly requested context snapshot only.
@@ -926,10 +929,16 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       const inputCalls = valid(r.requests) && valid(missing.inputTotal) ? r.requests - missing.inputTotal : null;
       const splitCalls = valid(r.requests) && valid(missing.cacheRead) && missing.cacheRead === missing.input && missing.cacheRead === missing.cacheWrite ? r.requests - missing.cacheRead : null;
       const splitInput = splitCalls > 0 ? r.input + r.cacheRead + r.cacheWrite : null;
+      const promptCount = valid(r.userPrompts) ? r.userPrompts : null;
+      const callsPerPrompt = promptCount > 0 && valid(r.requests) && !(r.uncertainPrompts > 0) ? `${number(r.requests / promptCount, { maximumFractionDigits: 1 })} calls / prompt` : r.uncertainPrompts > 0 ? `${number(r.uncertainPrompts)} uncertain` : '';
+      const creditRate = valid(r.creditsPerMillionTokens) ? r.creditsPerMillionTokens : null;
+      const rateCalls = valid(r.creditTokenRequests) ? r.creditTokenRequests : null;
       return `<li><div class="token-driver-head"><strong>${esc(r.name)}</strong><span>${esc(r.project ?? 'Project unavailable')} · ${esc(usageValue(r, 'credits', credits, showCoverage))} AI credits</span></div>`
         + (compared ? `<p>${esc(compared[0].toUpperCase() + compared.slice(1))}.${larger ? ` <span class="token-driver-tag">${esc(larger)}</span>` : ''}</p>` : '')
         + `<dl class="token-driver-stats">${stat('Calls', number(r.requests), typicalCalls != null && `Typical: ${number(typicalCalls)}`)
           + stat('Credits per call', coverageValue(r.averageCredits, r.completeCreditRequests < r.requests, credits, showCoverage), valid(r.completeCreditRequests) && `${coverage(r.completeCreditRequests, r.requests)} with a complete charge`, typicalRate != null && `Typical: ${credits(typicalRate)}`)
+          + stat('User prompts', promptCount == null ? 'Unavailable' : coverageValue(promptCount, r.uncertainPrompts > 0, number, showCoverage), callsPerPrompt)
+          + stat('Credits / 1M tokens', creditRate == null ? 'Unavailable' : coverageValue(creditRate, rateCalls != null && rateCalls < r.requests, credits, showCoverage), rateCalls != null && `${coverage(rateCalls, r.requests)} with complete charge & tokens`)
           + stat('Input per call', measured(inputCalls > 0 && valid(r.inputTotal) ? Math.round(r.inputTotal / inputCalls) : null, inputCalls, r.requests), inputCalls != null && `${coverage(inputCalls, r.requests)} with an input count`)
           + stat('Cache-read share', measured(share(r.cacheRead, splitInput), splitCalls, r.requests, percent), splitCalls != null && `${coverage(splitCalls, r.requests)} with a cache split`)}</dl></li>`;
     };
@@ -937,17 +946,19 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
     const ranking = `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Session', 'Project', 'Calls', 'AI credits', 'Recorded share'].map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span>${opener(r)}</td>${[r.project ?? 'Unavailable', number(r.requests), usageValue(r, 'credits', credits, showCoverage), coverageValue(share(r.credits, total), incomplete, percent, showCoverage)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
     // Where else recorded credits concentrate. Each list is ranked and shared within its own recorded rows.
     const ranked = source => (source || []).filter(r => valid(r.credits)).sort((a, b) => b.credits - a.credits || String(a.name ?? a.day).localeCompare(String(b.name ?? b.day)));
-    const spread = (title, source) => {
+    const spread = (title, source, actionAttr) => {
       const list = ranked(source), sum = list.reduce((n, r) => n + r.credits, 0), shown = list.slice(0, 5), left = (source || []).length - list.length;
       const scope = list.length > shown.length ? `Largest ${number(shown.length)} of ${number(list.length)} with charges` : list.length === 1 ? 'The only one with charges' : `All ${number(list.length)} with charges`;
       // barList formats each drawn row once, in order, so the row's own charge coverage can be marked.
       let next = 0;
-      const drawn = barList(shown.map(r => ({ label: r.name ?? r.day, value: r.credits, detail: `${coverageValue(share(r.credits, sum), incomplete, percent, showCoverage)} of recorded credits${valid(r.requests) ? ` · ${number(r.requests)} ${r.requests === 1 ? 'call' : 'calls'}` : ''}` })),
+      const drawn = barList(shown.map(r => ({ label: r.name ?? r.day, value: r.credits,
+        ...(actionAttr && r.name ? { action: { attr: actionAttr, value: r.name, title: 'Open in Breakdown', sr: 'open in Breakdown' } } : {}),
+        detail: `${coverageValue(share(r.credits, sum), incomplete, percent, showCoverage)} of recorded credits${valid(r.requests) ? ` · ${number(r.requests)} ${r.requests === 1 ? 'call' : 'calls'}` : ''}` })),
         { total: sum, format: () => usageValue(shown[next++], 'credits', credits, showCoverage) });
       return drawn && `<div><h4>${esc(title)}</h4><p class="token-driver-sub">${esc(`${scope}${left > 0 ? `; ${number(left)} with no recorded charge ${left === 1 ? 'is' : 'are'} not ranked` : ''}`)}</p>${drawn}</div>`;
     };
     const activeDays = (report.daily || []).filter(r => r.requests > 0), days = ranked(activeDays);
-    const where = spread('Projects', report.projects) + spread('Models', report.models) + spread('Days', activeDays);
+    const where = spread('Projects', report.projects, 'data-driver-project') + spread('Models', report.models, 'data-driver-model') + spread('Days', activeDays);
     // A day stands out when it holds a fifth of recorded credits and three times a typical day with usage.
     const dayShare = share(days[0]?.credits, days.reduce((sum, r) => sum + r.credits, 0)), dayTimes = days.length >= 5 ? multiple(days[0].credits, middle(days.map(r => r.credits))) : null;
     const lookAtOne = 'Start with a high-spend session in Breakdown. Compare its model mix, calls, and context against a similar task before changing models or workflow.';
