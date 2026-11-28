@@ -79,8 +79,12 @@ See [development and distribution](docs/guide/development.md) for releases and [
 
 This project is derived from [Etherll/orca-usage-insights](https://github.com/Etherll/orca-usage-insights). Credit for the original Usage Insights project belongs to Etherll. This repository maintains the GitHub Copilot adaptation and subsequent changes.
 
-The project uses the [MIT License](LICENSE), retaining the original `Copyright (c) 2026 Etherll` notice and the complete license text. Keep these notices with redistributed copies or substantial portions of the software. Marketplace installations include the root license, the local installer copies it, and the generated standalone dashboard embeds it in an HTML comment.
+The project uses the full, unmodified [MIT License](LICENSE), retaining the original `Copyright (c) 2026 Etherll` notice and the complete license text. Keep these notices with redistributed copies or substantial portions of the software. Marketplace installations include the root license, the local installer copies it, and the generated standalone dashboard embeds it in an HTML comment. Third-party components and data retain their respective licenses described below.
+
+Users are responsible for their use of the software and any associated Copilot subscriptions, AI credits, API charges, or other third-party costs. The software is provided under the MIT License's warranty and liability disclaimers; third-party services remain subject to their own terms and fees.
 
 The bundled [js-yaml](https://github.com/nodeca/js-yaml) parser retains its separate [MIT license and copyright notice](src/vendor/js-yaml/LICENSE); its [vendor README](src/vendor/js-yaml/README.md) records the package source.
 
 The AI Review SDK adapter and accounting writer are adapted from [AndrewGodlewsky/copilot-enhance-prompt](https://github.com/AndrewGodlewsky/copilot-enhance-prompt), with its [MIT notice](licenses/enhance-prompt-LICENSE) retained in marketplace and local installations.
+
+Selected benchmark data is adapted from [Aider](https://github.com/Aider-AI/aider) under Apache License 2.0. Its [full license, attribution, and modification notice](licenses/aider-Apache-2.0.txt) are retained in marketplace and local installations and embedded in the standalone dashboard. Inclusion does not imply Aider's endorsement.
