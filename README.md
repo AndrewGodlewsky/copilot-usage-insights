@@ -4,7 +4,36 @@ A local usage dashboard for the **GitHub Copilot desktop app**. Explore recorded
 
 Forked from [Orca Usage Insights](https://github.com/Etherll/orca-usage-insights) by [Etherll](https://github.com/Etherll). The original MIT license and copyright notice are preserved.
 
-**Reviewing the repository?** Start with the [reviewer’s guide](docs/reviewing.md) for a demo, the architecture, source map, checks, and decisions worth discussing. The [documentation index](docs/README.md) links the complete user and maintainer guides.
+![Usage dashboard showing recorded AI credits, daily tokens, token types, and activity charts](images/usage.png)
+
+*Synthetic demo data. Screenshots show selected portions of the dashboard; no personal usage records are included.*
+
+<details>
+<summary>Explore Breakdown and Efficiency screenshots</summary>
+
+**Usage breakdown** — Expand models into projects, sessions, and individual model turns to inspect recorded tokens and credits.
+
+![Usage breakdown with Claude Sonnet expanded into eight synthetic projects](images/breakdown.png)
+
+**Where did the tokens go?** — Explore input and output, cache use, and which models and projects account for the most tokens.
+
+![Token usage overview showing input and output shares, request averages, and the largest contributors](images/token-usage.png)
+
+**Findings** — Review measured patterns alongside small experiments to try and guidance on what to compare afterward.
+
+![Findings showing larger input later in a session and tool-definition overhead, with suggested experiments](images/findings.png)
+
+**Conversation habits** — See how you interact with the agent and how those patterns change across periods.
+
+![Conversation habits showing prompts per conversation and a comparison with the previous period](images/conversation-habits.png)
+
+**Context growth** — Follow input across prompt positions, compare conversation shapes, and inspect cache reuse.
+
+![Context growth chart showing grouped input trends, conversation shapes, and cache reuse](images/context-growth.png)
+
+</details>
+
+**Reviewing the repository?** Start with the [reviewer's guide](docs/reviewing.md) for a demo, the architecture, source map, checks, and decisions worth discussing. The [documentation index](docs/README.md) links the complete user and maintainer guides.
 
 ## Try the synthetic demo
 
@@ -79,8 +108,12 @@ See [development and distribution](docs/guide/development.md) for releases and [
 
 This project is derived from [Etherll/orca-usage-insights](https://github.com/Etherll/orca-usage-insights). Credit for the original Usage Insights project belongs to Etherll. This repository maintains the GitHub Copilot adaptation and subsequent changes.
 
-The project uses the [MIT License](LICENSE), retaining the original `Copyright (c) 2026 Etherll` notice and the complete license text. Keep these notices with redistributed copies or substantial portions of the software. Marketplace installations include the root license, the local installer copies it, and the generated standalone dashboard embeds it in an HTML comment.
+The project uses the full, unmodified [MIT License](LICENSE), retaining the original `Copyright (c) 2026 Etherll` notice and the complete license text. Keep these notices with redistributed copies or substantial portions of the software. Marketplace installations include the root license, the local installer copies it, and the generated standalone dashboard embeds it in an HTML comment. Third-party components and data retain their respective licenses described below.
+
+Users are responsible for their use of the software and any associated Copilot subscriptions, AI credits, API charges, or other third-party costs. The software is provided under the MIT License's warranty and liability disclaimers; third-party services remain subject to their own terms and fees.
 
 The bundled [js-yaml](https://github.com/nodeca/js-yaml) parser retains its separate [MIT license and copyright notice](src/vendor/js-yaml/LICENSE); its [vendor README](src/vendor/js-yaml/README.md) records the package source.
 
 The AI Review SDK adapter and accounting writer are adapted from [AndrewGodlewsky/copilot-enhance-prompt](https://github.com/AndrewGodlewsky/copilot-enhance-prompt), with its [MIT notice](licenses/enhance-prompt-LICENSE) retained in marketplace and local installations.
+
+Selected benchmark data is adapted from [Aider](https://github.com/Aider-AI/aider) under Apache License 2.0. Its [full license, attribution, and modification notice](licenses/aider-Apache-2.0.txt) are retained in marketplace and local installations and embedded in the standalone dashboard. Inclusion does not imply Aider's endorsement.
