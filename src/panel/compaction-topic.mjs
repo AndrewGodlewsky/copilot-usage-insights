@@ -1,5 +1,5 @@
 import { esc } from './charts.mjs';
-import { barList } from './token-insights.mjs';
+import { barList, openSessionButton } from './token-insights.mjs';
 
 // Plain names for the reasons Copilot records for starting a compaction.
 const COMPACTION_REASONS = {
@@ -114,7 +114,7 @@ export function renderCompactionTopic(data, { number, credits = number } = {}, s
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations compacted most',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Compactions</th><th scope="col">Removed from context</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span></td><td><span class="cell-text">${esc(n(r.compactions))}</span></td><td><span class="cell-text">${esc(lowered(r.removed, n))}</span></td></tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Compactions</th><th scope="col">Removed from context</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${openSessionButton(r.name, r.id, r.project)}</td><td><span class="cell-text">${esc(n(r.compactions))}</span></td><td><span class="cell-text">${esc(lowered(r.removed, n))}</span></td></tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, c.sessions)} conversations with a compaction. Removed adds up Copilot's estimate for compactions that record both sizes.`
       + (c.repeatSessions ? ` ${of(c.repeatCompactions, c.compactions)} compactions happened in ${count(c.repeatSessions, 'conversation')} compacted more than once.` : '')));
 

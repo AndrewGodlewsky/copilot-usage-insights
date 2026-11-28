@@ -1,5 +1,5 @@
 import { esc } from './charts.mjs';
-import { barList } from './token-insights.mjs';
+import { barList, openSessionButton, topicJumpButton } from './token-insights.mjs';
 
 // "Repeated exploration": what report.efficiency.repetition counted. A repeat is a tool call with
 // the same recorded name and arguments as an earlier call in the same conversation. Calls are
@@ -89,6 +89,7 @@ export function renderRepetitionTopic(data, { number } = {}) {
         metric('Repeats after a compaction', n(c.after), `${of(c.after, c.repeats)} repeated calls in ${count(c.sessions, 'conversation')} with a compaction`),
         metric('Reading and searching among them', n(c.afterReading), `${n(c.after - c.afterReading)} were other calls`))
       + note(`Counted when a successful compaction of the main conversation is recorded after the earlier identical call started and before the repeat did. ${count(c.sessions, 'conversation')} with compared calls in this view ${c.sessions === 1 ? 'has such a compaction. It holds' : 'have such a compaction. They hold'} ${n(c.repeats)} of the ${count(timed, 'repeated call')} with a usable time. A compaction is one explanation, not a proven cause: the file may have changed, or the call may have been needed again for another reason.`)
+      + `<div class="token-insight-actions">${topicJumpButton('patterns', 'compaction', 'Open Context reduction')}</div>`
     : empty('No conversation with compared calls in this view has a recorded successful compaction, so no repeat can be placed after one.'));
 
   const modelRows = r.byModel || [];
@@ -103,7 +104,7 @@ export function renderRepetitionTopic(data, { number } = {}) {
 
   const rows = r.conversations || [];
   if (rows.length) html += section('Conversations with the most repeated calls',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Conversation', 'Calls compared', 'Repeated calls', 'Share repeated', 'Most times one call was made'].map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td>${[n(row.measured), n(row.repeated), percent(row.share), n(row.times)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Conversation', 'Calls compared', 'Repeated calls', 'Share repeated', 'Most times one call was made'].map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td class="text-cell">${openSessionButton(row.name, row.id, row.project)}</td>${[n(row.measured), n(row.repeated), percent(row.share), n(row.times)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, r.repeatSessions)} conversations with a repeated call, most repeats first.`));
 
   // One observation, chosen in this order: reading repeated across a compaction, reading that

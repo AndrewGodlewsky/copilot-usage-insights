@@ -2111,6 +2111,15 @@ function barList(rows, { format = String, total } = {}) {
     : esc(row.label);
   return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${labelHtml(row)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
 }
+// Shared conversation drill-down button and Efficiency cross-topic jump button.
+function openSessionButton(name, id, project = '') {
+  const label = name || 'Unnamed session';
+  if (!id) return `<span class="cell-text">${esc(label)}</span>`;
+  return `<button class="model-toggle cell-text" data-efficiency-open-session="${esc(id)}" data-efficiency-open-project="${esc(project || '')}" aria-label="${esc(label)}: open this conversation in Breakdown" title="Open this conversation in Breakdown">${esc(label)}</button>`;
+}
+function topicJumpButton(section, topic, label) {
+  return `<button class="model-toggle" data-efficiency-jump-section="${esc(section)}" data-efficiency-jump-topic="${esc(topic)}">${esc(label)}</button>`;
+}
 
 // Render from the report and the explicitly requested context snapshot only.
 // `contextPart` splits the context view for the panel: 'snapshot' reads the snapshot alone and
@@ -2128,7 +2137,7 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
   const coverage = (count, total = s.requests) => `${number(count ?? 0)} of ${number(total ?? 0)} model calls`;
   const partial = (count, total = s.requests) => count < total;
   const measured = (value, count, total = s.requests, format = number) => coverageValue(value, partial(count, total), format, showCoverage);
-  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}>${cell && typeof cell === 'object' && 'html' in cell ? cell.html : `<span class="cell-text">${esc(cell)}</span>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const jump = (topic, label) => `<button data-token-jump="${topic}">${esc(label)}</button>`;
   const inspect = '<button data-token-context="true">Open context inspector</button>';
@@ -2572,9 +2581,12 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
     const conversations = !timing?.measuredCalls ? '' : section('Conversations with the most input not read from cache', listed.length
       ? table(hasSplitDetail ? ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Cache write', 'Uncached', 'Read share']
           : ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'],
-          listed.map(r => hasSplitDetail
-            ? [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
-            : [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), percent(r.share)]))
+          listed.map(r => {
+            const nameCell = { html: openSessionButton(r.name || 'Unnamed session', r.id, r.project) };
+            return hasSplitDetail
+              ? [nameCell, number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
+              : [nameCell, number(r.calls), number(r.input), number(r.notRead), percent(r.share)];
+          }))
         + note(`Showing ${number(listed.length)} of ${number(timing.listedSessions)} conversations with at least ${number(timing.minimumSessionCalls)} measured main-conversation calls. Not read from cache is input minus cache reads, split into cache writes and uncached input. A long conversation can lead this list with ordinary reuse; this is not proof of waste.`)
       : empty(`No conversation has at least ${number(timing.minimumSessionCalls)} measured main-conversation calls in this selection.`));
     const ratio = value => `${number(value, { maximumFractionDigits: 1 })}×`;
@@ -2867,7 +2879,7 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
           r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${covered(r.creditRequests, r.requests)})` : 'Unavailable']))
           + note('Each column averages only the subagent calls that record that measure. Cache read uses complete cache splits; credits include complete recorded charges only.') : '')) : '')
       + (where && sub.requests ? section('Where delegation happens', lead(`${covered(where.delegatedConversations, where.conversations, 'conversations')} with model calls had at least one subagent call.`)
-        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [r.name, number(r.delegated), number(r.requests), percent(r.share)]))
+        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [{ html: openSessionButton(r.name, r.id, r.project) }, number(r.delegated), number(r.requests), percent(r.share)]))
           + note(`The ${exact(top.length)} conversations with the most subagent calls, of ${exact(where.delegatedConversations)} that had any. Together they made ${percent(share(top.reduce((n, r) => n + r.delegated, 0), where.delegatedRequests))} of subagent calls. A conversation here is one recorded session.`) : '')
         + trendRow(series, p => p.requests > 0 ? p.delegated / p.requests * 100 : null, { label: 'Subagent share of model calls', format: percent })
         + (series?.earlier ? note(`The line covers the latest ${exact(series.points.length)} ${series.unit === 'week' ? 'weeks' : 'days'} with calls. ${exact(series.earlier)} earlier ones are left out.`) : '')) : '')
@@ -3187,7 +3199,7 @@ function renderCompactionTopic(data, { number, credits = number } = {}, summary 
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations compacted most',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Compactions</th><th scope="col">Removed from context</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span></td><td><span class="cell-text">${esc(n(r.compactions))}</span></td><td><span class="cell-text">${esc(lowered(r.removed, n))}</span></td></tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Compactions</th><th scope="col">Removed from context</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${openSessionButton(r.name, r.id, r.project)}</td><td><span class="cell-text">${esc(n(r.compactions))}</span></td><td><span class="cell-text">${esc(lowered(r.removed, n))}</span></td></tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, c.sessions)} conversations with a compaction. Removed adds up Copilot's estimate for compactions that record both sizes.`
       + (c.repeatSessions ? ` ${of(c.repeatCompactions, c.compactions)} compactions happened in ${count(c.repeatSessions, 'conversation')} compacted more than once.` : '')));
 
@@ -3319,7 +3331,7 @@ function renderTransitionsTopic(detail, efforts, { number, credits = number } = 
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations with the most changes',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Model changes</th><th scope="col">Effort changes</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span></td><td><span class="cell-text">${esc(n(r.modelChanges))}</span></td><td><span class="cell-text">${esc(n(r.effortChanges))}</span></td></tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Model changes</th><th scope="col">Effort changes</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${openSessionButton(r.name, r.id, r.project)}</td><td><span class="cell-text">${esc(n(r.modelChanges))}</span></td><td><span class="cell-text">${esc(n(r.effortChanges))}</span></td></tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, c.sessions)} conversations with a recorded change.`));
 
   if (c.events) html += section('The call before and the call after a model change', x.paired
@@ -3330,19 +3342,19 @@ function renderTransitionsTopic(detail, efforts, { number, credits = number } = 
       + (x.creditPairs
         ? compare('AI credits of one model call', [{ label: 'Last call before', value: x.creditsBefore }, { label: 'First call after', value: x.creditsAfter, color: 'var(--s3)' }], { format: credits })
         : empty('Neither call has complete charges on both sides, so credits around a change are unavailable.'))
-      + note(`Main-conversation calls in the selected dates; subagent calls are left out. Each bar is the middle value: half of the pairs were above it and half below. ${of(x.paired, c.modelChanges)} model changes have a measured call on a different model on both sides`
+      + `<p class="footnote token-insight-note">${esc(`Main-conversation calls in the selected dates; subagent calls are left out. Each bar is the middle value: half of the pairs were above it and half below. ${of(x.paired, c.modelChanges)} model changes have a measured call on a different model on both sides`
         + (x.cachePairs ? `, and ${of(x.cachePairs, x.paired)} of those have a complete cache split on both calls` : '')
         + (x.creditPairs ? `; ${of(x.creditPairs, x.paired)} pairs have complete charges on both calls` : '')
         + '.' + (x.sameModel ? ` ${count(x.sameModel, 'change')} had the same model on both neighbouring calls and ${x.sameModel === 1 ? 'is' : 'are'} not compared.` : '')
-        + ' Input here is what each call reported, cached input included. The two calls can be different work. See Cache reuse for cache reads after a model change across all calls.'
-        + (x.cachePairs && x.cacheAfter < x.cacheBefore ? ' Lower cache reads after a change are consistent with a cache that does not carry across models, but this data does not record the cause. A pause before the call can lower them too.' : ''))
+        + ' Input here is what each call reported, cached input included. The two calls can be different work. See ')}${topicJumpButton('tokens', 'cache', 'Cache reuse')}${esc(' for cache reads after a model change across all calls.'
+        + (x.cachePairs && x.cacheAfter < x.cacheBefore ? ' Lower cache reads after a change are consistent with a cache that does not carry across models, but this data does not record the cause. A pause before the call can lower them too.' : ''))}</p>`
     : empty(c.modelFiltered ? 'The call before and after a change needs every model, so it is unavailable while a model filter is on.' : 'No recorded model change has a measured main-conversation call on a different model both before and after it in the selected dates.'));
 
   html += section('Effort levels within one model', shown.length
     ? `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Model</th><th scope="col">Effort</th><th scope="col">Calls</th><th scope="col">Share of its recorded levels</th><th scope="col">AI credits per call</th></tr></thead><tbody>${shown.flatMap(g => g.levels.sort((a, b) => a.rank - b.rank).map(({ row: r }) =>
       `<tr><td class="text-cell"><span class="cell-text">${esc(g.name)}</span></td><td><span class="cell-text">${esc(r.effort)}</span></td><td><span class="cell-text">${esc(n(r.requests))}</span></td><td><span class="cell-text">${esc(percent(r.requests / g.calls * 100))}</span></td>`
       + `<td title="${esc(`${of(r.creditRequests, r.requests)} calls have complete charges`)}"><span class="cell-text">${esc(valid(r.averageCredits) ? credits(r.averageCredits) : 'Unavailable')} (${esc(of(r.creditRequests, r.requests))})</span></td></tr>`)).join('')}</tbody></table></div>`
-      + note(`Levels are compared inside one model only. A level is listed when it has at least ${number(EFFORT_MIN_CALLS)} calls, and a model needs two such levels.${usable.length > shown.length ? ` Showing ${n(shown.length)} of ${n(usable.length)} models.` : ''} Calls with no recorded effort level are not a level: ${of(shown.reduce((sum, g) => sum + g.unknown, 0), shown.reduce((sum, g) => sum + g.requests, 0))} calls on the models shown. The share is of all calls with a recorded level on that model. Credits are averaged over calls with complete charges, shown as calls counted of calls. The calls at each level were different work, so a gap is not the effect of effort alone. For reasoning, output and speed by level, see Reasoning and generated output.`)
+      + `<p class="footnote token-insight-note">${esc(`Levels are compared inside one model only. A level is listed when it has at least ${number(EFFORT_MIN_CALLS)} calls, and a model needs two such levels.${usable.length > shown.length ? ` Showing ${n(shown.length)} of ${n(usable.length)} models.` : ''} Calls with no recorded effort level are not a level: ${of(shown.reduce((sum, g) => sum + g.unknown, 0), shown.reduce((sum, g) => sum + g.requests, 0))} calls on the models shown. The share is of all calls with a recorded level on that model. Credits are averaged over calls with complete charges, shown as calls counted of calls. The calls at each level were different work, so a gap is not the effect of effort alone. For reasoning, output and speed by level, see `)}${topicJumpButton('tokens', 'output', 'Reasoning and generated output')}.</p>`
     : empty(`No model has two recorded effort levels with at least ${number(EFFORT_MIN_CALLS)} calls each, so levels are not compared.${singleLevel ? ` ${count(singleLevel, 'model')} ${singleLevel === 1 ? 'has' : 'have'} a single level with that many calls.` : ''} Calls with no recorded effort level are not counted as a level.`));
 
   // One observation, chosen in this order: much lower cache reads right after a change, the most
@@ -3461,6 +3473,7 @@ function renderRepetitionTopic(data, { number } = {}) {
         metric('Repeats after a compaction', n(c.after), `${of(c.after, c.repeats)} repeated calls in ${count(c.sessions, 'conversation')} with a compaction`),
         metric('Reading and searching among them', n(c.afterReading), `${n(c.after - c.afterReading)} were other calls`))
       + note(`Counted when a successful compaction of the main conversation is recorded after the earlier identical call started and before the repeat did. ${count(c.sessions, 'conversation')} with compared calls in this view ${c.sessions === 1 ? 'has such a compaction. It holds' : 'have such a compaction. They hold'} ${n(c.repeats)} of the ${count(timed, 'repeated call')} with a usable time. A compaction is one explanation, not a proven cause: the file may have changed, or the call may have been needed again for another reason.`)
+      + `<div class="token-insight-actions">${topicJumpButton('patterns', 'compaction', 'Open Context reduction')}</div>`
     : empty('No conversation with compared calls in this view has a recorded successful compaction, so no repeat can be placed after one.'));
 
   const modelRows = r.byModel || [];
@@ -3475,7 +3488,7 @@ function renderRepetitionTopic(data, { number } = {}) {
 
   const rows = r.conversations || [];
   if (rows.length) html += section('Conversations with the most repeated calls',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Conversation', 'Calls compared', 'Repeated calls', 'Share repeated', 'Most times one call was made'].map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td>${[n(row.measured), n(row.repeated), percent(row.share), n(row.times)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Conversation', 'Calls compared', 'Repeated calls', 'Share repeated', 'Most times one call was made'].map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td class="text-cell">${openSessionButton(row.name, row.id, row.project)}</td>${[n(row.measured), n(row.repeated), percent(row.share), n(row.times)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, r.repeatSessions)} conversations with a repeated call, most repeats first.`));
 
   // One observation, chosen in this order: reading repeated across a compaction, reading that
@@ -3823,9 +3836,10 @@ function renderRecovery(report, { number, showCoverage = true } = {}) {
   const section = (title, body) => `<section class="token-insight-section"><h3>${esc(title)}</h3>${body}</section>`;
   const metric = (label, value, detail) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(detail)}</span></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${compare ? note(`Compare afterward: ${compare}`) : ''}</aside>`;
-  // A cell is text, [text, hover detail], or { text, badge, tone, title }.
+  // A cell is text, [text, hover detail], { html }, or { text, badge, tone, title }.
   const table = (kind, headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table recovery-${kind}"><thead><tr>${headers.map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => {
     if (cell && typeof cell === 'object' && !Array.isArray(cell)) {
+      if ('html' in cell) return `<td${index === 0 || cell.textCell ? ' class="text-cell"' : ''}>${cell.html}</td>`;
       const badge = cell.badge ? ` <span class="connection-status ${cell.tone || 'neutral'}"${cell.badgeTitle ? ` title="${esc(cell.badgeTitle)}"` : ''}>${esc(cell.badge)}</span>` : '';
       return `<td${index === 0 ? ' class="text-cell"' : ''}${cell.title ? ` title="${esc(cell.title)}"` : ''}><span class="cell-text">${esc(cell.text)}</span>${badge}</td>`;
     }
@@ -3922,7 +3936,7 @@ function renderRecovery(report, { number, showCoverage = true } = {}) {
       + note(`An operation needs at least ${number(minimumKnown)} known outcomes to be ranked by rate. With fewer, one more call changes the rate a lot. Showing ${number(ranked.length)} of ${number(measured.operations.ranked)} that qualify and have a recorded failure. Each bar is drawn against 100%.`));
     const listed = runs.top || [];
     const hasLiveRunStatus = listed.some(run => run.server && mcpLive.has(run.server));
-    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operationCell(run), run.session, number(run.length), then[run.then] || 'Unavailable', run.day]))
+    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operationCell(run), { html: openSessionButton(run.session, run.sessionId, run.project), textCell: true }, number(run.length), then[run.then] || 'Unavailable', run.day]))
       : '<p class="muted token-insight-note">No operation failed twice in a row in one conversation in this range.</p>')
       + note(`${things(runs.repeated, 'run')} of ${number(runLength)} or more failures in a row, covering ${number(runs.repeatedFailures)} of ${things(measured.failures, 'failed call')}.${listed.length ? ` Showing the ${number(listed.length)} longest of ${things(runs.total, 'run')} of two or more.` : ''} A run is calls of one operation in one conversation that failed one after another, in order of start time. A success or a call with no recorded outcome ends a run.`)
       + (hasLiveRunStatus && !hasLiveOpStatus ? note('MCP server status badges reflect the current hosting session, separate from the selected historical dates. A failed tool call does not by itself prove a server outage.') : ''));
@@ -4136,7 +4150,7 @@ function renderHabitsTopic(data, { number, credits = number } = {}) {
     + note('Position counts every confirmed prompt in the conversation, including ones before the selected dates. Tokens are input plus output. Typical is the middle value. Later prompts in a long conversation are often harder or larger tasks, and position is not a cause of the work that follows.'));
 
   html += section('Pauses before a prompt', table(workHeaders('Time since your previous prompt'), pause.map(workRow))
-    + note(`${n(data.firstPrompts)} first prompts have no earlier prompt and are not listed. The pause is measured from your previous prompt, so it includes the time the agent spent working on it. A prompt whose work is shared with another prompt, or cannot be linked to it reliably, has no work figures. The Cache reuse view, under Where did the tokens go, shows cache reads by pause.`));
+    + `<p class="footnote token-insight-note">${esc(`${n(data.firstPrompts)} first prompts have no earlier prompt and are not listed. The pause is measured from your previous prompt, so it includes the time the agent spent working on it. A prompt whose work is shared with another prompt, or cannot be linked to it reliably, has no work figures. The `)}${topicJumpButton('tokens', 'cache', 'Cache reuse')}${esc(' view, under Where did the tokens go, shows cache reads by pause.')}</p>`);
 
   if (deliveryRows.some(b => b.prompts > 0)) {
     html += section('How prompt timing relates to work', table(workHeaders('How your prompt arrived'), deliveryRows.map(workRow))
@@ -5422,17 +5436,29 @@ function renderEfficiencyGrowth() {
 for (const id of ['project', 'model']) $('growth-' + id).onchange = event => {
   $(id).value = event.target.value; growthSession = ''; growthPattern = ''; return load();
 };
+function handleEfficiencyNavigation(event) {
+  const jump = event.target.closest?.('[data-efficiency-jump-topic]')?.dataset;
+  if (jump?.efficiencyJumpTopic) {
+    event.stopPropagation?.();
+    const tokens = jump.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+    return true;
+  }
+  const open = event.target.closest?.('[data-efficiency-open-session]')?.dataset;
+  if (open?.efficiencyOpenSession) {
+    event.stopPropagation?.();
+    inspectEfficiency({ model: $('model').value, project: open.efficiencyOpenProject || '', session: open.efficiencyOpenSession });
+    return true;
+  }
+  return false;
+}
+$('efficiency-view').onclick = event => { handleEfficiencyNavigation(event); };
 $('efficiency-growth').onclick = event => {
+  if (handleEfficiencyNavigation(event)) return;
   const button = event.target.closest('button'), data = button?.dataset;
   if (!data || button.disabled) return;
-  if (data.efficiencyJumpTopic) {
-    const tokens = data.efficiencyJumpSection === 'tokens';
-    showEfficiencySection(tokens ? 'tokens' : 'patterns');
-    (tokens ? showTokenTopic : showPatternTopic)(data.efficiencyJumpTopic, true);
-    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
-    return;
-  }
-  if (data.efficiencyOpenSession) return inspectEfficiency({ project: data.efficiencyOpenProject || '', session: data.efficiencyOpenSession });
   if (['input', 'change'].includes(data.growthMode)) growthMode = data.growthMode;
   else if (Object.hasOwn(CONTEXT_SHAPES, data.growthPattern)) { growthPattern = growthPattern === data.growthPattern ? '' : data.growthPattern; growthSession = ''; }
   else return;
@@ -5477,6 +5503,7 @@ function openTokenContext() {
   $('efficiency-context-read').focus({ preventScroll: false });
 }
 $('token-detail-panel').onclick = event => {
+  if (handleEfficiencyNavigation(event)) return;
   // A spend-driver row opens its session in Breakdown. The model filter stays as the user set it.
   const row = event.target.closest('[data-token-session]')?.dataset;
   if (row?.tokenSession !== undefined && row.tokenProject !== undefined) return inspectEfficiency({ project: row.tokenProject, session: row.tokenSession });
@@ -5489,21 +5516,16 @@ $('token-detail-panel').onclick = event => {
   const prompt = event.target.closest('[data-prompt-session]')?.dataset;
   if (prompt?.promptSession) return inspectEfficiency({ model: $('model').value, project: prompt.promptProject, session: prompt.promptSession });
 };
+$('token-cache-detail').onclick = event => { handleEfficiencyNavigation(event); };
+$('efficiency-habits-detail').onclick = event => { handleEfficiencyNavigation(event); };
+$('efficiency-reliability').onclick = event => { handleEfficiencyNavigation(event); };
 $('token-overview-panel').onclick = event => {
   const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;
   if (!topic) return;
   showTokenTopic(topic, true);
   $('efficiency-topic').focus({ preventScroll: true });
 };
-$('pattern-detail-panel').onclick = event => {
-  const jump = event.target.closest('[data-efficiency-jump-topic]')?.dataset;
-  if (jump?.efficiencyJumpTopic) {
-    const tokens = jump.efficiencyJumpSection === 'tokens';
-    showEfficiencySection(tokens ? 'tokens' : 'patterns');
-    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
-    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
-  }
-};
+$('pattern-detail-panel').onclick = event => { handleEfficiencyNavigation(event); };
 function renderEfficiency() {
   renderReviewResult();
   const efficiency = state.report?.efficiency;

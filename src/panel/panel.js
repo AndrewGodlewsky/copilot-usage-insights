@@ -1178,17 +1178,29 @@ function renderEfficiencyGrowth() {
 for (const id of ['project', 'model']) $('growth-' + id).onchange = event => {
   $(id).value = event.target.value; growthSession = ''; growthPattern = ''; return load();
 };
+function handleEfficiencyNavigation(event) {
+  const jump = event.target.closest?.('[data-efficiency-jump-topic]')?.dataset;
+  if (jump?.efficiencyJumpTopic) {
+    event.stopPropagation?.();
+    const tokens = jump.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+    return true;
+  }
+  const open = event.target.closest?.('[data-efficiency-open-session]')?.dataset;
+  if (open?.efficiencyOpenSession) {
+    event.stopPropagation?.();
+    inspectEfficiency({ model: $('model').value, project: open.efficiencyOpenProject || '', session: open.efficiencyOpenSession });
+    return true;
+  }
+  return false;
+}
+$('efficiency-view').onclick = event => { handleEfficiencyNavigation(event); };
 $('efficiency-growth').onclick = event => {
+  if (handleEfficiencyNavigation(event)) return;
   const button = event.target.closest('button'), data = button?.dataset;
   if (!data || button.disabled) return;
-  if (data.efficiencyJumpTopic) {
-    const tokens = data.efficiencyJumpSection === 'tokens';
-    showEfficiencySection(tokens ? 'tokens' : 'patterns');
-    (tokens ? showTokenTopic : showPatternTopic)(data.efficiencyJumpTopic, true);
-    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
-    return;
-  }
-  if (data.efficiencyOpenSession) return inspectEfficiency({ project: data.efficiencyOpenProject || '', session: data.efficiencyOpenSession });
   if (['input', 'change'].includes(data.growthMode)) growthMode = data.growthMode;
   else if (Object.hasOwn(CONTEXT_SHAPES, data.growthPattern)) { growthPattern = growthPattern === data.growthPattern ? '' : data.growthPattern; growthSession = ''; }
   else return;
@@ -1233,6 +1245,7 @@ function openTokenContext() {
   $('efficiency-context-read').focus({ preventScroll: false });
 }
 $('token-detail-panel').onclick = event => {
+  if (handleEfficiencyNavigation(event)) return;
   // A spend-driver row opens its session in Breakdown. The model filter stays as the user set it.
   const row = event.target.closest('[data-token-session]')?.dataset;
   if (row?.tokenSession !== undefined && row.tokenProject !== undefined) return inspectEfficiency({ project: row.tokenProject, session: row.tokenSession });
@@ -1245,21 +1258,16 @@ $('token-detail-panel').onclick = event => {
   const prompt = event.target.closest('[data-prompt-session]')?.dataset;
   if (prompt?.promptSession) return inspectEfficiency({ model: $('model').value, project: prompt.promptProject, session: prompt.promptSession });
 };
+$('token-cache-detail').onclick = event => { handleEfficiencyNavigation(event); };
+$('efficiency-habits-detail').onclick = event => { handleEfficiencyNavigation(event); };
+$('efficiency-reliability').onclick = event => { handleEfficiencyNavigation(event); };
 $('token-overview-panel').onclick = event => {
   const topic = event.target.closest('[data-token-jump]')?.dataset.tokenJump;
   if (!topic) return;
   showTokenTopic(topic, true);
   $('efficiency-topic').focus({ preventScroll: true });
 };
-$('pattern-detail-panel').onclick = event => {
-  const jump = event.target.closest('[data-efficiency-jump-topic]')?.dataset;
-  if (jump?.efficiencyJumpTopic) {
-    const tokens = jump.efficiencyJumpSection === 'tokens';
-    showEfficiencySection(tokens ? 'tokens' : 'patterns');
-    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
-    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
-  }
-};
+$('pattern-detail-panel').onclick = event => { handleEfficiencyNavigation(event); };
 function renderEfficiency() {
   renderReviewResult();
   const efficiency = state.report?.efficiency;

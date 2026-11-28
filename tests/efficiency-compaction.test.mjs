@@ -166,7 +166,7 @@ test('compaction measurements count outcomes, reasons, sizes, cost and the calls
   assert.deepEqual(c.next, { paired: 4, inputBefore: 2500, inputAfter: 950, change: 60, smaller: 4, cachePairs: 2, cacheBefore: 65, cacheAfter: 30,
     regained: 1, regainCalls: 3, compactedAgain: 2, ended: 1 });
   assert.deepEqual(c.conversations.map(row => [row.compactions, row.pairs, row.removed]), [[3, 1, 3000], [3, 2, 2700], [1, 0, null]]);
-  assert.ok(c.conversations.every(row => typeof row.name === 'string' && row.name && !('id' in row)));
+  assert.ok(c.conversations.every(row => typeof row.name === 'string' && row.name && typeof row.id === 'string' && row.id && typeof row.project === 'string'));
   assert.equal(c.projectCount, 2);
   assert.deepEqual(c.projects, [
     { name: 'p', compactions: 4, sessions: 2, removed: 2700 },
@@ -282,7 +282,7 @@ test('the view shows counts, comparisons, cost, coverage and one experiment', ()
   assert.match(shown, /4 of 5 successful compactions have a measured call on both sides, and 2 of 4 of those have a complete cache split on both calls\./);
   assert.match(shown, /Back to the earlier size 1 of 4 .* Calls it took 3 .* Compacted again first 2 .* Still smaller at the end 1 /);
   assert.match(shown, /Showing 3 of 3 conversations with a compaction\..* 6 of 7 compactions happened in 2 conversations compacted more than once\./);
-  assert.match(html, /<td class="text-cell"><span class="cell-text">&lt;img src=x&gt;<\/span><\/td><td><span class="cell-text">3<\/span><\/td><td><span class="cell-text">2700<\/span>/);
+  assert.match(html, /<td class="text-cell"><button class="model-toggle cell-text" data-efficiency-open-session="s1" data-efficiency-open-project="p"[^>]*>&lt;img src=x&gt;<\/button><\/td><td><span class="cell-text">3<\/span><\/td><td><span class="cell-text">2700<\/span>/);
   assert.match(html, /<span class="cell-text">Unavailable<\/span><\/td><\/tr><\/tbody>/, 'a conversation with no recorded sizes has no removed total');
   assert.doesNotMatch(html, /<img/);
   // Two compactions have cache splits on both sides: too few to lead with, so the reduction is the observation.

@@ -35,7 +35,7 @@ test('the delegation topic counts subagent calls per conversation, model and day
   add('c', 'Big', 'user', 11); add('c', 'Other', '', 11); add('c', 'Other', 'something-else', 12);
   assert.deepEqual(topic.finish(), {
     requests: 11, mainRequests: 6, delegatedRequests: 3, conversations: 3, delegatedConversations: 2,
-    topConversations: [{ name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { name: 'Beta', requests: 4, delegated: 1, share: 25 }],
+    topConversations: [{ id: 'a', project: '', name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { id: 'b', project: '', name: 'Beta', requests: 4, delegated: 1, share: 25 }],
     models: [{ name: 'Small', mainRequests: 1, delegatedRequests: 3 }, { name: 'Big', mainRequests: 5, delegatedRequests: 0 }],
     otherModels: { models: 0, mainRequests: 0, delegatedRequests: 0 },
     series: { unit: 'day', points: [{ day: dayKey(10), requests: 7, delegated: 2 }, { day: dayKey(11), requests: 3, delegated: 1 }, { day: dayKey(12), requests: 1, delegated: 0 }], earlier: 0 },
@@ -116,7 +116,7 @@ test('the report carries the delegation topic for the selected dates and models 
   assert.equal(all.delegatedRequests, 4);
   const recent = report(records, { range: '7d' }).efficiency.delegation;
   assert.deepEqual([recent.requests, recent.mainRequests, recent.delegatedRequests, recent.conversations, recent.delegatedConversations], [10, 6, 3, 3, 2]);
-  assert.deepEqual(recent.topConversations, [{ name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { name: 'Beta', requests: 4, delegated: 1, share: 25 }]);
+  assert.deepEqual(recent.topConversations, [{ id: 'alpha', project: 'p', name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { id: 'beta', project: 'p', name: 'Beta', requests: 4, delegated: 1, share: 25 }]);
   assert.deepEqual(recent.models, [{ name: 'Small', mainRequests: 3, delegatedRequests: 3 }, { name: 'Big', mainRequests: 3, delegatedRequests: 0 }]);
   assert.equal(recent.series.points.length, 1);
   const big = report(records, { range: '7d', models: ['Big'] }).efficiency.delegation;

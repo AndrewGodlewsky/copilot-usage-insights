@@ -5,7 +5,7 @@
 import { dayKey } from './query.mjs';
 
 const TOP = 5, SERIES_POINTS = 62;
-const tally = () => ({ requests: 0, main: 0, delegated: 0 });
+const tally = () => ({ requests: 0, main: 0, delegated: 0, project: null });
 const find = (map, key) => { let found = map.get(key); if (!found) map.set(key, found = tally()); return found; };
 const byName = (a, b) => String(a.name).localeCompare(String(b.name));
 
@@ -32,6 +32,10 @@ export function createDelegationTopic({ sessionLabels } = {}) {
     add(r, day) {
       const side = r.initiator === 'sub-agent' ? 'delegated' : r.initiator === 'user' || r.initiator === 'agent' ? 'main' : null;
       if (r.sessionId !== sessionId) session = find(sessions, sessionId = r.sessionId);
+      if (r.project) {
+        if (session.project === null) session.project = r.project;
+        else if (session.project !== r.project) session.project = '';
+      }
       if (r.model !== model) modelTally = find(models, model = r.model);
       total.requests++; session.requests++;
       if (side) { total[side]++; session[side]++; modelTally[side]++; }
@@ -43,7 +47,7 @@ export function createDelegationTopic({ sessionLabels } = {}) {
     },
     finish() {
       const delegating = [];
-      for (const [id, counts] of sessions) if (counts.delegated) delegating.push({ id, name: sessionLabels?.get(id) || 'Unnamed session', requests: counts.requests, delegated: counts.delegated });
+      for (const [id, counts] of sessions) if (counts.delegated) delegating.push({ id, project: counts.project || '', name: sessionLabels?.get(id) || 'Unnamed session', requests: counts.requests, delegated: counts.delegated });
       delegating.sort((a, b) => b.delegated - a.delegated || b.requests - a.requests || byName(a, b) || String(a.id).localeCompare(String(b.id)));
       // The model mix lists the five models with the most subagent calls and the five with the
       // most main-conversation calls. Every other model is summed, so the shares still add up.
@@ -54,7 +58,7 @@ export function createDelegationTopic({ sessionLabels } = {}) {
       for (const row of mix) if (!listed.has(row)) { otherModels.models++; otherModels.mainRequests += row.mainRequests; otherModels.delegatedRequests += row.delegatedRequests; }
       return { requests: total.requests, mainRequests: total.main, delegatedRequests: total.delegated,
         conversations: sessions.size, delegatedConversations: delegating.length,
-        topConversations: delegating.slice(0, TOP).map(({ name, requests, delegated }) => ({ name, requests, delegated, share: delegated / requests * 100 })),
+        topConversations: delegating.slice(0, TOP).map(({ id, project, name, requests, delegated }) => ({ id, project, name, requests, delegated, share: delegated / requests * 100 })),
         models: [...listed].sort((a, b) => b.delegatedRequests - a.delegatedRequests || b.mainRequests - a.mainRequests || byName(a, b)), otherModels,
         series: finishSeries(days) };
     },

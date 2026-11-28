@@ -143,6 +143,7 @@ test('the view shows every table with its coverage and one experiment', () => {
   for (const text of ['How long conversations run', 'Does a later prompt carry more work', 'Pauses before a prompt', 'Prompt length', 'Compare afterward', 'Cache reuse', '48 of 48', 'position is not a cause'])
     assert.ok(html.includes(text), text);
   assert.match(html, /Share of credits/);
+  assert.match(html, /data-efficiency-jump-section="tokens" data-efficiency-jump-topic="cache"/);
   assert.doesNotMatch(html, /NaN|undefined|Infinity|—/);
 });
 

@@ -49,7 +49,7 @@ function keepRun(list, run) {
 }
 
 export function createRecoveryTopic(context = {}) {
-  const byName = new Map(), operations = [], bySession = new Map(), sequences = [], days = new Map();
+  const byName = new Map(), operations = [], bySession = new Map(), sessionProjects = new Map(), sequences = [], days = new Map();
   let session = NONE, sessionSequences;
   return {
     add(tool, outcome) {
@@ -87,6 +87,11 @@ export function createRecoveryTopic(context = {}) {
       if (tool.sessionId !== session) {
         session = tool.sessionId; sessionSequences = bySession.get(session);
         if (!sessionSequences) bySession.set(session, sessionSequences = new Map());
+      }
+      if (tool.project) {
+        const prevProj = sessionProjects.get(session);
+        if (prevProj === undefined) sessionProjects.set(session, tool.project);
+        else if (prevProj !== tool.project) sessionProjects.set(session, '');
       }
       let sequence = sessionSequences.get(op);
       if (!sequence) { sessionSequences.set(op, sequence = { op, session, calls: [], failures: 0, ordered: true }); sequences.push(sequence); }
@@ -162,8 +167,8 @@ export function createRecoveryTopic(context = {}) {
         calls, successes, failures, unknown: total('unknown'), known, failureRate: share(failures, known),
         followed: { ...followed, known: followed.succeeded + followed.failed, share: share(followed.succeeded, followed.succeeded + followed.failed) },
         runs: { longest, repeated, repeatedFailures, total: runs,
-          top: top.map(run => ({ name: run.op.name, server: run.op.server, mcpTool: run.op.mcpTool, session: labels?.get(run.session) || 'Unnamed session',
-            length: run.length, day: dayKey(dayOfMs(run.ms)), then: run.then })) },
+          top: top.map(run => ({ name: run.op.name, server: run.op.server, mcpTool: run.op.mcpTool, sessionId: run.session, project: sessionProjects.get(run.session) || '',
+            session: labels?.get(run.session) || 'Unnamed session', length: run.length, day: dayKey(dayOfMs(run.ms)), then: run.then })) },
         time: { failedMs: failedCalls ? failedMs : null, failedCalls, knownMs: knownCalls ? knownMs : null, knownCalls,
           share: failedCalls && knownMs > 0 ? failedMs / knownMs * 100 : null },
         trend,

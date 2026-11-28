@@ -24,6 +24,15 @@ export function barList(rows, { format = String, total } = {}) {
     : esc(row.label);
   return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${labelHtml(row)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
 }
+// Shared conversation drill-down button and Efficiency cross-topic jump button.
+export function openSessionButton(name, id, project = '') {
+  const label = name || 'Unnamed session';
+  if (!id) return `<span class="cell-text">${esc(label)}</span>`;
+  return `<button class="model-toggle cell-text" data-efficiency-open-session="${esc(id)}" data-efficiency-open-project="${esc(project || '')}" aria-label="${esc(label)}: open this conversation in Breakdown" title="Open this conversation in Breakdown">${esc(label)}</button>`;
+}
+export function topicJumpButton(section, topic, label) {
+  return `<button class="model-toggle" data-efficiency-jump-section="${esc(section)}" data-efficiency-jump-topic="${esc(topic)}">${esc(label)}</button>`;
+}
 
 // Render from the report and the explicitly requested context snapshot only.
 // `contextPart` splits the context view for the panel: 'snapshot' reads the snapshot alone and
@@ -41,7 +50,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
   const coverage = (count, total = s.requests) => `${number(count ?? 0)} of ${number(total ?? 0)} model calls`;
   const partial = (count, total = s.requests) => count < total;
   const measured = (value, count, total = s.requests, format = number) => coverageValue(value, partial(count, total), format, showCoverage);
-  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}>${cell && typeof cell === 'object' && 'html' in cell ? cell.html : `<span class="cell-text">${esc(cell)}</span>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const jump = (topic, label) => `<button data-token-jump="${topic}">${esc(label)}</button>`;
   const inspect = '<button data-token-context="true">Open context inspector</button>';
@@ -485,9 +494,12 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
     const conversations = !timing?.measuredCalls ? '' : section('Conversations with the most input not read from cache', listed.length
       ? table(hasSplitDetail ? ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Cache write', 'Uncached', 'Read share']
           : ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'],
-          listed.map(r => hasSplitDetail
-            ? [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
-            : [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), percent(r.share)]))
+          listed.map(r => {
+            const nameCell = { html: openSessionButton(r.name || 'Unnamed session', r.id, r.project) };
+            return hasSplitDetail
+              ? [nameCell, number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
+              : [nameCell, number(r.calls), number(r.input), number(r.notRead), percent(r.share)];
+          }))
         + note(`Showing ${number(listed.length)} of ${number(timing.listedSessions)} conversations with at least ${number(timing.minimumSessionCalls)} measured main-conversation calls. Not read from cache is input minus cache reads, split into cache writes and uncached input. A long conversation can lead this list with ordinary reuse; this is not proof of waste.`)
       : empty(`No conversation has at least ${number(timing.minimumSessionCalls)} measured main-conversation calls in this selection.`));
     const ratio = value => `${number(value, { maximumFractionDigits: 1 })}×`;
@@ -780,7 +792,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
           r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${covered(r.creditRequests, r.requests)})` : 'Unavailable']))
           + note('Each column averages only the subagent calls that record that measure. Cache read uses complete cache splits; credits include complete recorded charges only.') : '')) : '')
       + (where && sub.requests ? section('Where delegation happens', lead(`${covered(where.delegatedConversations, where.conversations, 'conversations')} with model calls had at least one subagent call.`)
-        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [r.name, number(r.delegated), number(r.requests), percent(r.share)]))
+        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [{ html: openSessionButton(r.name, r.id, r.project) }, number(r.delegated), number(r.requests), percent(r.share)]))
           + note(`The ${exact(top.length)} conversations with the most subagent calls, of ${exact(where.delegatedConversations)} that had any. Together they made ${percent(share(top.reduce((n, r) => n + r.delegated, 0), where.delegatedRequests))} of subagent calls. A conversation here is one recorded session.`) : '')
         + trendRow(series, p => p.requests > 0 ? p.delegated / p.requests * 100 : null, { label: 'Subagent share of model calls', format: percent })
         + (series?.earlier ? note(`The line covers the latest ${exact(series.points.length)} ${series.unit === 'week' ? 'weeks' : 'days'} with calls. ${exact(series.earlier)} earlier ones are left out.`) : '')) : '')

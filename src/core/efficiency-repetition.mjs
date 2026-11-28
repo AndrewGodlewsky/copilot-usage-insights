@@ -111,7 +111,11 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
       } else unattributedModelCalls++;
       if (tool.sessionId !== sessionId) {
         sessionId = tool.sessionId; session = sessions.get(sessionId);
-        if (!session) sessions.set(sessionId, session = { id: sessionId, measured: 0, repeated: 0, times: 0, op: null, compactions: compactions.get(sessionId) });
+        if (!session) sessions.set(sessionId, session = { id: sessionId, project: null, measured: 0, repeated: 0, times: 0, op: null, compactions: compactions.get(sessionId) });
+      }
+      if (tool.project) {
+        if (session.project === null) session.project = tool.project;
+        else if (session.project !== tool.project) session.project = '';
       }
       session.measured++;
       if (!repeat) return;
@@ -152,7 +156,7 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
       for (const s of sessions.values()) {
         if (s.compactions) compacted++;
         if (!s.repeated) continue;
-        const row = { id: s.id, name: label(s.id), measured: s.measured, repeated: s.repeated, share: share(s.repeated, s.measured), times: s.times, op: s.op };
+        const row = { id: s.id, project: s.project || '', name: label(s.id), measured: s.measured, repeated: s.repeated, share: share(s.repeated, s.measured), times: s.times, op: s.op };
         rows.push(row);
         if (!most || row.times > most.times || row.times === most.times && (text(row.name, most.name) || text(row.id, most.id) || byIdentity(row.op, most.op)) < 0) most = row;
       }
@@ -170,7 +174,7 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
         most: most && { times: most.times, name: most.op.name, server: most.op.server, mcpTool: most.op.mcpTool, session: most.name },
         compaction: { sessions: compacted, repeats: reading.compactable + other.compactable, after: reading.afterCompaction + other.afterCompaction, afterReading: reading.afterCompaction },
         conversations: rows.sort((a, b) => b.repeated - a.repeated || b.share - a.share || text(a.name, b.name) || text(a.id, b.id)).slice(0, LIST)
-          .map(({ name, measured, repeated, share, times }) => ({ name, measured, repeated, share, times })) };
+          .map(({ id, project, name, measured, repeated, share, times }) => ({ id, project, name, measured, repeated, share, times })) };
     },
   };
 }

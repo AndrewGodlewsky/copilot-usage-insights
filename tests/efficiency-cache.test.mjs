@@ -113,12 +113,12 @@ test('the conversation list keeps five rows, needs five measured calls and uses 
   assert.equal(result.minimumSessionCalls, 5);
   assert.equal(result.listedSessions, 6);
   assert.deepEqual(result.sessions, [
-    { name: 'Second', calls: 5, input: 5000, cacheRead: 500, cacheWrite: 0, uncached: 4500, notRead: 4500, share: 10 },
-    { name: '<img src=x>', calls: 5, input: 5000, cacheRead: 1500, cacheWrite: 0, uncached: 3500, notRead: 3500, share: 30 },
-    { name: 'Third', calls: 6, input: 6000, cacheRead: 3000, cacheWrite: 0, uncached: 3000, notRead: 3000, share: 50 },
+    { id: 's2', project: 'p', name: 'Second', calls: 5, input: 5000, cacheRead: 500, cacheWrite: 0, uncached: 4500, notRead: 4500, share: 10 },
+    { id: 's5', project: 'p', name: '<img src=x>', calls: 5, input: 5000, cacheRead: 1500, cacheWrite: 0, uncached: 3500, notRead: 3500, share: 30 },
+    { id: 's3', project: 'p', name: 'Third', calls: 6, input: 6000, cacheRead: 3000, cacheWrite: 0, uncached: 3000, notRead: 3000, share: 50 },
     // Equal amounts fall back to the session id, so the order never depends on arrival.
-    { name: 'Fourth', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
-    { name: 'Unnamed session', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
+    { id: 's4', project: 'p', name: 'Fourth', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
+    { id: 's6', project: 'p', name: 'Unnamed session', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
   ]);
   assert.deepEqual(measure(records.slice().reverse(), { sessionLabels }).sessions, result.sessions);
 });
@@ -180,6 +180,7 @@ test('the view shows when input is reused, with shares, calls, tokens, a trend a
   assert.match(shown, /at least 10 calls and the shares differ by at least 20 percentage points/);
   assert.match(shown, /Share of input read from cache by day .* in the earlier days, .* in the later days · 2026-06-01 to 2026-06-05, 5 days with measurements/);
   assert.match(html, /<h3>Conversations with the most input not read from cache<\/h3>/);
+  assert.match(html, /data-efficiency-open-session="s0"/);
   assert.match(html, /<td><span class="cell-text">9<\/span><\/td><td><span class="cell-text">9000<\/span><\/td><td><span class="cell-text">4000<\/span><\/td><td><span class="cell-text">0<\/span><\/td><td><span class="cell-text">4000<\/span><\/td><td><span class="cell-text">55\.5\d+%<\/span><\/td>/);
   assert.match(shown, /Showing 5 of 5 conversations with at least 5 measured main-conversation calls/);
   assert.match(shown, /After a pause of over 60 minutes, calls read 10% of their input from cache\. With under 5 minutes since the previous call, they read 80%\./);
@@ -258,6 +259,12 @@ test('the cache panel renders the timing view inside the built dashboard', async
   assert.match(html, /Conversations with the most input not read from cache/);
   assert.match(get('efficiency-cache').innerHTML, /of measured input was reused from cache/);
   assert.doesNotMatch(html, /<img|NaN|undefined|Infinity/);
+  // Delegated open-in-Breakdown and cross-topic jump navigation on #efficiency-view
+  get('efficiency-view').onclick({ target: { closest: sel => sel === '[data-efficiency-jump-topic]' ? { dataset: { efficiencyJumpSection: 'patterns', efficiencyJumpTopic: 'compaction' } } : null } });
+  assert.equal(get('pattern-topic-title').textContent, 'Context reduction');
+  get('efficiency-view').onclick({ target: { closest: sel => sel === '[data-efficiency-open-session]' ? { dataset: { efficiencyOpenSession: 's0', efficiencyOpenProject: 'p' } } : null } });
+  assert.equal(get('session').value, 's0');
+  assert.equal(get('project').value, 'p');
 });
 
 test('the demo history has pauses and model changes for the cache view to compare', () => {

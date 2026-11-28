@@ -1,4 +1,5 @@
 import { esc } from './charts.mjs';
+import { topicJumpButton } from './token-insights.mjs';
 
 // The measured half of "Conversation habits": report.efficiency.habits, built by
 // src/core/efficiency-habits.mjs. It sits below the interactive conversation views. A measure that
@@ -41,7 +42,7 @@ export function renderHabitsTopic(data, { number, credits = number } = {}) {
     + note('Position counts every confirmed prompt in the conversation, including ones before the selected dates. Tokens are input plus output. Typical is the middle value. Later prompts in a long conversation are often harder or larger tasks, and position is not a cause of the work that follows.'));
 
   html += section('Pauses before a prompt', table(workHeaders('Time since your previous prompt'), pause.map(workRow))
-    + note(`${n(data.firstPrompts)} first prompts have no earlier prompt and are not listed. The pause is measured from your previous prompt, so it includes the time the agent spent working on it. A prompt whose work is shared with another prompt, or cannot be linked to it reliably, has no work figures. The Cache reuse view, under Where did the tokens go, shows cache reads by pause.`));
+    + `<p class="footnote token-insight-note">${esc(`${n(data.firstPrompts)} first prompts have no earlier prompt and are not listed. The pause is measured from your previous prompt, so it includes the time the agent spent working on it. A prompt whose work is shared with another prompt, or cannot be linked to it reliably, has no work figures. The `)}${topicJumpButton('tokens', 'cache', 'Cache reuse')}${esc(' view, under Where did the tokens go, shows cache reads by pause.')}</p>`);
 
   if (deliveryRows.some(b => b.prompts > 0)) {
     html += section('How prompt timing relates to work', table(workHeaders('How your prompt arrived'), deliveryRows.map(workRow))

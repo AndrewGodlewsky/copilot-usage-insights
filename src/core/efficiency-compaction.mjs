@@ -104,10 +104,14 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
         if (!events.length) continue;
         result.compactions += events.length; result.sessions++;
         if (events.length > 1) { result.repeatSessions++; result.repeatCompactions += events.length; }
-        let sessionRemoved = 0, sessionPairs = 0;
+        let sessionRemoved = 0, sessionPairs = 0, sessionProject = null;
         for (const e of events) {
           result[e.success === true ? 'succeeded' : e.success === false ? 'failed' : 'unknownOutcome']++;
           reasons.set(e.trigger, (reasons.get(e.trigger) || 0) + 1);
+          if (e.project) {
+            if (sessionProject === null) sessionProject = e.project;
+            else if (sessionProject !== e.project) sessionProject = '';
+          }
           const projName = e.project || 'Unknown project';
           let proj = projects.get(projName);
           if (!proj) projects.set(projName, proj = { name: projName, compactions: 0, sessions: new Set(), pairs: 0, removed: 0 });
@@ -125,7 +129,7 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
             messagesRemoved.push(e.messagesRemoved); messagesBefore.push(e.preCompactionMessagesLength);
           }
         }
-        rows.push({ id, compactions: events.length, pairs: sessionPairs, removed: sessionPairs ? sessionRemoved : null });
+        rows.push({ id, project: sessionProject || '', compactions: events.length, pairs: sessionPairs, removed: sessionPairs ? sessionRemoved : null });
         // Calls between two compactions belong to the earlier one. A failed compaction changed
         // nothing, so it does not end that stretch.
         const { times, input, cacheRead } = session, calls = times.length;
@@ -166,7 +170,7 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
           .sort((a, b) => b.compactions - a.compactions || (b.removed ?? -1) - (a.removed ?? -1) || a.name.localeCompare(b.name)).slice(0, 5),
         conversations: rows.map(row => ({ ...row, name: name(row.id) }))
           .sort((a, b) => b.compactions - a.compactions || (b.removed ?? -1) - (a.removed ?? -1) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-          .slice(0, 5).map(({ id, ...row }) => row) };
+          .slice(0, 5) };
     },
   };
 }

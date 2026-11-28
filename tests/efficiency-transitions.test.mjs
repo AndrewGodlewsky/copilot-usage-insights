@@ -131,7 +131,10 @@ test('the view shows what changed, the pair of calls, effort levels within a mod
   const detail = run([call('s1', 0, 'm1', 100, 80), call('s1', 2, 'm2', 200, 20)], [change('s1', 1, 'm1', 'm2', { fromEffort: 'high', toEffort: 'low', effortChanged: true })]);
   const levels = [{ name: 'Model', effort: 'medium', requests: 40, creditRequests: 40, averageCredits: 0.5 }, { name: 'Model', effort: 'high', requests: 12, creditRequests: 10, averageCredits: 0.9 },
     { name: 'Model', effort: 'low', requests: 3, creditRequests: 3, averageCredits: 0.1 }, { name: 'Model', effort: 'unknown', requests: 20, creditRequests: 20, averageCredits: 0.2 }];
-  const out = text(renderTransitionsTopic(detail, levels, formats));
+  const html = renderTransitionsTopic(detail, levels, formats), out = text(html);
+  assert.match(html, /data-efficiency-open-session="s1"/);
+  assert.match(html, /data-efficiency-jump-section="tokens" data-efficiency-jump-topic="cache"/);
+  assert.match(html, /data-efficiency-jump-section="tokens" data-efficiency-jump-topic="output"/);
   assert.match(out, /Which models changed m1 → m2 1/);
   assert.match(out, /high → low/);
   assert.match(out, /Last call before 100/);

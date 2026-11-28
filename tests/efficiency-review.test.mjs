@@ -15,6 +15,12 @@ test('AI review exports bounded, aliased measurements with scope and no identify
     dayDistribution: [{ label: 'SECRET', count: 1 }], promptWork: { prompts: 5, totalPrompts: 6, medianCalls: 2, distribution: [{ label: 'SECRET', count: 5 }] },
     examples: [{ sessionId: 'SECRET', name: 'SECRET-CONVO', project: 'SECRET-PROJECT', events: [{ ms: 123456789, delivery: 'SECRET' }] }], comparison: { private: 'SECRET' },
     delivery: { idle: 3, steering: 2, unknown: 1 }, steering: { topMessages: 2, sessions: 1 } };
+  report.efficiency.cacheTiming = { sessions: [{ id: 'SECRET-ID', project: 'SECRET-PROJ', name: 'SECRET-CHAT' }] };
+  report.efficiency.delegation = { topConversations: [{ id: 'SECRET-ID', project: 'SECRET-PROJ', name: 'SECRET-CHAT' }] };
+  report.efficiency.compaction = { conversations: [{ id: 'SECRET-ID', project: 'SECRET-PROJ', name: 'SECRET-CHAT' }] };
+  report.efficiency.recovery = { runs: { top: [{ sessionId: 'SECRET-ID', project: 'SECRET-PROJ', session: 'SECRET-CHAT' }] } };
+  report.efficiency.changeDetail = { conversations: [{ id: 'SECRET-ID', project: 'SECRET-PROJ', name: 'SECRET-CHAT' }] };
+  report.efficiency.repetition = { conversations: [{ id: 'SECRET-ID', project: 'SECRET-PROJ', name: 'SECRET-CHAT' }] };
   report.tools = { rows: [{ name: 'SECRET', calls: 5, successes: 3, failures: 1, unknown: 1, arguments: 'SECRET' }] };
   const result = buildEfficiencyReview(report, context, { models: ['SECRET-0'], project: 'SECRET', session: 'SECRET' });
   assert.doesNotMatch(result, /SECRET|sessionName|"path"/);

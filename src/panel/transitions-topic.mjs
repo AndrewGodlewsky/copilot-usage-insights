@@ -1,5 +1,5 @@
 import { esc } from './charts.mjs';
-import { barList } from './token-insights.mjs';
+import { barList, openSessionButton, topicJumpButton } from './token-insights.mjs';
 
 // Plain names for how Copilot records that a model or effort setting was changed.
 const TRANSITION_SOURCES = {
@@ -97,7 +97,7 @@ export function renderTransitionsTopic(detail, efforts, { number, credits = numb
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations with the most changes',
-    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Model changes</th><th scope="col">Effort changes</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell"><span class="cell-text">${esc(r.name)}</span></td><td><span class="cell-text">${esc(n(r.modelChanges))}</span></td><td><span class="cell-text">${esc(n(r.effortChanges))}</span></td></tr>`).join('')}</tbody></table></div>`
+    `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Model changes</th><th scope="col">Effort changes</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${openSessionButton(r.name, r.id, r.project)}</td><td><span class="cell-text">${esc(n(r.modelChanges))}</span></td><td><span class="cell-text">${esc(n(r.effortChanges))}</span></td></tr>`).join('')}</tbody></table></div>`
     + note(`Showing ${of(rows.length, c.sessions)} conversations with a recorded change.`));
 
   if (c.events) html += section('The call before and the call after a model change', x.paired
@@ -108,19 +108,19 @@ export function renderTransitionsTopic(detail, efforts, { number, credits = numb
       + (x.creditPairs
         ? compare('AI credits of one model call', [{ label: 'Last call before', value: x.creditsBefore }, { label: 'First call after', value: x.creditsAfter, color: 'var(--s3)' }], { format: credits })
         : empty('Neither call has complete charges on both sides, so credits around a change are unavailable.'))
-      + note(`Main-conversation calls in the selected dates; subagent calls are left out. Each bar is the middle value: half of the pairs were above it and half below. ${of(x.paired, c.modelChanges)} model changes have a measured call on a different model on both sides`
+      + `<p class="footnote token-insight-note">${esc(`Main-conversation calls in the selected dates; subagent calls are left out. Each bar is the middle value: half of the pairs were above it and half below. ${of(x.paired, c.modelChanges)} model changes have a measured call on a different model on both sides`
         + (x.cachePairs ? `, and ${of(x.cachePairs, x.paired)} of those have a complete cache split on both calls` : '')
         + (x.creditPairs ? `; ${of(x.creditPairs, x.paired)} pairs have complete charges on both calls` : '')
         + '.' + (x.sameModel ? ` ${count(x.sameModel, 'change')} had the same model on both neighbouring calls and ${x.sameModel === 1 ? 'is' : 'are'} not compared.` : '')
-        + ' Input here is what each call reported, cached input included. The two calls can be different work. See Cache reuse for cache reads after a model change across all calls.'
-        + (x.cachePairs && x.cacheAfter < x.cacheBefore ? ' Lower cache reads after a change are consistent with a cache that does not carry across models, but this data does not record the cause. A pause before the call can lower them too.' : ''))
+        + ' Input here is what each call reported, cached input included. The two calls can be different work. See ')}${topicJumpButton('tokens', 'cache', 'Cache reuse')}${esc(' for cache reads after a model change across all calls.'
+        + (x.cachePairs && x.cacheAfter < x.cacheBefore ? ' Lower cache reads after a change are consistent with a cache that does not carry across models, but this data does not record the cause. A pause before the call can lower them too.' : ''))}</p>`
     : empty(c.modelFiltered ? 'The call before and after a change needs every model, so it is unavailable while a model filter is on.' : 'No recorded model change has a measured main-conversation call on a different model both before and after it in the selected dates.'));
 
   html += section('Effort levels within one model', shown.length
     ? `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Model</th><th scope="col">Effort</th><th scope="col">Calls</th><th scope="col">Share of its recorded levels</th><th scope="col">AI credits per call</th></tr></thead><tbody>${shown.flatMap(g => g.levels.sort((a, b) => a.rank - b.rank).map(({ row: r }) =>
       `<tr><td class="text-cell"><span class="cell-text">${esc(g.name)}</span></td><td><span class="cell-text">${esc(r.effort)}</span></td><td><span class="cell-text">${esc(n(r.requests))}</span></td><td><span class="cell-text">${esc(percent(r.requests / g.calls * 100))}</span></td>`
       + `<td title="${esc(`${of(r.creditRequests, r.requests)} calls have complete charges`)}"><span class="cell-text">${esc(valid(r.averageCredits) ? credits(r.averageCredits) : 'Unavailable')} (${esc(of(r.creditRequests, r.requests))})</span></td></tr>`)).join('')}</tbody></table></div>`
-      + note(`Levels are compared inside one model only. A level is listed when it has at least ${number(EFFORT_MIN_CALLS)} calls, and a model needs two such levels.${usable.length > shown.length ? ` Showing ${n(shown.length)} of ${n(usable.length)} models.` : ''} Calls with no recorded effort level are not a level: ${of(shown.reduce((sum, g) => sum + g.unknown, 0), shown.reduce((sum, g) => sum + g.requests, 0))} calls on the models shown. The share is of all calls with a recorded level on that model. Credits are averaged over calls with complete charges, shown as calls counted of calls. The calls at each level were different work, so a gap is not the effect of effort alone. For reasoning, output and speed by level, see Reasoning and generated output.`)
+      + `<p class="footnote token-insight-note">${esc(`Levels are compared inside one model only. A level is listed when it has at least ${number(EFFORT_MIN_CALLS)} calls, and a model needs two such levels.${usable.length > shown.length ? ` Showing ${n(shown.length)} of ${n(usable.length)} models.` : ''} Calls with no recorded effort level are not a level: ${of(shown.reduce((sum, g) => sum + g.unknown, 0), shown.reduce((sum, g) => sum + g.requests, 0))} calls on the models shown. The share is of all calls with a recorded level on that model. Credits are averaged over calls with complete charges, shown as calls counted of calls. The calls at each level were different work, so a gap is not the effect of effort alone. For reasoning, output and speed by level, see `)}${topicJumpButton('tokens', 'output', 'Reasoning and generated output')}.</p>`
     : empty(`No model has two recorded effort levels with at least ${number(EFFORT_MIN_CALLS)} calls each, so levels are not compared.${singleLevel ? ` ${count(singleLevel, 'model')} ${singleLevel === 1 ? 'has' : 'have'} a single level with that many calls.` : ''} Calls with no recorded effort level are not counted as a level.`));
 
   // One observation, chosen in this order: much lower cache reads right after a change, the most

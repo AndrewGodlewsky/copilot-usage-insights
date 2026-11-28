@@ -21,7 +21,11 @@ export function createCacheTiming(context = {}) {
       if (!Number.isFinite(r.ms) || typeof r.sessionId !== 'string' || !r.sessionId) return;
       if (r.sessionId !== sessionId) {
         sessionId = r.sessionId; session = sessions.get(sessionId);
-        if (!session) sessions.set(sessionId, session = { calls: [], ordered: true, latest: -Infinity });
+        if (!session) sessions.set(sessionId, session = { calls: [], ordered: true, latest: -Infinity, project: null });
+      }
+      if (r.project) {
+        if (session.project === null) session.project = r.project;
+        else if (session.project !== r.project) session.project = '';
       }
       if (r.model !== modelName) {
         modelName = r.model; model = models.get(modelName);
@@ -36,7 +40,7 @@ export function createCacheTiming(context = {}) {
       const totals = new Map(CACHE_SITUATIONS.map(id => [id, { id, calls: 0, input: 0, cacheRead: 0, cacheWrite: 0 }]));
       const top = [];
       let measuredCalls = 0, listedSessions = 0;
-      for (const [id, { calls: list, ordered }] of sessions) {
+      for (const [id, { calls: list, ordered, project }] of sessions) {
         const count = list.length / CACHE_STRIDE;
         // Equal times keep the order the calls were recorded in.
         const order = ordered ? null : Array.from({ length: count }, (_, index) => index).sort((a, b) => list[a * CACHE_STRIDE] - list[b * CACHE_STRIDE] || a - b);
@@ -55,7 +59,7 @@ export function createCacheTiming(context = {}) {
         measuredCalls += calls;
         if (calls < CACHE_SESSION_CALLS) continue;
         listedSessions++;
-        const row = { id, calls, input, cacheRead, cacheWrite, uncached: input - cacheRead - cacheWrite, notRead: input - cacheRead };
+        const row = { id, project: project || '', calls, input, cacheRead, cacheWrite, uncached: input - cacheRead - cacheWrite, notRead: input - cacheRead };
         let place = top.length;
         while (place > 0 && (top[place - 1].notRead < row.notRead || top[place - 1].notRead === row.notRead && top[place - 1].id > id)) place--;
         if (place < CACHE_SESSION_ROWS) { top.splice(place, 0, row); if (top.length > CACHE_SESSION_ROWS) top.pop(); }
@@ -63,7 +67,7 @@ export function createCacheTiming(context = {}) {
       return {
         mainCalls, measuredCalls, modelFiltered: !!context.query?.models, minimumSessionCalls: CACHE_SESSION_CALLS, listedSessions,
         situations: [...totals.values()].map(total => ({ ...total, share: cacheShare(total.cacheRead, total.input) })),
-        sessions: top.map(({ id, ...row }) => ({ name: context.sessionLabels?.get(id) || 'Unnamed session', ...row, share: cacheShare(row.cacheRead, row.input) })),
+        sessions: top.map(row => ({ name: context.sessionLabels?.get(row.id) || 'Unnamed session', ...row, share: cacheShare(row.cacheRead, row.input) })),
       };
     },
   };

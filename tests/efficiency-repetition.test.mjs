@@ -66,7 +66,7 @@ test('repeats are counted against compared calls, by group, by gap, across a com
     timing: { timed: 3, under5: 3, mid: 0, over60: 0 }, compactable: 2, afterCompaction: 0 });
   assert.deepEqual(r.compaction, { sessions: 1, repeats: 6, after: 2, afterReading: 2 });
   assert.deepEqual(r.most, { times: 4, name: 'view', server: '', mcpTool: '', session: 'One' });
-  assert.deepEqual(r.conversations, [{ name: 'One', measured: 11, repeated: 8, share: 8 / 11 * 100, times: 4 }, { name: 'Two', measured: 5, repeated: 2, share: 40, times: 2 }]);
+  assert.deepEqual(r.conversations, [{ id: 's1', project: 'p', name: 'One', measured: 11, repeated: 8, share: 8 / 11 * 100, times: 4 }, { id: 's2', project: 'p', name: 'Two', measured: 5, repeated: 2, share: 40, times: 2 }]);
   assert.ok(JSON.stringify(r).length < 2500);
 });
 
@@ -142,7 +142,8 @@ test('the view shows counts with their coverage, both groups, gaps, compactions,
   assert.match(shown, /8 of 10 repeated calls have a usable time on both calls\./);
   assert.match(shown, /Repeats after a compaction 2 2 of 6 repeated calls in 1 conversation with a compaction Reading and searching among them 2 0 were other calls/);
   assert.match(shown, /1 conversation with compared calls in this view has such a compaction\. It holds 6 of the 8 repeated calls with a usable time\. A compaction is one explanation, not a proven cause/);
-  assert.match(html, /<td class="text-cell"><span class="cell-text">One<\/span><\/td><td><span class="cell-text">11<\/span><\/td><td><span class="cell-text">8<\/span><\/td><td><span class="cell-text">72\.7\d*%<\/span><\/td><td><span class="cell-text">4<\/span><\/td>/);
+  assert.match(html, /data-efficiency-jump-section="patterns" data-efficiency-jump-topic="compaction"/);
+  assert.match(html, /<td class="text-cell"><button class="model-toggle cell-text" data-efficiency-open-session="s1" data-efficiency-open-project="p"[^>]*>One<\/button><\/td><td><span class="cell-text">11<\/span><\/td><td><span class="cell-text">8<\/span><\/td><td><span class="cell-text">72\.7\d*%<\/span><\/td><td><span class="cell-text">4<\/span><\/td>/);
   assert.match(shown, /Showing 2 of 2 conversations with a repeated call, most repeats first\./);
   // Seven reading repeats out of eleven compared, and only two across a compaction: the share leads.
   assert.match(shown, /7 of 11 compared reading and searching calls \(63\.6\d*%\) repeated an identical earlier call in the same conversation\. The most repeated was view, 5 times\./);
@@ -167,7 +168,7 @@ test('counts are written in full and tool, server and conversation names are esc
   assert.doesNotMatch(html, /1\.2M/);
   assert.match(html, /&lt;b&gt;srv&lt;\/b&gt; \/ get_&lt;i&gt;/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt; · &lt;img src=x&gt;/);
-  assert.match(html, /<span class="cell-text">&lt;img src=x&gt;<\/span>/);
+  assert.match(html, /data-efficiency-open-session="s1" data-efficiency-open-project="p"[^>]*>&lt;img src=x&gt;<\/button>/);
   assert.doesNotMatch(html, /<img|<script|<b>|<i>/);
   assert.doesNotMatch(html, /NaN|undefined|Infinity/);
 });

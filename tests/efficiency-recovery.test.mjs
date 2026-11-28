@@ -50,7 +50,7 @@ test('what followed each failure is counted within one operation and one session
   // with no outcome, and the last by nothing. The view failure has no later view call in s1.
   assert.deepEqual(result.followed, { failures: 5, succeeded: 1, failed: 1, unknown: 1, none: 2, known: 2, share: 50 });
   assert.deepEqual(result.runs, { longest: 2, repeated: 0, repeatedFailures: 0, total: 1,
-    top: [{ name: 'bash', server: '', mcpTool: '', session: 'Named session', length: 2, day: '2026-06-01', then: 'unknown' }] });
+    top: [{ name: 'bash', server: '', mcpTool: '', sessionId: 's1', project: 'p', session: 'Named session', length: 2, day: '2026-06-01', then: 'unknown' }] });
   assert.deepEqual(result.time, { failedMs: 500, failedCalls: 5, knownMs: 700, knownCalls: 7, share: 500 / 700 * 100 });
   assert.deepEqual(pick(result.operations, ['called', 'failing', 'ranked']), { called: 2, failing: 2, ranked: 1 });
   assert.deepEqual(result.operations.byFailures, [
@@ -97,11 +97,11 @@ test('runs of failures report the longest, the runs of three or more and a bound
   assert.deepEqual(pick(result.runs, ['longest', 'repeated', 'repeatedFailures', 'total']), { longest: 6, repeated: 3, repeatedFailures: 13, total: 6 });
   // Longest first, then the most recent. The sixth run of two or more (session g, the oldest) is left out.
   assert.deepEqual(result.runs.top, [
-    { ...github, session: 'Epsilon', length: 6, day: '2026-06-01', then: 'none' },
-    { name: 'bash', server: '', mcpTool: '', session: 'Alpha', length: 4, day: '2026-06-01', then: 'succeeded' },
-    { name: 'bash', server: '', mcpTool: '', session: 'Beta', length: 3, day: '2026-06-02', then: 'none' },
-    { name: 'bash', server: '', mcpTool: '', session: 'Zeta', length: 2, day: '2026-06-01', then: 'succeeded' },
-    { name: 'view', server: '', mcpTool: '', session: 'Gamma', length: 2, day: '2026-06-01', then: 'unknown' }]);
+    { ...github, sessionId: 'e', project: 'p', session: 'Epsilon', length: 6, day: '2026-06-01', then: 'none' },
+    { name: 'bash', server: '', mcpTool: '', sessionId: 'a', project: 'p', session: 'Alpha', length: 4, day: '2026-06-01', then: 'succeeded' },
+    { name: 'bash', server: '', mcpTool: '', sessionId: 'b', project: 'p', session: 'Beta', length: 3, day: '2026-06-02', then: 'none' },
+    { name: 'bash', server: '', mcpTool: '', sessionId: 'f', project: 'p', session: 'Zeta', length: 2, day: '2026-06-01', then: 'succeeded' },
+    { name: 'view', server: '', mcpTool: '', sessionId: 'c', project: 'p', session: 'Gamma', length: 2, day: '2026-06-01', then: 'unknown' }]);
   assert.deepEqual(result.operations.byFailures.map(row => [row.name, row.calls, row.failures, row.known, row.longestRun, row.followed]), [
     ['bash', 14, 11, 14, 4, { failures: 11, succeeded: 3, failed: 7, unknown: 0, none: 1, known: 10, share: 30 }],
     ['github-search', 6, 6, 6, 6, { failures: 6, succeeded: 0, failed: 5, unknown: 0, none: 1, known: 5, share: 0 }],
@@ -191,7 +191,7 @@ test('the topic stays small and sees only in-range, attributed calls of the repo
   assert.deepEqual(pick(recovery, ['calls', 'successes', 'failures', 'unknown']), { calls: 5, successes: 1, failures: 3, unknown: 1 });
   assert.equal(recovery.calls, report.tools.calls);
   assert.equal(recovery.failures, report.tools.rows.reduce((sum, row) => sum + row.failures, 0));
-  assert.deepEqual(recovery.runs.top, [{ name: 'bash', server: '', mcpTool: '', session: 'Fix the build', length: 3, day: '2026-06-01', then: 'succeeded' }]);
+  assert.deepEqual(recovery.runs.top, [{ name: 'bash', server: '', mcpTool: '', sessionId: 's', project: 'p', session: 'Fix the build', length: 3, day: '2026-06-01', then: 'succeeded' }]);
   assert.equal(report.tools.omitted, 3);
 
   // However long the history, the report carries five rows per list.
@@ -268,7 +268,7 @@ test('the card escapes operation, server and conversation names', async () => {
   assert.doesNotMatch(html, /<img|<b>srv|onerror=alert\(1\)>/);
   assert.match(html, /&lt;img src=x&gt; failed 3 times in a row in one conversation \(&lt;img src=x onerror=alert\(1\)&gt;, 2026-06-01\)/);
   assert.match(html, /&lt;b&gt;srv&lt;\/b&gt; \/ &quot;tool&quot;/);
-  assert.match(html, /<span class="cell-text">&lt;img src=x onerror=alert\(1\)&gt;<\/span>/);
+  assert.match(html, /data-efficiency-open-session="x" data-efficiency-open-project="p"[^>]*>&lt;img src=x onerror=alert\(1\)&gt;<\/button>/);
   assert.doesNotMatch(html, /NaN|undefined|Infinity/);
 });
 

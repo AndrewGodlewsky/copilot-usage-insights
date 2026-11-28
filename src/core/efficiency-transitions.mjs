@@ -82,8 +82,12 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
         if (excluded.has(id) || unresolved.has(id)) { result.omitted += events.length; continue; }
         events.sort((a, b) => a.ms - b.ms || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
         result.events += events.length; result.sessions++;
-        let modelCount = 0, effortCount = 0;
+        let modelCount = 0, effortCount = 0, sessionProject = null;
         for (const e of events) {
+          if (e.project) {
+            if (sessionProject === null) sessionProject = e.project;
+            else if (sessionProject !== e.project) sessionProject = '';
+          }
           sources.set(e.source, (sources.get(e.source) || 0) + 1);
           if (e.modelChanged) {
             modelCount++;
@@ -101,7 +105,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
           }
         }
         result.modelChanges += modelCount; result.effortChanges += effortCount;
-        rows.push({ id, modelChanges: modelCount, effortChanges: effortCount });
+        rows.push({ id, project: sessionProject || '', modelChanges: modelCount, effortChanges: effortCount });
         // Pair the last main call before a model change with the first one after it. With a model
         // filter the calls kept are only the selected models', so neighbours cannot be trusted.
         const { times, input, cacheRead, model, nano } = session, calls = times.length;
@@ -148,7 +152,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
           creditPairs: creditsBefore.length, creditsBefore: middle(creditsBefore), creditsAfter: middle(creditsAfter) },
         conversations: rows.map(row => ({ ...row, name: name(row.id) }))
           .sort((a, b) => b.modelChanges + b.effortChanges - a.modelChanges - a.effortChanges || b.modelChanges - a.modelChanges || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-          .slice(0, 5).map(({ id, ...row }) => row) };
+          .slice(0, 5) };
     },
   };
 }
