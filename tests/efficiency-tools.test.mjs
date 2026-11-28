@@ -97,3 +97,31 @@ test('the demo history renders a complete view', () => {
   assert.doesNotMatch(words, /NaN|undefined|Infinity/);
   assert.ok(JSON.stringify(report.efficiency.toolFootprint).length < 4000);
 });
+
+test('executed MCP server count excludes zero-call inventory rows and lists connected unused servers', () => {
+  const report = {
+    efficiency: { summary: { requests: 10, toolRequests: 10, averageToolTokens: 500, toolShare: 15, toolTokens: 5000, toolCountRequests: 10, averageAvailableTools: 20 }, models: [], toolFootprint: run(repeat(10)) },
+    tools: { calls: 4, rows: [{ name: 'github-search', server: 'github', mcpTool: 'search', calls: 4 }] },
+    mcp: {
+      available: true,
+      rows: [
+        { name: 'github', calls: 4, status: 'connected', toolsLoaded: true },
+        { name: 'unused-db', displayName: '<Unused DB>', calls: 0, status: 'connected', toolsLoaded: true },
+        { name: 'no-tools', calls: 0, status: 'connected', toolsLoaded: false },
+        { name: 'offline', calls: 0, status: 'disabled', toolsLoaded: false },
+      ],
+    },
+  };
+  const html = renderTokenTopic('tools', report, { ...formats, context: { available: false } }), words = text(html);
+  assert.match(words, /MCP servers with executed tools 1 Whole selected history/);
+  assert.match(words, /Connected MCP servers 3 Current session/);
+  assert.match(words, /Connected MCP servers with no calls in these filters/);
+  assert.match(html, /&lt;Unused DB&gt;/);
+  assert.doesNotMatch(html, /<Unused DB>|no-tools|offline/);
+  assert.match(words, /Showing 1 of 1 connected server with no recorded calls/);
+
+  // Unavailable live inventory hides connected server counts and still counts only calls > 0.
+  const offline = text(renderTokenTopic('tools', { ...report, mcp: { available: false, rows: report.mcp.rows } }, { ...formats, context: { available: false } }));
+  assert.match(offline, /MCP servers with executed tools 1 Whole selected history/);
+  assert.doesNotMatch(offline, /Connected MCP servers/);
+});

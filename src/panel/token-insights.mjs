@@ -335,10 +335,24 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
 
     // Available on one call against executed over the whole history: two scopes, stated as such.
     const executed = report.tools?.rows, servers = report.mcp?.rows;
+    const executedServers = Array.isArray(servers) ? servers.filter(row => row.calls > 0) : null;
+    const liveMcp = report.mcp?.available === true && Array.isArray(servers);
+    const connectedServers = liveMcp ? servers.filter(row => row.status === 'connected') : [];
+    const idleServers = liveMcp ? connectedServers.filter(row => !(row.calls > 0) && row.toolsLoaded !== false)
+      .sort((a, b) => String(a.displayName || a.name).localeCompare(String(b.displayName || b.name))) : [];
+    const idleList = idleServers.length
+      ? `<p class="compaction-caption">Connected MCP servers with no calls in these filters</p>`
+        + table(['Server', 'Current status', 'Tools loaded'], idleServers.slice(0, 8).map(r => [r.displayName || r.name || 'Unnamed server', 'Connected', r.toolsLoaded === true ? 'Yes' : 'Not reported']))
+        + note(`Live inventory reflects the current hosting session, separate from the selected history. Showing ${number(Math.min(idleServers.length, 8))} of ${number(idleServers.length)} connected ${idleServers.length === 1 ? 'server' : 'servers'} with no recorded calls in these dates. A server with zero calls in this range may still be needed on other tasks.`)
+      : liveMcp && connectedServers.length
+        ? note('Every connected MCP server with loaded tools in the current session had at least one recorded call in these filters.')
+        : '';
     const against = metrics(
       metric('Tools available, half of calls', fp?.medianAvailable ?? null, `Half of calls had this many or fewer · ${coverage(fp?.countCalls ?? 0)}`, number, partial(fp?.countCalls ?? 0)),
       metric('Different tools executed', Array.isArray(executed) ? executed.length : null, `Whole selected history, not one call · ${number(report.tools?.calls ?? 0)} tool calls`),
-      metric('MCP servers with executed tools', Array.isArray(servers) ? servers.length : null, 'Whole selected history'))
+      metric('MCP servers with executed tools', executedServers ? executedServers.length : null, 'Whole selected history'),
+      ...(liveMcp ? [metric('Connected MCP servers', connectedServers.length, 'Current session · separate from selected history')] : []))
+      + idleList
       + note('These count different things. The first is per model call. The others cover every call in the selected dates. An available tool that was not executed in this period may be needed on another task, so this is not a count of unused or wasted tools. Tool names are counted as recorded: an MCP tool is one per server and tool name.')
       + note(`Tool definitions are usually served from cache after the first call of a conversation, so their input tokens are not all processed fresh. The history has no cache split by content, so this view cannot say how much of the definitions was read from cache.${report.tools?.omitted ? ` ${number(report.tools.omitted)} tool calls were omitted for missing or mixed provider attribution.` : ''}`);
 

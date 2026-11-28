@@ -272,6 +272,10 @@ async function loadInventory(refresh = false) {
     inventoryPending = false;
     applyInventory();
     renderIntegrations(state.report);
+    if (state.report) {
+      renderEfficiencyReliability();
+      if (['tools', 'skills'].includes(tokenTopic)) renderSelectedTokenTopic();
+    }
     if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
   }
 }
