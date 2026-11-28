@@ -1295,8 +1295,10 @@ function renderEfficiency() {
   $('efficiency-insight-count').textContent = `${visibleInsights.length + (showFailedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
   if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
+  const allModelsOpen = $('efficiency-models').querySelector('#efficiency-all-models')?.open ?? false;
+  const allModelMeasures = [...efficiencyMeasures, { key: 'creditsPerMillionTokens', label: 'Credits / 1M tokens', count: 'creditTokenRequests', format: creditNumber, hint: 'Complete recorded charges divided by input (including cache) plus output tokens, times 1,000,000.' }];
   $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
-  $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
+  $('efficiency-models').innerHTML = models.length ? `<details id="efficiency-all-models" class="conversation-detail"${allModelsOpen ? ' open' : ''}><summary>All measured models (${number(models.length)}) — includes tool definitions per request</summary><div class="table-wrap"><table><thead><tr><th>Model</th><th>Requests</th>${allModelMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${allModelMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
     (button || $('view').querySelector('[data-view="efficiency"]'))?.focus({ preventScroll: true });
@@ -1345,6 +1347,10 @@ $('efficiency-findings').onclick = event => {
   showEfficiencySection(tokens ? 'tokens' : 'patterns');
   (tokens ? showTokenTopic : showPatternTopic)(target.findingTopic, true);
   $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+};
+$('efficiency-model-mix').onclick = event => {
+  const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;
+  if (model !== undefined) return inspectEfficiency({ model });
 };
 $('efficiency-models').onclick = event => {
   const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;

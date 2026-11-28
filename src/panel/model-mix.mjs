@@ -22,7 +22,9 @@ export function renderModelMix(report, { number, credits = number } = {}) {
   const times = value => Number.isFinite(value) ? `${number(value, { maximumFractionDigits: value < 10 ? 1 : 0 })}x` : null;
   const note = text => `<p class="footnote token-insight-note">${esc(text)}</p>`;
   const section = (title, body) => `<section class="token-insight-section"><h3>${esc(title)}</h3>${body}</section>`;
-  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table model-mix-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table model-mix-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => index === 0
+    ? `<td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(cell)}" title="Inspect usage for ${esc(cell)}">${esc(cell)}</button></td>`
+    : `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const more = (shown, total) => total > shown ? note(`${number(total - shown)} more ${total - shown === 1 ? 'model is' : 'models are'} not listed.`) : '';
   // A cell with its sample: the value, then how many calls it rests on. Too few calls is not zero.
@@ -54,12 +56,13 @@ export function renderModelMix(report, { number, credits = number } = {}) {
     return multiple ? `${format(value)} · ${multiple} · ${calls(sample)}` : cell(value, sample, format);
   };
   html += section('Per call, against the lowest-credit model', enough.length >= 2
-    ? table(['Model', 'Credits per call', 'Input per call', 'Output per call'], enough.slice(0, MODEL_MIX_ROWS).map(row => [row.name,
+    ? table(['Model', 'Credits per call', 'Credits / 1M tokens', 'Input per call', 'Output per call'], enough.slice(0, MODEL_MIX_ROWS).map(row => [row.name,
       row === base ? `${credits(row.averageCredits)} · baseline · ${calls(row.creditRequests)}` : perCall(row.averageCredits, row.creditRequests, base.averageCredits, credits),
+      row === base ? cell(row.creditsPerMillionTokens, row.creditTokenRequests, credits) : perCall(row.creditsPerMillionTokens, row.creditTokenRequests, base.creditsPerMillionTokens, credits),
       row === base ? cell(row.averageInput, row.inputRequests, number) : perCall(row.averageInput, row.inputRequests, base.averageInput, number),
       row === base ? cell(row.averageOutput, row.outputRequests, number) : perCall(row.averageOutput, row.outputRequests, base.averageOutput, number)]))
       + more(Math.min(MODEL_MIX_ROWS, enough.length), enough.length)
-      + note(`Averages per call, for models with at least ${number(min)} calls on that measure (credits: complete charges only). The baseline is ${base.name}, the lowest credits per call among them. A multiple such as 2x means twice the baseline model's figure. Multiples describe size, not value: a larger call is not better or worse.`)
+      + note(`Averages per call, for models with at least ${number(min)} calls on that measure (credits: complete charges only). The baseline is ${base.name}, the lowest credits per call among them. A multiple such as 2x means twice the baseline model's figure. Credits / 1M tokens covers calls with both complete charges and complete token counts (cached input included) and reflects recorded charges, not a pricing table. Multiples describe size, not value: a larger call is not better or worse.`)
     : `<p class="muted token-insight-note">${esc(`A comparison needs at least two models with ${number(min)} or more complete-charge calls each. ${enough.length ? `Only ${enough[0].name} has enough.` : 'None has enough yet.'} Try a wider date range.`)}</p>`);
 
   // 3. Columns people ask about, each on its own matched sample.

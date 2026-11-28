@@ -3959,7 +3959,9 @@ function renderModelMix(report, { number, credits = number } = {}) {
   const times = value => Number.isFinite(value) ? `${number(value, { maximumFractionDigits: value < 10 ? 1 : 0 })}x` : null;
   const note = text => `<p class="footnote token-insight-note">${esc(text)}</p>`;
   const section = (title, body) => `<section class="token-insight-section"><h3>${esc(title)}</h3>${body}</section>`;
-  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table model-mix-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table model-mix-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => index === 0
+    ? `<td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(cell)}" title="Inspect usage for ${esc(cell)}">${esc(cell)}</button></td>`
+    : `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const more = (shown, total) => total > shown ? note(`${number(total - shown)} more ${total - shown === 1 ? 'model is' : 'models are'} not listed.`) : '';
   // A cell with its sample: the value, then how many calls it rests on. Too few calls is not zero.
@@ -3991,12 +3993,13 @@ function renderModelMix(report, { number, credits = number } = {}) {
     return multiple ? `${format(value)} · ${multiple} · ${calls(sample)}` : cell(value, sample, format);
   };
   html += section('Per call, against the lowest-credit model', enough.length >= 2
-    ? table(['Model', 'Credits per call', 'Input per call', 'Output per call'], enough.slice(0, MODEL_MIX_ROWS).map(row => [row.name,
+    ? table(['Model', 'Credits per call', 'Credits / 1M tokens', 'Input per call', 'Output per call'], enough.slice(0, MODEL_MIX_ROWS).map(row => [row.name,
       row === base ? `${credits(row.averageCredits)} · baseline · ${calls(row.creditRequests)}` : perCall(row.averageCredits, row.creditRequests, base.averageCredits, credits),
+      row === base ? cell(row.creditsPerMillionTokens, row.creditTokenRequests, credits) : perCall(row.creditsPerMillionTokens, row.creditTokenRequests, base.creditsPerMillionTokens, credits),
       row === base ? cell(row.averageInput, row.inputRequests, number) : perCall(row.averageInput, row.inputRequests, base.averageInput, number),
       row === base ? cell(row.averageOutput, row.outputRequests, number) : perCall(row.averageOutput, row.outputRequests, base.averageOutput, number)]))
       + more(Math.min(MODEL_MIX_ROWS, enough.length), enough.length)
-      + note(`Averages per call, for models with at least ${number(min)} calls on that measure (credits: complete charges only). The baseline is ${base.name}, the lowest credits per call among them. A multiple such as 2x means twice the baseline model's figure. Multiples describe size, not value: a larger call is not better or worse.`)
+      + note(`Averages per call, for models with at least ${number(min)} calls on that measure (credits: complete charges only). The baseline is ${base.name}, the lowest credits per call among them. A multiple such as 2x means twice the baseline model's figure. Credits / 1M tokens covers calls with both complete charges and complete token counts (cached input included) and reflects recorded charges, not a pricing table. Multiples describe size, not value: a larger call is not better or worse.`)
     : `<p class="muted token-insight-note">${esc(`A comparison needs at least two models with ${number(min)} or more complete-charge calls each. ${enough.length ? `Only ${enough[0].name} has enough.` : 'None has enough yet.'} Try a wider date range.`)}</p>`);
 
   // 3. Columns people ask about, each on its own matched sample.
@@ -5536,8 +5539,10 @@ function renderEfficiency() {
   $('efficiency-insight-count').textContent = `${visibleInsights.length + (showFailedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
   if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
+  const allModelsOpen = $('efficiency-models').querySelector('#efficiency-all-models')?.open ?? false;
+  const allModelMeasures = [...efficiencyMeasures, { key: 'creditsPerMillionTokens', label: 'Credits / 1M tokens', count: 'creditTokenRequests', format: creditNumber, hint: 'Complete recorded charges divided by input (including cache) plus output tokens, times 1,000,000.' }];
   $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
-  $('efficiency-models').innerHTML = models.length ? `<table><thead><tr><th>Model</th><th>Requests</th>${efficiencyMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${efficiencyMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
+  $('efficiency-models').innerHTML = models.length ? `<details id="efficiency-all-models" class="conversation-detail"${allModelsOpen ? ' open' : ''}><summary>All measured models (${number(models.length)}) — includes tool definitions per request</summary><div class="table-wrap"><table><thead><tr><th>Model</th><th>Requests</th>${allModelMeasures.map(metric => `<th title="${esc(metric.hint)}">${metric.label}</th>`).join('')}</tr></thead><tbody>${models.map(row => `<tr><td class="text-cell"><button class="model-toggle cell-text" data-efficiency-model="${esc(row.name)}" title="Inspect usage for ${esc(row.name)}">${esc(row.name)}</button></td><td>${number(row.requests)}</td>${allModelMeasures.map(metric => `<td title="${esc(efficiencyHint(row, metric))}">${esc(efficiencyValue(row, metric))}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>` : '<p class="muted">No matching model requests. Change the filters to include recorded Copilot usage.</p>';
   if (focused?.efficiencyModel !== undefined) {
     const button = [...$('efficiency-view').querySelectorAll('[data-efficiency-model]')].find(b => b.dataset.efficiencyModel === focused.efficiencyModel && b.dataset.efficiencyKind === focused.efficiencyKind);
     (button || $('view').querySelector('[data-view="efficiency"]'))?.focus({ preventScroll: true });
@@ -5586,6 +5591,10 @@ $('efficiency-findings').onclick = event => {
   showEfficiencySection(tokens ? 'tokens' : 'patterns');
   (tokens ? showTokenTopic : showPatternTopic)(target.findingTopic, true);
   $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+};
+$('efficiency-model-mix').onclick = event => {
+  const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;
+  if (model !== undefined) return inspectEfficiency({ model });
 };
 $('efficiency-models').onclick = event => {
   const model = event.target.closest('[data-efficiency-model]')?.dataset.efficiencyModel;

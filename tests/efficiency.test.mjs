@@ -80,6 +80,11 @@ test('efficiency denominators match known measurements and exclude partial charg
   assert.equal(summary.creditRequests, 2);
   assert.equal(summary.credits, 2);
   assert.equal(summary.averageCredits, 1);
+  // Only record 0 has both a complete charge and known inputTotal + output (0 credits over 200 tokens -> 0)
+  assert.equal(summary.creditTokenRequests, 1);
+  assert.equal(summary.creditTokens, 200);
+  assert.equal(summary.creditsPerMillionTokens, 0);
+  assert.equal(analyze([record(0, { inputTotal: 0, output: 0, nanoAiu: 1e9 })]).summary.creditsPerMillionTokens, null);
   assert.equal(analyze([record(0, { inputTotal: 0, cacheRead: 0, cacheWrite: 0 })]).summary.cacheHitRate, null);
   assert.equal(analyze([]).summary.averageCredits, null);
   assert.equal(analyze([]).summary.averageInput, null);

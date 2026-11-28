@@ -47,9 +47,10 @@ test('the report carries the mix and the view shows shares, multiples, columns a
   assert.match(shown, /Big 57\.1% 84\.2% \(160\) \+27\.1 points/);
   assert.match(shown, /Small 42\.9% 15\.8% \(30\) -27\.1 points/);
   assert.match(shown, /70 of 70 model calls have a complete recorded charge/);
-  // Small is the lowest-credit model, so it is the baseline; Big is 4x on credits, 3x on input and output.
-  assert.match(shown, /Small 1 · baseline · 30 calls 1,000 · 30 calls 100 · 30 calls/);
-  assert.match(shown, /Big 4 · 4x · 40 calls 3,000 · 3x · 40 calls 300 · 3x · 40 calls/);
+  // Small is the lowest-credit model, so it is the baseline; Big is 4x on credits, 1.3x on credits/1M tokens, 3x on input and output.
+  assert.match(shown, /Small 1 · baseline · 30 calls 909\.091 · 30 calls 1,000 · 30 calls 100 · 30 calls/);
+  assert.match(shown, /Big 4 · 4x · 40 calls 1,212\.121 · 1\.3x · 40 calls 3,000 · 3x · 40 calls 300 · 3x · 40 calls/);
+  assert.match(shown, /Credits \/ 1M tokens covers calls with both complete charges and complete token counts/);
   assert.match(shown, /Big 16\.7% · 40 calls 3\.3% · 40 calls 3 s · 40 calls 100 tokens\/s · 40 calls/);
   assert.match(shown, /Big 25% \(10\) 75% \(30\) 0% \(0\)/);
   assert.match(shown, /Big made 57\.1% of charged calls and 84\.2% of recorded credits\./);
@@ -87,14 +88,19 @@ test('model names are escaped', () => {
   assert.match(html, /&lt;img src=x&gt;/);
 });
 
-test('the Efficiency panel mounts the comparison above the model table', async () => {
+test('the Efficiency panel mounts the comparison above the model table and opens Breakdown on model click', async () => {
   const report = { ...build([...calls('Big', 30, { credits: 4 }), ...calls('Small', 30, { credits: 1 })]), sources: [], coverage: {} };
   const { get } = await mountPanel(report);
   get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
   const html = get('efficiency-model-mix').innerHTML;
   assert.match(text(html), /Share of calls and share of credits/);
+  assert.match(html, /data-efficiency-model="Big"/);
+  assert.match(get('efficiency-models').innerHTML, /<details id="efficiency-all-models"/);
+  assert.match(get('efficiency-models').innerHTML, /All measured models \(2\)/);
   assert.match(get('efficiency-models').innerHTML, /Big/);
   assert.doesNotMatch(html, /NaN|undefined|Infinity/);
+  get('efficiency-model-mix').onclick({ target: { closest: () => ({ dataset: { efficiencyModel: 'Big' } }) } });
+  assert.equal(get('model').value, 'Big');
 });
 
 test('the demo history yields a mix with subagent use and a credit share gap', () => {

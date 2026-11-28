@@ -31,6 +31,7 @@ export function summarizeInteractions(records, activity, query, start, end, now,
 }
 
 const measurement = () => ({ requests: 0, inputRequests: 0, inputTokens: 0, outputRequests: 0, outputTokens: 0, cacheRequests: 0, cacheInput: 0, cacheRead: 0, cacheWrite: 0, creditRequests: 0, creditNano: 0, creditWide: 0n,
+  creditTokenRequests: 0, creditTokens: 0, creditTokenNano: 0, creditTokenWide: 0n,
   pairedRequests: 0, pairedInput: 0, pairedOutput: 0, toolRequests: 0, toolTokens: 0, toolInput: 0, toolCountRequests: 0, availableTools: 0, reasoningRequests: 0, reasoningTokens: 0, reasoningOutput: 0,
   durationRequests: 0, durationTotal: 0, paceRequests: 0, paceOutput: 0, paceDuration: 0 });
 const known = value => Number.isFinite(value) && value >= 0;
@@ -57,11 +58,18 @@ function addMeasurement(b, r) {
     // An exact integer total: a BigInt is involved only if the sum would leave the safe range.
     if (b.creditNano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { b.creditWide += BigInt(b.creditNano); b.creditNano = 0; }
     b.creditNano += r.nanoAiu;
+    if (known(r.inputTotal) && known(r.output)) {
+      b.creditTokenRequests++;
+      b.creditTokens += r.inputTotal + r.output;
+      if (b.creditTokenNano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { b.creditTokenWide += BigInt(b.creditTokenNano); b.creditTokenNano = 0; }
+      b.creditTokenNano += r.nanoAiu;
+    }
   }
 }
 function finishMeasurement(b) {
-  const { creditNano, creditWide, ...rest } = b;
+  const { creditNano, creditWide, creditTokenNano, creditTokenWide, ...rest } = b;
   const credits = (creditWide ? Number(creditWide + BigInt(creditNano)) : creditNano) / 1e9;
+  const tokenCredits = (creditTokenWide ? Number(creditTokenWide + BigInt(creditTokenNano)) : creditTokenNano) / 1e9;
   return { ...rest, credits: b.creditRequests ? credits : null,
     averageInput: b.inputRequests ? b.inputTokens / b.inputRequests : null,
     averageOutput: b.outputRequests ? b.outputTokens / b.outputRequests : null,
@@ -74,7 +82,8 @@ function finishMeasurement(b) {
     cacheHitRate: b.cacheInput > 0 ? b.cacheRead / b.cacheInput * 100 : null,
     averageDuration: b.durationRequests ? b.durationTotal / b.durationRequests : null,
     outputPerSecond: b.paceDuration > 0 ? b.paceOutput / b.paceDuration * 1000 : null,
-    averageCredits: b.creditRequests ? credits / b.creditRequests : null };
+    averageCredits: b.creditRequests ? credits / b.creditRequests : null,
+    creditsPerMillionTokens: b.creditTokens > 0 ? tokenCredits / b.creditTokens * 1e6 : null };
 }
 const compareSamples = (a, b) => a.ms - b.ms || a.key.localeCompare(b.key);
 const medianInput = samples => samples.map(s => s.input).sort((a, b) => a - b)[1];
@@ -95,11 +104,14 @@ const TREND_POINTS = 62;
 function mergeMeasurement(into, b) {
   for (const key of Object.keys(b)) {
     if (key === 'creditWide') into.creditWide += b.creditWide;
-    else if (key !== 'creditNano') into[key] += b[key];
-    else {
+    else if (key === 'creditTokenWide') into.creditTokenWide += b.creditTokenWide;
+    else if (key === 'creditNano') {
       if (into.creditNano > Number.MAX_SAFE_INTEGER - b.creditNano) { into.creditWide += BigInt(into.creditNano); into.creditNano = 0; }
       into.creditNano += b.creditNano;
-    }
+    } else if (key === 'creditTokenNano') {
+      if (into.creditTokenNano > Number.MAX_SAFE_INTEGER - b.creditTokenNano) { into.creditTokenWide += BigInt(into.creditTokenNano); into.creditTokenNano = 0; }
+      into.creditTokenNano += b.creditTokenNano;
+    } else into[key] += b[key];
   }
 }
 // One point per day that has calls. A longer span is grouped into weeks counted from its first day.
