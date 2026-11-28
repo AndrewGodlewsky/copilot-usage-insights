@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createConversationAccumulator } from '../src/core/conversations.mjs';
 import { buildReport } from '../src/core/copilot-report.mjs';
 import { localDay } from '../src/core/query.mjs';
+import { buildEfficiencyReview } from '../src/panel/efficiency.mjs';
 import { steeringFixture, reviewNow } from './fixtures/review.mjs';
 
 const end = localDay(reviewNow), start = end - 6;
@@ -38,7 +39,9 @@ test('returning distribution and steering concentration use selected dates and r
   assert.equal(c.priorSessions, 1); assert.equal(c.steering.topMessages, 12);
   assert.equal(c.steering.topSessions, 3); assert.equal(c.steering.sessions, 4);
   assert.equal(c.delivery.steering, 14); assert.equal(c.delivery.unknown, 1);
-  assert.doesNotMatch(JSON.stringify(c), /PRIVATE/);
+  const { examples, ...summary } = c;
+  assert.doesNotMatch(JSON.stringify(summary), /PRIVATE/);
+  assert.ok(examples.length === 5 && examples.every(e => typeof e.sessionId === 'string' && typeof e.name === 'string'));
 });
 test('previous equal-length dates are aggregated from memory and respect project filters', () => {
   const a = createConversationAccumulator([], { project: 'included' }, start, end, reviewNow);
@@ -52,11 +55,16 @@ test('previous equal-length dates are aggregated from memory and respect project
   assert.equal(c.comparison.startDate, '2026-11-02'); assert.equal(c.comparison.endDate, '2026-11-08');
   assert.equal(createConversationAccumulator([], {}, -Infinity, end, reviewNow).finish().comparison, null);
 });
-test('local examples and event counts stay bounded and omit private identities', () => {
+test('local examples and event counts stay bounded and omit private identities from summaries and AI review', () => {
   const a = createConversationAccumulator([], {}, start, end, reviewNow);
   for (let s = 0; s < 50; s++) for (let i = 0; i < 100; i++) a.add(prompt(`SECRET SESSION ${s}`, end, 1, { project: 'SECRET PROJECT' }), true);
   const c = a.finish();
   assert.ok(c.examples.length <= 8); assert.ok(c.examples.every(e => e.events.length <= 16));
   assert.equal(c.examplesOmitted, 42); assert.ok(c.examples.every(e => e.eventsOmitted === 84));
-  assert.doesNotMatch(JSON.stringify(c), /SECRET/); assert.ok(JSON.stringify(c).length < 24000);
+  const { examples, ...summary } = c;
+  assert.doesNotMatch(JSON.stringify(summary), /SECRET/);
+  assert.ok(examples.every(e => e.sessionId.startsWith('SECRET SESSION ') && e.project === 'SECRET PROJECT'));
+  assert.ok(JSON.stringify(c).length < 24000);
+  const review = buildEfficiencyReview({ generatedAt: reviewNow.toISOString(), query: { range: '7d' }, efficiency: { summary: { requests: 1 }, models: [], insights: [], conversations: c } });
+  assert.doesNotMatch(review, /SECRET/);
 });
