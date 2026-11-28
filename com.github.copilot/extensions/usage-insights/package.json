@@ -1,6 +1,6 @@
 {
   "name": "copilot-usage-insights",
-  "version": "0.1.130",
+  "version": "2.0.0",
   "type": "module",
   "description": "GitHub Copilot usage and recorded AI credits."
 }

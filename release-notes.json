@@ -1,5 +1,9 @@
 [
   {
+    "version": "2.0.0",
+    "summary": "All Efficiency views now show deeper cost, cache, compaction, reliability, and model-routing insights, including Credits / 1M tokens, cache read-back ratios, before/after context diffs, live MCP status on failing tools, and compaction markers on session curves. Clickable links also jump between related views or open conversations directly in Breakdown."
+  },
+  {
     "version": "0.1.130",
     "summary": "AI review works again after the GitHub Copilot app update to 1.5.0, which made Refresh models, Reconnect to GitHub and Create AI review report that the Copilot SDK was unavailable or incompatible. Earlier versions of the app keep working."
   },

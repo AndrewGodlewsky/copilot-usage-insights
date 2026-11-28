@@ -69,7 +69,7 @@ Use **Refresh** to reread usage and **Settings** to configure sources. See the [
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **0.1.130** makes AI review work again after the GitHub Copilot app update to 1.5.0, which made Refresh models, Reconnect to GitHub and Create AI review report that the Copilot SDK was unavailable or incompatible. Earlier versions of the app keep working. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **2.0.0** expands all Efficiency views with deeper cost, cache, compaction, reliability, and model-routing insights—including Credits / 1M tokens, cache read-back ratios, before/after context diffs, live MCP status on failing tools, and compaction markers on session curves—plus consistent clickable links between related views and Breakdown. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ## What the numbers mean
 
