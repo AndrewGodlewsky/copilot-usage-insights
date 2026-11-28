@@ -256,3 +256,18 @@ test('the delegated work view renders the demo history with the panel formatters
     assert.ok(sub.averageInput < (main[0].inputTokens + main[1].inputTokens) / (main[0].inputRequests + main[1].inputRequests), range);
   }
 });
+
+test('the subagent model table shows cache reuse, credits per call and complete credits with coverage', () => {
+  const html = render(report(history())), plain = text(html);
+  assert.match(plain, /Models used by subagents Calls Input \/ call Output \/ call Cache read Credits \/ call Complete credits/);
+  assert.match(plain, /Small 3 1000 \(3 of 3 model calls\) 100 \(3 of 3 model calls\) 25% \(3 of 3 model calls\) 0\.5 \(3 of 3 model calls\) 1\.5 \(3 of 3 model calls\)/);
+  // Missing credit and cache counts stay Unavailable, and partial counts carry markers.
+  const partial = text(render(report([
+    call(),
+    subCall({ model: 'Mix', cacheRead: 500, nanoAiu: 2e9 }),
+    subCall({ model: 'Mix', cacheRead: null, cacheWrite: null, nanoAiu: null, creditStatus: 'unavailable' }),
+    subCall({ model: 'Blank', cacheRead: null, cacheWrite: null, nanoAiu: null, creditStatus: 'unavailable' }),
+  ])));
+  assert.match(partial, /Mix 2 .* 50% \* \(1 of 2 model calls\) 2 \* \(1 of 2 model calls\) 2 \* \(1 of 2 model calls\)/);
+  assert.match(partial, /Blank 1 .* Unavailable Unavailable Unavailable/);
+});
