@@ -24,20 +24,57 @@ test('result caption distinguishes zero, unknown, partial cost, enrichment and c
   assert.match(reviewResultCaption({ ...r, filterLabels: ['Project: Original project'] }, true), /Project: Original project/);
 });
 
-test('approved faces and three-position confidence dials have full accessible meanings', () => {
-  for (const [assessment, emoji, meaning] of [['positive', '🙂', 'Working well'], ['opportunity', '🙁', 'Worth improving'], ['neutral', '😐', 'Mixed or unclear']]) {
+test('semantic status badges and three-position confidence dials have full accessible meanings', () => {
+  for (const [assessment, meaning] of [['positive', 'Working well'], ['opportunity', 'Worth improving'], ['neutral', 'Mixed or unclear']]) {
     for (const confidence of ['low', 'medium', 'high']) {
       const html = renderReviewCards({ cards: [{ ...card, assessment, confidence, evidence: { template: 'statistic', value: 12, unit: 'turns', samples: 6, total: 6 } }] });
-      assert.ok(html.includes(emoji)); assert.ok(html.includes(`aria-label="${meaning}"`));
+      assert.ok(html.includes(`data-assessment="${assessment}"`));
+      assert.ok(html.includes(`aria-label="${meaning}"`));
+      assert.ok(html.includes(`>${meaning}<`));
       assert.ok(html.includes(`data-confidence="${confidence}"`));
       assert.match(html, /class="review-gauge"/);
       assert.equal((html.match(/class="gauge-sector/g) || []).length, 3);
+      assert.ok(html.includes(`${confidence[0].toUpperCase() + confidence.slice(1)} confidence`));
     }
   }
 });
 
-test('share cards visualize measured percentages without replacing detailed evidence', () => {
+test('share cards visualize measured percentages cleanly without raw excess decimals', () => {
   const html = renderReviewCards({ cards: [{ ...card, assessment: 'neutral', evidence: { template: 'share', label: 'Cache reuse', value: 72.5, unit: '%', samples: 8, total: 10 } }] });
   assert.match(html, /review-share/); assert.match(html, /stroke-dasharray="72.5 100"/);
-  assert.match(html, /72.5/); assert.match(html, /8 of 10/);
+  assert.match(html, /72\.5%/); assert.match(html, /8 of 10/);
+
+  const messy = renderReviewCards({ cards: [{ ...card, assessment: 'opportunity', evidence: { template: 'share', label: 'Tool definitions', value: 58.956, unit: '% of input', samples: 16, total: 20 } }] });
+  assert.match(messy, /59%/);
+  assert.match(messy, /of input/);
+  assert.doesNotMatch(messy, /58\.956/);
+  assert.match(messy, /16\/20 samples/);
+  assert.match(messy, /review-experiment/);
+});
+
+test('comparison cards render zero values cleanly without stub bars and highlight the leader', () => {
+  const html = renderReviewCards({
+    cards: [{
+      ...card,
+      assessment: 'positive',
+      evidence: {
+        template: 'comparison',
+        label: 'How prompts reach the agent',
+        unit: 'prompts',
+        values: [
+          { label: 'Started while idle', value: 35 },
+          { label: 'Steering', value: 0 },
+          { label: 'Queued', value: 2 },
+          { label: 'Unknown', value: 0 },
+        ],
+        samples: 37,
+        total: 37,
+      },
+    }],
+  });
+  assert.match(html, /review-bar-row is-leader/);
+  assert.match(html, /review-bar-row is-zero/);
+  assert.match(html, /style="width:0%"/);
+  assert.match(html, /style="width:100%"/);
+  assert.match(html, /review-card-preview/);
 });

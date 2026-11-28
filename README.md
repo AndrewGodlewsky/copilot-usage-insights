@@ -69,7 +69,7 @@ Use **Refresh** to reread usage and **Settings** to configure sources. See the [
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **2.1.0** populates **Always-loaded context** right away with historical starting context—typical Prompt 1 input, tool definitions by model, preloaded skills, and active MCP and plugin setup—before you click **Inspect context**, and updates **Overview** to reflect that baseline while keeping live conversation inspection on demand. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **2.2.0** removes the verbose model-reference text block from **AI review** and overhauls insight cards with equal row heights, cleaner rounded percentages, compact zero-safe comparison bars, readable status and confidence labels, observation previews, and a clearer expanded detail layout. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ## What the numbers mean
 

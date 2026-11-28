@@ -908,7 +908,6 @@ $('efficiency-review-open').onclick = async () => {
     if (run.cancelled) return;
     $('efficiency-review-output').value = snapshot.preview;
     $('review-preview').hidden = false;
-    $('review-reference-status').textContent = snapshot.referenceStatus || 'Statistics-only review: model reference unavailable.';
     $('review-send-model').textContent = snapshot.model ? snapshot.model + ' · ' + (snapshot.reasoningEffort === 'default' ? 'Model default' : snapshot.reasoningEffort) + ' reasoning' : 'Choose and save a Copilot model in Settings first.';
     if (!snapshot.hasEvidence || !snapshot.model) {
       $('efficiency-review-status').textContent = !snapshot.hasEvidence ? 'No eligible evidence in this date range. Choose another date range before creating a review.' : 'Use the settings gear to choose a Copilot model, then create your review.';

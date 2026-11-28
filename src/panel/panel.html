@@ -105,7 +105,6 @@
           <header><div><h2 id="review-heading">Your AI review</h2><p id="review-scope" class="footnote">Selected date range · all models, projects, sessions, and environments</p></div><button id="review-settings" class="review-settings-gear" type="button" aria-label="AI review model and reasoning settings" title="Model and reasoning settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3 3-1 2 2h3l1-3 3-1 2-3-2-2 1-3-2-3-3 1-2-2Z"/><circle cx="11.5" cy="11" r="3"/></svg></button></header>
           <div class="controls review-actions"><button id="efficiency-review-open" class="review-create" type="button" data-attention="true"><span id="review-create-label">Create AI review</span></button><button id="review-cancel" hidden>Cancel review</button></div>
           <p id="review-send-model" class="footnote">Uses the model and reasoning saved in Settings.</p>
-          <p id="review-reference-status" class="footnote"></p>
           <div id="review-progress" class="review-progress" data-scene="0" data-paused="true" hidden>
 <svg class="review-desktop" id="review-desktop" viewBox="0 0 360 246" aria-hidden="true" focusable="false">
 <defs><clipPath id="review-desktop-screen"><rect x="75" y="43" width="210" height="129"/></clipPath></defs>
@@ -133,7 +132,7 @@
             <p id="review-progress-message" aria-hidden="true">Preparing your review</p><button id="review-animation-toggle" type="button">Pause animation</button>
           </div>
           <p id="efficiency-review-status" class="footnote" role="status"></p>
-          <div id="review-result" hidden><p id="review-result-note" class="footnote" role="status" hidden></p><div id="review-answer" tabindex="-1" aria-label="AI review insights"></div><p class="footnote">🙂 Working well · 🙁 Worth improving · 😐 Mixed or unclear. Confidence describes the evidence for a pattern, not a probability that advice will help. These findings do not measure the value of your work.</p></div>
+          <div id="review-result" hidden><p id="review-result-note" class="footnote" role="status" hidden></p><div id="review-answer" tabindex="-1" aria-label="AI review insights"></div><p class="footnote review-disclaimer">Confidence describes the strength of recorded evidence for a pattern, not a probability that advice will help. These findings do not measure the value of your work.</p></div>
           <details id="review-preview" class="review-preview" hidden><summary>Review details</summary><p id="review-result-context" class="footnote"></p><p class="footnote">Prepared for your most recent Create action. Names are aliased unless an exact public Copilot model identity is verified. Paths, session titles, raw logs and prompt text are excluded from these statistics. This is the exact first-pass prompt. Previously inspected current context is separate. Optional excerpts are selected only during analysis.</p><label for="efficiency-review-output">Prepared review prompt</label><textarea id="efficiency-review-output" rows="8" readonly spellcheck="false"></textarea><button id="efficiency-review-copy">Copy review prompt</button></details>
           <p class="footnote integration-note">Creating a review uses Copilot credits and runs separately from this conversation. It never runs on refresh. Results stay in this dashboard until it closes.</p>
         </article>

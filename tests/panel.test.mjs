@@ -3170,7 +3170,7 @@ test('one explicit Create action reviews the date range across all filters and s
   assert.doesNotMatch(get('review-answer').innerHTML, /<script>/);
   assert.equal(get('review-result').hidden, false);
   const snapshot = get('efficiency-review-output').value;
-  assert.match(get('review-reference-status').textContent, /Statistics-only/);
+  assert.throws(() => get('review-reference-status'), /Element review-reference-status exists/);
   await get('efficiency-review-copy').onclick();
   assert.equal(server.copied.at(-1), snapshot);
   get('project').value = ''; await get('project').onchange();
@@ -3189,8 +3189,7 @@ test('bundled benchmark preview and copied text remain identical after refresh a
   server.review = () => ({ cards: [], emptyReason: 'Limited evidence', model: 'fixture-model' });
   await get('efficiency-review-open').onclick();
   assert.equal(get('efficiency-review-output').value, preview);
-  assert.equal(get('review-reference-status').textContent, 'Bundled Aider evidence <untrusted>');
-  assert.doesNotMatch(get('review-reference-status').innerHTML, /<untrusted>/);
+  assert.throws(() => get('review-reference-status'), /Element review-reference-status exists/);
   await get('efficiency-review-copy').onclick(); assert.equal(server.copied.at(-1), preview);
   get('range').value = '90d'; await get('range').onchange(); await get('refresh').onclick();
   assert.equal(get('efficiency-review-output').value, preview);

@@ -1,5 +1,9 @@
 [
   {
+    "version": "2.2.0",
+    "summary": "AI review removes the verbose model-reference block from the header and overhauls insight cards with equal row heights, cleaner rounded percentages, compact zero-safe comparison bars, readable status and confidence labels, observation previews, and a clearer expanded detail layout."
+  },
+  {
     "version": "2.1.0",
     "summary": "Always-loaded context now shows historical starting context right away—including typical Prompt 1 input, tool definitions by model, preloaded skills, and active MCP and plugin setup—before you click Inspect context, and Overview reflects that baseline. Inspecting the current conversation remains on demand."
   },
