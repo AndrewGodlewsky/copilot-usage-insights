@@ -1,6 +1,8 @@
 # Audit follow-up decisions
 
-These are decision and investigation handoffs, not approval to remove features. The user authorized the behavior-preserving audit fixes and asked for GitHub issues covering changes to functionality. Keep existing behavior until the maintainer chooses an option after seeing measurements and its consequences.
+These are decision and investigation handoffs for changes that affect functionality. The behavior-preserving audit fixes shipped in v0.1.111. Keep existing behavior until the maintainer chooses an option after seeing measurements and its consequences. For a shorter review agenda and source map, start with the [reviewer’s guide](reviewing.md#feedback-and-decisions-requested).
+
+The table records the decisions documented in this repository; check the linked issues for later discussion before starting work. Journal integrity is resolved. The other topics remain investigation or design choices here, not an instruction to implement every option.
 
 | Decision | GitHub issue |
 | --- | --- |
@@ -13,11 +15,11 @@ These are decision and investigation handoffs, not approval to remove features. 
 
 ## Starting point for every issue
 
-The 2026-11-17 audit started at `93117a6991b6346599955787d900ca1995e9dc90` (v0.1.110). Its implementation and measurements are on the local `audit/security-performance` branch. At issue creation that branch had not been pushed or released. Read applicable `AGENTS.md`, inspect status, fetch main, and establish which audit changes are present before editing. Preserve other agents' work. If the audit scripts/documents are absent, use an available audit checkout or recreate the described synthetic fixture; do not claim to have run a missing harness.
+The 2026-11-17 audit started at `93117a6991b6346599955787d900ca1995e9dc90` (v0.1.110); its fixes and the journal-integrity decision shipped in v0.1.111. Work from the current checkout, read applicable `AGENTS.md`, and inspect the existing implementation and tests before changing it. Preserve unrelated work. The linked synthetic harnesses are retained in `scripts/` so the measurements can be reproduced without recovering an old local branch.
 
-Read `docs/security-performance-review-2026-11-17.md` and the linked source, report and panel audits when available. All measurements below are synthetic, from Windows/Node v24.22.1, and are not guarantees for another machine. Source URLs, private histories and paid AI calls are unnecessary for these investigations. No browser or desktop automation is authorized; request manual UI checks when needed.
+Read the [security/performance review](security-performance-review-2026-11-17.md) and its linked source, report and panel audits. All measurements below are synthetic, from Windows/Node v24.22.1, and are not guarantees for another machine or the current version. Private histories and paid AI calls are unnecessary for these investigations. Request manual UI checks when needed; these handoffs do not authorize browser or desktop automation.
 
-Preserve recorded `totalNanoAiu` charges, exact zero versus missing values, provider/environment attribution, copied-log deduplication, and whole-prompt grouping across date/model boundaries. The user explicitly rejected displaying stale saved reports as fresh data. Use structured diagnostics without prompts, paths, project/session/account names or credentials. Run `npm run build`, `npm test`, offline validators and `git diff --check` after an approved implementation. Publishing, installing, version changes and feature reductions need separate authorization; follow repository release rules when requested.
+Preserve recorded `totalNanoAiu` charges, exact zero versus missing values, provider/environment attribution, copied-log deduplication, and whole-prompt grouping across date/model boundaries. Stale saved reports must not be displayed as fresh data. Use structured diagnostics without prompts, paths, project/session/account names or credentials. Run `npm run build`, `npm test`, offline validators and `git diff --check` after an approved implementation. Follow the requested scope for publishing, installing, version changes and feature reductions, and apply repository release rules for a release.
 
 ## 1. Design bounded-memory history storage without stale reports
 

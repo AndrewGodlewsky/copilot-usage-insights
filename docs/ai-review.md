@@ -1,6 +1,6 @@
 # AI Review integration
 
-The integration was added in 0.1.66. **Create AI review** prepares a server-owned snapshot and analyzes it in one explicit action. The dashboard uses the selected date range across all models, projects, sessions and environments, with cache included. Other dashboard filters stay intact but are hidden in AI review. Cards show local statistics, proportion rings, comparisons or trends, plus the model's explanation, evidence confidence, alternative explanations and a small experiment. Sparse data may produce no findings. The [README walkthrough and diagram](../README.md#how-the-reviewer-works) explain the full data flow.
+The integration was added in 0.1.66. **Create AI review** prepares a server-owned snapshot and analyzes it in one explicit action. The dashboard uses the selected date range across all models, projects, sessions and environments, with cache included. Other dashboard filters stay intact but are hidden in AI review. Cards show local statistics, proportion rings, comparisons or trends, plus the model's explanation, evidence confidence, alternative explanations and a small experiment. Sparse data may produce no findings. The [AI-review walkthrough and diagram](guide/ai-review.md#how-the-reviewer-works) explain the full data flow.
 
 ## Bounded analysis
 

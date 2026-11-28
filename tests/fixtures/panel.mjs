@@ -82,7 +82,11 @@ export async function mountPanel(report, config = { textSize: 'small', extraHome
     navigator: { clipboard: { writeText: async text => { if (server.clipboardError) throw new Error('Clipboard unavailable'); server.copied.push(text); } } },
     AbortController, setTimeout: (callback, ms) => { const timer = { callback, ms }; timeouts.push(timer); return timer; }, clearTimeout: timer => { if (timer) timer.cleared = true; },
     fetch: async (url, options) => {
+      assert.equal(url, 'api');
+      assert.equal(options.method, 'POST');
+      assert.equal(new Headers(options.headers).get('content-type'), 'application/json');
       const message = JSON.parse(options.body); requests.push(message);
+      if (initial.fetch) return initial.fetch(url, options);
       if (server.transportError) throw new TypeError('PRIVATE_NETWORK_ERROR');
       if (server.config.paused && !['settings.get', 'settings.set', 'diagnostics.get', 'review.cancel'].includes(message.method)) return { ok: false, status: 423, json: async () => ({ code: 'paused', paused: true, error: 'Usage Insights is paused. Resume it in Settings.' }) };
       if (message.method === 'diagnostics.get' && server.logsStalled) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))));
@@ -122,17 +126,15 @@ export async function mountPanel(report, config = { textSize: 'small', extraHome
       return { ok: true, json: async () => server.report ? server.report(message.input) : report };
     },
   });
-  if (initial.serializedResponses) {
-    const fixtureFetch = context.fetch;
-    context.fetch = async (...args) => {
-      const response = await fixtureFetch(...args);
-      return { ...response, json: async () => {
-        context.__fixtureResponse = JSON.stringify(await response.json());
-        try { return new Script('JSON.parse(__fixtureResponse)').runInContext(context); }
-        finally { delete context.__fixtureResponse; }
-      } };
-    };
-  }
+  const fixtureFetch = context.fetch;
+  context.fetch = async (...args) => {
+    const response = await fixtureFetch(...args);
+    return { ok: response.ok, status: response.status ?? (response.ok ? 200 : 500), json: async () => {
+      context.__fixtureResponse = JSON.stringify(await response.json());
+      try { return new Script('JSON.parse(__fixtureResponse)').runInContext(context); }
+      finally { delete context.__fixtureResponse; }
+    } };
+  };
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]).runInContext(context);
   if (!initial.beforeLoad) {
     windowListeners.get('load')?.();

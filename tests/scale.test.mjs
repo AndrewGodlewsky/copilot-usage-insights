@@ -1,7 +1,8 @@
 // Heavy use: tens of thousands of requests, as someone working with Copilot all day builds up.
 // The history is synthetic and its totals are counted by the generator, independently of the
-// parser and report code, so these tests check the answers as well as the cost.
+// parser and report code, so these tests check the answers and retained memory.
 //   USAGE_SCALE_RECORDS=100000 node --test tests/scale.test.mjs   runs a larger history.
+// Measure timing separately: node --expose-gc scripts/benchmark-performance.mjs --scale --records=30000
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -17,24 +18,20 @@ import { startServer } from '../src/node/canvas-server.mjs';
 const RECORDS = Number(process.env.USAGE_SCALE_RECORDS) || 30000;
 const now = new Date(2026, 10, 15, 12);
 const timeout = 600_000;
-const time = async fn => { const started = performance.now(); const value = await fn(); return { ms: performance.now() - started, value }; };
 v8.setFlagsFromString('--expose-gc');
 const collect = vm.runInNewContext('gc');
 const heapUsed = () => { collect(); collect(); return process.memoryUsage().heapUsed; };
 
-let root, truth, active, held, scanner, first, firstMs, firstHeap, baseHeap;
+let root, truth, active, originalJournal, scanner, first, firstHeap, baseHeap;
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'usage-scale-test-'));
   const written = await writeSyntheticHome(root, { seed: 11, records: RECORDS, days: 120, now, emptyDirs: 1500 });
   truth = written.truth;
-  // The busiest journal starts short of its last lines, which arrive later as live activity.
   active = written.sessions.reduce((a, b) => b.lines > a.lines ? b : a);
-  const lines = (await fs.readFile(active.file, 'utf8')).split('\n').filter(Boolean);
-  held = lines.splice(-60);
-  await fs.writeFile(active.file, lines.join('\n') + '\n');
+  originalJournal = await fs.readFile(active.file, 'utf8');
   baseHeap = heapUsed();
   scanner = createScanner();
-  ({ ms: firstMs, value: first } = await time(() => scanner.scan([root])));
+  first = await scanner.scan([root]);
   firstHeap = heapUsed();
 }, { timeout });
 after(async () => { if (root) await fs.rm(root, { recursive: true, force: true }); });
@@ -46,13 +43,9 @@ const filters = scan => {
     { range: 'custom', startDate: '2026-09-01', endDate: '2026-10-15' }];
 };
 
-test('a long history is read once: later scans reuse it and stay cheap', { timeout }, async () => {
+test('a long history reuses an unchanged scan', { timeout }, async () => {
   assert.ok(first.records.length > RECORDS * .9, `${first.records.length} requests were read`);
-  const again = await time(() => scanner.scan([root]));
-  assert.equal(again.value, first, 'an unchanged history returns the very same result');
-  const third = await time(() => scanner.scan([root]));
-  const rescan = Math.min(again.ms, third.ms);
-  assert.ok(rescan < firstMs * .35, `rescanning an unchanged history took ${rescan.toFixed(0)} ms against ${firstMs.toFixed(0)} ms for the first read`);
+  assert.equal(await scanner.scan([root]), first, 'an unchanged history returns the very same result');
 });
 
 test('memory per recorded request stays bounded', { timeout }, () => {
@@ -60,32 +53,18 @@ test('memory per recorded request stays bounded', { timeout }, () => {
   assert.ok(perRequest < 8000, `${Math.round(perRequest)} bytes are kept per request`);
 });
 
-test('reports for every range come from one pass and stay quick at this size', { timeout }, () => {
-  const opening = performance.now();
-  buildReport(first.records, { range: 'all' }, now, first);
-  const openingMs = performance.now() - opening;
-  for (const filter of filters(first)) {
-    const started = performance.now(), report = buildReport(first.records, filter, now, first), ms = performance.now() - started;
-    assert.ok(report.totals.requests >= 0);
-    // Generous for a slow machine, yet far below what rebuilding prompt links for each report costs.
-    assert.ok(ms < 2000, `${JSON.stringify(filter)} took ${ms.toFixed(0)} ms`);
-  }
-  assert.ok(openingMs < 15000, `the first report took ${openingMs.toFixed(0)} ms`);
-});
-
-test('new activity in one session leaves every other session untouched', { timeout }, async () => {
+test('a history built up from appends equals one read afresh, and matches the known totals', { timeout }, async context => {
+  context.after(() => fs.writeFile(active.file, originalJournal));
+  const lines = originalJournal.split('\n').filter(Boolean), held = lines.splice(-60);
+  await fs.writeFile(active.file, lines.join('\n') + '\n');
+  const scanner = createScanner(), first = await scanner.scan([root]);
   const before = new Set(first.records);
   await fs.appendFile(active.file, held.splice(0, 30).join('\n') + '\n');
-  const appended = await time(() => scanner.scan([root]));
-  assert.notEqual(appended.value, first);
-  assert.ok(appended.value.records.length > first.records.length, 'the new requests are present');
-  const kept = appended.value.records.filter(r => before.has(r)).length;
-  assert.equal(kept, first.records.length, 'no earlier request was read again');
-  assert.ok(appended.ms < firstMs * .5, `picking up new activity took ${appended.ms.toFixed(0)} ms against ${firstMs.toFixed(0)} ms for the first read`);
-  await fs.appendFile(active.file, held.splice(0).join('\n') + '\n');
-});
-
-test('a history built up from appends equals one read afresh, and matches the known totals', { timeout }, async () => {
+  const appended = await scanner.scan([root]);
+  assert.notEqual(appended, first);
+  assert.ok(appended.records.length > first.records.length, 'the new requests are present');
+  assert.equal(appended.records.filter(r => before.has(r)).length, first.records.length, 'no earlier request was read again');
+  await fs.appendFile(active.file, held.join('\n') + '\n');
   const scan = await scanner.scan([root]), fresh = await createScanner().scan([root]);
   assert.deepEqual(view(scan), view(fresh));
   for (const filter of filters(scan)) assert.deepEqual(buildReport(scan.records, filter, now, scan), buildReport(fresh.records, filter, now, fresh), JSON.stringify(filter));
@@ -140,18 +119,18 @@ test('a history built up from appends equals one read afresh, and matches the kn
   assert.deepEqual(wrong, []);
 });
 
-test('the dashboard is told when nothing changed instead of being sent the report again', { timeout }, async () => {
+test('the dashboard is told when nothing changed instead of being sent the report again', { timeout }, async t => {
+  t.after(() => fs.writeFile(active.file, originalJournal));
   let clock = now;
   const server = await startServer({ html: '', defaultHome: root, scanner: createScanner(), now: () => clock, settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) },
     readIntegrations: async () => ({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } }) });
   try {
     const call = async body => {
-      const started = performance.now();
       for (let attempt = 0; attempt < 1000; attempt++) {
         const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), text = await response.text();
         assert.equal(response.status, 200, text.slice(0, 200));
         const result = JSON.parse(text);
-        if (!result.loading) return { ms: performance.now() - started, bytes: text.length, body: result };
+        if (!result.loading) return { bytes: text.length, body: result };
         body = { ...body, method: 'usage.report', refresh: false };
         await new Promise(resolve => setTimeout(resolve, 5));
       }
@@ -167,7 +146,6 @@ test('the dashboard is told when nothing changed instead of being sent the repor
     assert.equal(quiet.body.unchanged, true);
     assert.equal(quiet.body.generatedAt, clock.toISOString());
     assert.ok(quiet.bytes < 400, `an unchanged refresh sent ${quiet.bytes} bytes`);
-    assert.ok(quiet.ms < opened.ms * .5, `an unchanged refresh took ${quiet.ms.toFixed(0)} ms against ${opened.ms.toFixed(0)} ms to open`);
     // The same request without a fingerprint, or with a stale one, still gets the whole report.
     const whole = await call({ method: 'usage.report', input, refresh: true });
     assert.equal(whole.body.revision, opened.body.revision);

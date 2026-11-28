@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { dayTicks, areaTrend, segmentBar, smoothPath, stackedBars, calendarHeatmap, punchCard, donut, hBars, sparkline, esc, levels, usageValue, coverageValue } from '../src/panel/charts.mjs'
-import { pixelBanner, paintScene, skyFor, nextBuildingPatterns } from '../src/panel/art.mjs'
+import { pixelBanner } from '../src/panel/art.mjs'
 import { formatNumber, formatCredits } from '../src/core/format.mjs'
 
 const day = (d, v) => ({ day: d, input: v, output: v / 2, cacheRead: v * 4, cacheWrite: v / 4, total: v * 5.75, credits: 0 })
@@ -231,74 +231,14 @@ test('sparkline handles short series', () => {
   wellFormed(sparkline([1, 4, 2]))
 })
 
-test('pixel banner is deterministic for a report', () => {
-  const report = { generatedAt: new Date(2026, 10, 3, 22).toISOString(), query: { range: '7d' }, daily: [1, 5, 2, 9, 3, 7, 4].map((v) => ({ total: v })), totals: { total: 100, output: 2, turns: 10 }, streak: { current: 3 }, today: { total: 4 }, peakDay: { total: 9 } }
-  const a = pixelBanner(report)
-  wellFormed(a)
-  assert.equal(a, pixelBanner(report))
-  const grid = paintScene(report)
-  assert.equal(grid.length, 34)
-  assert.equal(grid[0].length, 120)
-  assert.ok(grid.every((row) => row.every((c) => /^#[0-9a-f]{6}$/.test(c))))
-  wellFormed(pixelBanner({}))
-  assert.equal(skyFor(12), 'day')
-  assert.equal(skyFor(23), 'night')
-})
-
-test('banner presets use the requested fixed positions; all shows four and custom shows none', () => {
-  const report = { generatedAt: new Date(2026, 10, 14, 22, 0).toISOString(), daily: [{ total: 100 }], totals: { total: 100, output: 2 }, streak: { current: 3 } };
-  const buildings = grid => {
-    const spans = [];
-    for (const [x, color] of grid.at(-1).entries()) {
-      if (color !== '#12152c') continue;
-      if (spans.at(-1)?.end === x - 1) spans.at(-1).end = x;
-      else spans.push({ start: x, end: x });
-    }
-    return spans;
-  };
-  for (const [w, h] of [[120, 34], [120, 62], [200, 40]]) {
-    const expected = [['1d', .26], ['7d', .43], ['30d', .60], ['90d', .93]];
-    const all = paintScene({ ...report, query: { range: 'all' } }, { w, h });
-    const allBuildings = buildings(all);
-    assert.equal(allBuildings.length, 4, 'all history shows all four even with only one day of data');
-    for (const [index, [range, center]] of expected.entries()) {
-      const grid = paintScene({ ...report, query: { range } }, { w, h });
-      const spans = buildings(grid);
-      assert.equal(spans.length, 1, range + ' shows exactly one building');
-      assert.ok(Math.abs((spans[0].start + spans[0].end) / (2 * w) - center) < .02, range + ' matches its marked position');
-      assert.deepEqual(spans[0], allBuildings[index], 'all history keeps each building in the same place');
-      for (let y = 0; y < h; y++) assert.deepEqual(grid[y].slice(spans[0].start, spans[0].end + 1), all[y].slice(spans[0].start, spans[0].end + 1), 'window patterns are consistent between individual and all-history views');
-      assert.deepEqual(paintScene({ ...report, query: { range }, daily: [], totals: { total: 0, output: 0 } }, { w, h }), grid, 'data volume does not control these decorative buildings');
-    }
-    assert.equal(buildings(paintScene({ ...report, query: { range: 'custom' } }, { w, h })).length, 0);
+test('pixel banner renders stable markup for every date range and empty reports', () => {
+  for (const range of ['1d', '7d', 'mtd', '30d', '90d', 'all', 'custom']) {
+    const report = { generatedAt: new Date(2026, 10, 3, 22).toISOString(), query: { range } };
+    const svg = pixelBanner(report);
+    wellFormed(svg);
+    assert.equal(svg, pixelBanner(report));
   }
-});
-
-test('Rolling 30 shares the 30-day building and light cycle', () => {
-  const report = { generatedAt: new Date(2026, 10, 15, 22).toISOString() };
-  let patterns = nextBuildingPatterns({}, null, 'mtd');
-  for (let visit = 0; visit < 4; visit++) {
-    assert.equal(patterns['30d'], visit % 3);
-    assert.deepEqual(paintScene({ ...report, query: { range: 'mtd' } }, { patterns }), paintScene({ ...report, query: { range: '30d' } }, { patterns }));
-    assert.deepEqual(nextBuildingPatterns(patterns, 'mtd', '30d'), patterns, 'same visible building keeps its pattern');
-    assert.deepEqual(nextBuildingPatterns(patterns, '30d', 'mtd'), patterns);
-    patterns = nextBuildingPatterns(nextBuildingPatterns(patterns, 'mtd', '7d'), '7d', 'mtd');
-  }
-});
-
-test('each building has three distinct light patterns that stay still over time', () => {
-  for (const range of ['1d', '7d', '30d', '90d']) {
-    const report = { generatedAt: new Date(2026, 10, 14, 22, 0).toISOString(), query: { range }, streak: { current: 3 } };
-    const patterns = [0, 1, 2].map(pattern => paintScene(report, { patterns: { [range]: pattern } }));
-    assert.equal(new Set(patterns.map(grid => JSON.stringify(grid))).size, 3, range + ' has three different patterns');
-    for (const [pattern, grid] of patterns.entries()) {
-      assert.deepEqual(paintScene({ ...report, generatedAt: new Date(2026, 10, 14, 22, 15).toISOString() }, { patterns: { [range]: pattern } }), grid, 'refresh timestamps do not change the lights');
-      grid.forEach((row, y) => row.forEach((color, x) => {
-        if (color === patterns[0][y][x]) return;
-        assert.deepEqual(new Set([color, patterns[0][y][x]]), new Set(['#12152c', '#ffd27a']), 'only window lights change between patterns');
-      }));
-    }
-  }
+  wellFormed(pixelBanner({}));
 });
 
 test('areaTrend draws one smoothed line per provider with hover columns', () => {

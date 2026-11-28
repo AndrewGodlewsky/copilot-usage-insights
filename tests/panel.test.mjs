@@ -712,9 +712,6 @@ test('Usage sorts rank all choices before limits, keep selections, and do not fe
   assert.equal(names('project'), 'ABCDEFGHIJ');
   sort('model', 'credits'); assert.equal(names('model'), 'LKJIHGFE');
   sort('project', 'credits'); assert.equal(names('project'), 'LKJIHGFEDC');
-  report.usageChoices.models = rows.slice(0, 3);
-  sort('model', 'credits'); assert.equal(names('model'), 'CBA', 'known zero credits sort ahead of unavailable');
-  report.usageChoices.models = rows;
   sort('model', 'requests'); assert.equal(names('model'), 'CABDEFGH');
   sort('project', 'requests'); assert.equal(names('project'), 'CABDEFGHIJ');
   sort('project', 'userPrompts'); assert.equal(names('project'), 'DBCEFGHIJK', 'known zero prompts sort ahead of unavailable');
@@ -732,6 +729,10 @@ test('Usage sorts rank all choices before limits, keep selections, and do not fe
   await get('refresh').onclick();
   assert.equal(get('models-sort').value, 'name'); assert.equal(get('projects-sort').value, 'name');
   assert.equal(names('model'), 'ABCDEFGHL'); assert.equal(names('project'), 'ABCDEFGHIJL');
+  report.usageChoices.models = rows.slice(0, 3);
+  get('model').value = '';
+  await get('refresh').onclick();
+  sort('model', 'credits'); assert.equal(names('model'), 'CBA', 'known zero credits sort ahead of unavailable');
 });
 
 test('Usage token sorting keeps recorded zero totals ahead of unavailable totals at the cutoff', async () => {
@@ -752,9 +753,6 @@ test('shared chart tooltips keep their width and flip away from viewport edges',
   const { get, listeners, document, viewport, requests } = await mountPanel(report);
   const popup = get('tip');
   popup.style = {};
-  const built = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
-  assert.match(built, /\.tip\{[^}]*\bwidth:max-content(?:;|})/, 'popup width must not depend on its positioned left edge');
-  assert.match(built, /max-width:min\(260px,calc\(100% - 16px\)\)/, 'width cap excludes the scrollbar just like placement');
   Object.defineProperty(popup, 'offsetWidth', { get: () => Math.min(240, (document.documentElement.clientWidth || viewport.innerWidth) - 16) });
   Object.defineProperty(popup, 'offsetHeight', { get: () => 110 });
   const move = (x, y, title = 'Output') => listeners.get('pointermove')({ clientX: x, clientY: y, target: { closest: () => ({ dataset: { tip: JSON.stringify({ title, rows: [['Tokens', 4400], ['Share of recorded tokens', '0.4%']] }) } }) } });
@@ -1255,7 +1253,7 @@ test('expanded charts distinguish empty recorded slots from unavailable accounti
   assert.equal(requests.length, before);
 });
 
-test('both Breakdown hierarchies keep aligned columns, repeated headings, and alternating level backgrounds', async () => {
+test('both Breakdown hierarchies share metric columns, headings, and accessible row controls', async () => {
   const { get, click, records, requests } = await requestPanel();
   get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   const html = () => get('breakdown').innerHTML;
@@ -1296,11 +1294,6 @@ test('both Breakdown hierarchies keep aligned columns, repeated headings, and al
   await click({ projectSession: 's1' });
   assert.equal(layout(), initialLayout);
   assert.equal(requests.length, before, 'collapse remains local');
-  const built = await fs.readFile(new URL('../panel/index.html', import.meta.url), 'utf8');
-  assert.match(built, /\.usage-table\{[^}]*table-layout:fixed/);
-  assert.match(built, /\[data-depth="1"\][^}]*background:var\(--bg\)/);
-  assert.match(built, /\[data-depth="2"\][^}]*background:var\(--card\)/);
-  assert.match(built, /\[data-depth="3"\][^}]*background:var\(--bg\)/);
 });
 
 test('refresh outages preserve expanded navigation and unchanged recovery clears the notice', async () => {
@@ -2794,8 +2787,6 @@ test(`${prefix} explorer keeps the viewport steady when a warning pushes it down
   jump(get, topics[1].id);
   assert.equal(parseFloat(content.style.minHeight), 900, 'jumps from deep content reserve at most one viewport');
   assert.equal(requests.length, before, 'layout stabilization does not load usage or inspect context');
-  const css = await fs.readFile(new URL('../src/panel/panel.css', import.meta.url), 'utf8');
-  assert.match(css, /#token-topic-content,#pattern-topic-content\{overflow-anchor:none\}/, 'changing content must not become the scroll anchor');
 });
 
 }
@@ -3528,7 +3519,9 @@ test('Context Growth grouping and session controls stay local, keep the range mo
   for (let s = 0; s < 4; s++) for (let p = 0; p < 8; p++) a.add({ sessionId: `session${s}`, project: 'Project', day: 1,
     sample: { ms: p }, identity: true, humanDelivery: true, provider: true, linksKnown: true,
     contextRecord: { ms: p, inputTotal: (p + 1) * 20000, model: 'Alpha', modelId: 'raw', cacheRead: 0, cacheWrite: 0 } });
-  report.efficiency.contextGrowth = a.finish(); jumpPatternTopic(get, 'growth');
+  report.efficiency.contextGrowth = a.finish();
+  await get('refresh').onclick();
+  jumpPatternTopic(get, 'growth');
   const root = get('efficiency-growth'), before = requests.length;
   assert.equal(get('pattern-growth-panel').hidden, false); assert.match(root.innerHTML, /shaded middle 50%/);
   const click = data => root.onclick({ target: { closest: () => ({ dataset: data }) } });

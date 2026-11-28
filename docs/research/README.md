@@ -1,6 +1,6 @@
 # Efficiency research
 
-This directory is the persistent research base for Usage Insights. The original research was reviewed **November 14, 2026**, against product **0.1.29**. Newer implementation notes identify their own versions; see the root README for shipped behavior.
+This directory is the persistent research base for Usage Insights. The original research was reviewed **November 14, 2026**, against product **0.1.29**. Newer implementation notes identify their own versions. Statements about current capabilities below are relative to those dates; use the [documentation index](../README.md) for shipped behavior and the [reviewer’s guide](../reviewing.md) for the current source map.
 
 ## Start here
 
@@ -36,8 +36,8 @@ The newer data inventory and SDK audit refine the earlier capability summaries. 
 5. Add synthetic fixtures and controlled runtime verification during implementation. Update the root README only when a feature actually ships.
 6. Never commit personal logs, raw prompts/results, credentials, session identifiers or copied databases. A schema description and sanitized aggregate observation are sufficient for research provenance.
 
-For current product behavior, use the root [Efficiency documentation](../../README.md#efficiency). For proposed implementation order, use the [inference design](2026-11-14-efficiency-inference.md#implementation-order).
+For current product behavior, use the root [Efficiency documentation](../guide/efficiency.md). For proposed implementation order, use the [inference design](2026-11-14-efficiency-inference.md#implementation-order).
 
 ## Implementation follow-up: 0.1.30
 
-The [Efficiency redesign](../superpowers/plans/2026-11-14-efficiency-redesign.md) implements tool-definition measurements, MCP failure findings, on-demand current-context inspection, and a previewable, aliased report for manual AI review. The research documents retain their original 0.1.29 baseline. Live context capability remains host-dependent; isolated automatic analysis-agent execution is still deferred. No claim about per-skill historical billing or task effectiveness has been added.
+The [Efficiency redesign](../archive/plans/2026-11-14-efficiency-redesign.md) implements tool-definition measurements, MCP failure findings, on-demand current-context inspection, and a previewable, aliased report for manual AI review. The research documents retain their original 0.1.29 baseline. Live context capability remains host-dependent; isolated automatic analysis-agent execution was still deferred at that baseline. For the subsequently implemented helper, see [AI Review integration](../ai-review.md). No claim about per-skill historical billing or task effectiveness has been added.

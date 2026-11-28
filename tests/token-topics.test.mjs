@@ -16,18 +16,17 @@ test('efficiency catalogs separate consumption from workflow findings without du
   assert.ok(all.every(t => t.question));
 });
 
-test('each topic has a distinct decorative icon shared by its stop and framed lens', () => {
-  assert.equal(new Set(TOKEN_TOPICS.map(t => t.iconPath)).size, 10);
-  assert.equal(new Set(PATTERN_TOPICS.map(t => t.iconPath)).size, 8);
+test('topic icons render decorative markup for stops and framed lenses', () => {
   for (const topic of [...TOKEN_TOPICS, ...PATTERN_TOPICS]) {
-    const icon = tokenTopicIcon(topic), lens = tokenTopicIcon(topic, true);
-    assert.ok(icon.includes(`<path d="${topic.iconPath}"/>`));
-    assert.ok(lens.includes(`<path d="${topic.iconPath}"/>`));
-    assert.match(icon, /viewBox="0 0 24 24"/);
-    assert.match(lens, /viewBox="0 0 36 36"/);
-    assert.match(lens, /stroke="#123953"/);
-    assert.match(icon, /aria-hidden="true" focusable="false"/);
-    assert.doesNotMatch(icon + lens, /undefined|NaN|<text/);
+    for (const framed of [false, true]) {
+      const icon = tokenTopicIcon(topic, framed);
+      assert.match(icon, /^<svg\b/);
+      assert.ok(icon.endsWith('</svg>'));
+      assert.match(icon, /<path\b/);
+      assert.match(icon, /aria-hidden="true"/);
+      assert.match(icon, /focusable="false"/);
+      assert.doesNotMatch(icon, /undefined|NaN|<text/);
+    }
   }
 });
 

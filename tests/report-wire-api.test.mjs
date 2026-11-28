@@ -3,26 +3,28 @@ import assert from 'node:assert/strict';
 import { startServer } from '../src/node/canvas-server.mjs';
 import { normalizeUsage } from '../src/core/copilot.mjs';
 import { decodeReportWire } from '../src/core/report-wire.mjs';
+import { mountPanel } from './fixtures/panel.mjs';
 
-async function fixture(t) {
-  const now = new Date('2026-11-17T12:00:00Z');
+async function fixture(t, now = new Date('2026-11-17T12:00:00Z')) {
   const records = Array.from({ length: 200 }, (_, i) => normalizeUsage({ provider: { kind: 'copilot' }, model: `model-${i % 3}`,
     inputTokens: i, outputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 1,
     copilotUsage: { totalNanoAiu: 1000000 },
   }, { key: String(i), timestamp: now.toISOString(), sessionId: `session-${i}`, project: `project-${i % 4}`, source: 'fixture' }).record);
   const scan = { records, sources: [], coverage: {} };
   const server = await startServer({ html: '<title>Fixture</title>', defaultHome: '/synthetic', now: () => now,
-    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) }, scanner: { scan: async () => scan } });
+    settings: { get: async () => ({ extraHomes: [], disabledHomes: [] }) }, scanner: { scan: async () => scan },
+    readIntegrations: async () => ({ mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } }) });
   t.after(() => server.close());
-  return async message => {
+  const call = async message => {
     const response = await fetch(server.url + 'api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     const text = await response.text();
     return { status: response.status, body: JSON.parse(text), bytes: Buffer.byteLength(text) };
   };
+  return { call, url: server.url };
 }
 
 test('compact reports are opt-in and preserve every decoded field, filter, and revision hint', async t => {
-  const call = await fixture(t), message = { method: 'usage.report', input: { range: 'all' } };
+  const { call } = await fixture(t), message = { method: 'usage.report', input: { range: 'all' } };
   const plain = await call(message);
   assert.equal(plain.status, 200);
   assert.ok(Array.isArray(plain.body.sessions));
@@ -55,9 +57,33 @@ test('compact reports are opt-in and preserve every decoded field, filter, and r
 });
 
 test('compact is a boolean option only for usage report endpoints', async t => {
-  const call = await fixture(t);
+  const { call } = await fixture(t);
   for (const compact of ['true', 1, null, {}]) assert.equal((await call({ method: 'usage.report', input: {}, compact })).status, 400);
   for (const method of ['settings.get', 'usage.requests', 'review.catalog', 'diagnostics.get']) {
     assert.equal((await call({ method, input: {}, compact: true })).status, 400);
   }
+});
+
+test('the bundled panel loads and refreshes a compact report through the local API', async t => {
+  const { url } = await fixture(t, new Date());
+  const responses = [];
+  const { get, requests } = await mountPanel({}, undefined, undefined, undefined, {
+    fetch: async (route, options) => {
+      const response = await fetch(new URL(route, url), options);
+      responses.push({ method: JSON.parse(options.body).method, status: response.status, body: await response.clone().json() });
+      return response;
+    },
+  });
+  assert.equal(responses.length, 1, 'startup reaches the real API');
+  assert.equal(responses[0].status, 200);
+  assert.equal(responses[0].body.reportWireVersion, 1);
+  assert.equal(get('content').hidden, false);
+  assert.equal(get('hero-credits').textContent, '0.2');
+  assert.match(get('model').innerHTML, /model-0/);
+  await get('refresh').onclick();
+  assert.equal(requests.findLast(r => r.method === 'usage.refresh').compact, true);
+  const refreshed = responses.findLast(r => r.method === 'usage.refresh');
+  assert.equal(refreshed.status, 200);
+  assert.equal(refreshed.body.reportWireVersion, 1);
+  assert.equal(get('hero-credits').textContent, '0.2');
 });
