@@ -13,7 +13,7 @@ import { dayOfMs, dayKey } from './query.mjs';
 // operation) keeps three numbers per call and is put in order only if it holds a failure.
 const MINIMUM_KNOWN = 5;  // known outcomes an operation needs before its failure rate is ranked
 const RUN_LENGTH = 3;     // failures in a row that are counted as a repeated-failure run
-const LIST = 5, STRIDE = 3, UNKNOWN = 0, SUCCEEDED = 1, FAILED = 2, NONE = Symbol('none');
+const LIST = 5, TREND_POINTS = 62, STRIDE = 3, UNKNOWN = 0, SUCCEEDED = 1, FAILED = 2, NONE = Symbol('none');
 const AFTER = ['unknown', 'succeeded', 'failed'];
 
 const share = (part, whole) => whole > 0 ? part / whole * 100 : null;
@@ -49,7 +49,7 @@ function keepRun(list, run) {
 }
 
 export function createRecoveryTopic(context = {}) {
-  const byName = new Map(), operations = [], bySession = new Map(), sequences = [];
+  const byName = new Map(), operations = [], bySession = new Map(), sequences = [], days = new Map();
   let session = NONE, sessionSequences;
   return {
     add(tool, outcome) {
@@ -74,6 +74,13 @@ export function createRecoveryTopic(context = {}) {
         if (finished !== null) { op.knownCalls++; op.knownMs += finished - ms; }
         if (code === SUCCEEDED) op.successes++;
         else { op.failures++; if (finished !== null) { op.failedCalls++; op.failedMs += finished - ms; } }
+        if (timed) {
+          const day = dayOfMs(ms);
+          let bucket = days.get(day);
+          if (!bucket) days.set(day, bucket = { known: 0, failures: 0 });
+          bucket.known++;
+          if (code === FAILED) bucket.failures++;
+        }
       }
       // A call with no usable start time has no place in a sequence.
       if (!timed) return;
@@ -133,6 +140,23 @@ export function createRecoveryTopic(context = {}) {
       const failedCalls = total('failedCalls'), knownCalls = total('knownCalls'), failedMs = total('failedMs'), knownMs = total('knownMs');
       const failing = operations.filter(op => op.failures > 0).map(row);
       const ranked = failing.filter(op => op.known >= MINIMUM_KNOWN);
+      const orderedDays = [...days].sort((a, b) => a[0] - b[0]);
+      let trend = { unit: 'day', points: [] };
+      if (orderedDays.length) {
+        const first = orderedDays[0][0], weekly = orderedDays.at(-1)[0] - first >= TREND_POINTS, span = weekly ? 7 : 1, points = [];
+        let startBucket = null, cur = null;
+        const flush = () => {
+          if (!cur) return;
+          points.push({ day: dayKey(startBucket), known: cur.known, failures: cur.failures, failureRate: cur.known > 0 ? Math.round(cur.failures / cur.known * 10000) / 100 : null });
+        };
+        for (const [day, d] of orderedDays) {
+          const bucket = first + Math.floor((day - first) / span) * span;
+          if (bucket !== startBucket) { flush(); startBucket = bucket; cur = { known: 0, failures: 0 }; }
+          cur.known += d.known; cur.failures += d.failures;
+        }
+        flush();
+        trend = { unit: weekly ? 'week' : 'day', points: points.slice(-TREND_POINTS) };
+      }
       return {
         minimumKnown: MINIMUM_KNOWN, runLength: RUN_LENGTH,
         calls, successes, failures, unknown: total('unknown'), known, failureRate: share(failures, known),
@@ -142,6 +166,7 @@ export function createRecoveryTopic(context = {}) {
             length: run.length, day: dayKey(dayOfMs(run.ms)), then: run.then })) },
         time: { failedMs: failedCalls ? failedMs : null, failedCalls, knownMs: knownCalls ? knownMs : null, knownCalls,
           share: failedCalls && knownMs > 0 ? failedMs / knownMs * 100 : null },
+        trend,
         operations: { called: operations.length, failing: failing.length, ranked: ranked.length,
           byFailures: failing.slice().sort((a, b) => b.failures - a.failures || b.failureRate - a.failureRate || byIdentity(a, b)).slice(0, LIST),
           byRate: ranked.sort((a, b) => b.failureRate - a.failureRate || b.failures - a.failures || byIdentity(a, b)).slice(0, LIST) },

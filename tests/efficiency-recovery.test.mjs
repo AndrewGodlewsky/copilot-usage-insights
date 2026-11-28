@@ -164,6 +164,7 @@ test('an empty topic reports nothing measured and finishing twice gives the same
     followed: { failures: 0, succeeded: 0, failed: 0, unknown: 0, none: 0, known: 0, share: null },
     runs: { longest: 0, repeated: 0, repeatedFailures: 0, total: 0, top: [] },
     time: { failedMs: null, failedCalls: 0, knownMs: null, knownCalls: 0, share: null },
+    trend: { unit: 'day', points: [] },
     operations: { called: 0, failing: 0, ranked: 0, byFailures: [], byRate: [] } });
   const topic = createRecoveryTopic({ sessionLabels: new Map() });
   for (const [tool, outcome] of shuffled(calls('FFFSF?'))) topic.add(tool, outcome);
@@ -347,6 +348,51 @@ test('a report without recovery measurements still shows counts, and filters kee
   assert.doesNotMatch(renderRecovery(report, { number, showCoverage: false }), /% \*/);
 });
 
+test('failure-rate trend excludes unknown outcomes, buckets daily/weekly, and MCP live status badges appear when available', () => {
+  const daily = [];
+  for (let d = 0; d < 5; d++) daily.push(...calls(d < 2 ? 'FS?' : 'FFF?', { start: base + d * DAY }));
+  const dailyResult = measure(daily);
+  assert.equal(dailyResult.trend.unit, 'day');
+  assert.equal(dailyResult.trend.points.length, 5);
+  assert.deepEqual(dailyResult.trend.points.map(p => [p.known, p.failures, p.failureRate]), [
+    [2, 1, 50], [2, 1, 50], [3, 3, 100], [3, 3, 100], [3, 3, 100],
+  ]);
+  const weekly = [];
+  for (let d = 0; d < 75; d++) weekly.push(...calls('FS', { start: base + d * DAY }));
+  const weeklyResult = measure(weekly);
+  assert.equal(weeklyResult.trend.unit, 'week');
+  assert.ok(weeklyResult.trend.points.length <= 62 && weeklyResult.trend.points.length >= 10);
+
+  // Live MCP status badges render only when report.mcp.available === true
+  const playwright = { name: 'playwright-navigate', server: 'playwright', mcpTool: 'navigate' };
+  const github = { name: 'github-search', server: 'github', mcpTool: 'search' };
+  const events = [
+    ...calls('FSFFS', { sessionId: 'a', ...playwright, start: base }),
+    ...calls('FFFS', { sessionId: 'a', ...github, start: base + DAY }),
+    ...calls('FS', { sessionId: 'a', start: base + 2 * DAY }),
+    ...calls('FS', { sessionId: 'a', start: base + 3 * DAY }),
+  ];
+  const rep = reportFor(events);
+  // Move clock forward so day 3 is in range
+  const rep4 = buildReport(
+    [{ key: 'r1', ms: base, sessionId: 'a', project: 'p', model: 'M', initiator: 'user', inputTotal: 1000, output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0, nanoAiu: 1e9, creditStatus: 'complete', sessionName: 'Fix' }],
+    { range: 'all' }, new Date(base + 5 * DAY), { tools: events.map(([t]) => t) }
+  );
+  const withoutLive = render(rep4);
+  assert.match(withoutLive, /Tool failure rate by day/);
+  assert.doesNotMatch(withoutLive, /Needs sign-in|connection-status/);
+  rep4.mcp = { available: true, rows: [
+    { name: 'playwright', status: 'needs-auth', error: 'OAuth token <expired>' },
+    { name: 'github', status: 'connected' },
+  ] };
+  const withLive = render(rep4);
+  assert.match(withLive, /Needs sign-in/);
+  assert.match(withLive, /Connected/);
+  assert.match(withLive, /Current session: Needs sign-in — OAuth token &lt;expired&gt;/);
+  assert.match(withLive, /reflect the current hosting session/);
+  assert.doesNotMatch(withLive, /<expired>/);
+});
+
 test('the demo history gives the card repeated failures, a high-rate operation and unknown outcomes', () => {
   const now = new Date(2026, 10, 20, 12), data = demoData(now);
   const report = buildReport(data.records, { range: '30d' }, now, data), recovery = report.efficiency.recovery;
@@ -358,5 +404,5 @@ test('the demo history gives the card repeated failures, a high-rate operation a
   const html = render(report);
   assert.match(html, /times in a row in one conversation/);
   assert.doesNotMatch(html, /NaN|undefined|Infinity/);
-  assert.ok(JSON.stringify(recovery).length < 6000);
+  assert.ok(JSON.stringify(recovery).length < 9000);
 });

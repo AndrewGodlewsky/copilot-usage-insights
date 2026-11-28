@@ -1,6 +1,8 @@
 import { esc, coverageValue } from './charts.mjs';
-import { barList } from './token-insights.mjs';
+import { barList, trendRow } from './token-insights.mjs';
 import { toolOutcomeSummary } from './efficiency.mjs';
+
+const MCP_STATUS_LABELS = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
 
 // The "Calls and recovery" card. Call counts come from report.tools. What followed a failure,
 // failures in a row and time in failed calls come from report.efficiency.recovery. A call with
@@ -25,11 +27,28 @@ export function renderRecovery(report, { number, showCoverage = true } = {}) {
   const section = (title, body) => `<section class="token-insight-section"><h3>${esc(title)}</h3>${body}</section>`;
   const metric = (label, value, detail) => `<div><span class="label">${esc(label)}</span><strong class="value">${esc(value)}</strong><span class="sub">${esc(detail)}</span></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${compare ? note(`Compare afterward: ${compare}`) : ''}</aside>`;
-  // A cell is text, or [text, hover detail].
+  // A cell is text, [text, hover detail], or { text, badge, tone, title }.
   const table = (kind, headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table recovery-${kind}"><thead><tr>${headers.map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => {
+    if (cell && typeof cell === 'object' && !Array.isArray(cell)) {
+      const badge = cell.badge ? ` <span class="connection-status ${cell.tone || 'neutral'}"${cell.badgeTitle ? ` title="${esc(cell.badgeTitle)}"` : ''}>${esc(cell.badge)}</span>` : '';
+      return `<td${index === 0 ? ' class="text-cell"' : ''}${cell.title ? ` title="${esc(cell.title)}"` : ''}><span class="cell-text">${esc(cell.text)}</span>${badge}</td>`;
+    }
     const [text, title] = Array.isArray(cell) ? cell : [cell];
     return `<td${index === 0 ? ' class="text-cell"' : ''}${title ? ` title="${esc(title)}"` : ''}><span class="cell-text">${esc(text)}</span></td>`;
   }).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const mcpLive = new Map();
+  if (report?.mcp?.available === true) {
+    for (const s of report.mcp.rows || []) if (s?.name && s.status && Object.hasOwn(MCP_STATUS_LABELS, s.status)) mcpLive.set(s.name, s);
+  }
+  const operationCell = row => {
+    const text = operation(row);
+    const live = row.server ? mcpLive.get(row.server) : null;
+    if (!live) return text;
+    const badge = MCP_STATUS_LABELS[live.status];
+    const tone = live.status === 'connected' ? 'ok' : ['failed', 'needs-auth'].includes(live.status) ? 'attention' : 'neutral';
+    const badgeTitle = live.error ? `Current session: ${badge} — ${live.error}` : `Current session: ${badge}`;
+    return { text, badge, tone, badgeTitle };
+  };
   const errors = habits?.reason === 'model-filter'
     ? '<p class="footnote">Session error counts are unavailable under a model filter.</p>'
     : habits?.observedSessions ? `<p class="footnote">${esc(number(habits.sessionErrors))} recorded root-session error events. These are incidents, not a count of failed model requests.</p>` : '';
@@ -78,6 +97,11 @@ export function renderRecovery(report, { number, showCoverage = true } = {}) {
         `No operation failed ${number(runLength)} times in a row.${most ? ` If one matters to you, start with ${operation(most)}, which has the most recorded failures (${number(most.failures)}): reproduce one failing call on its own, and check its arguments, permissions and authentication before a larger task.` : ''}`,
         'the failure rate and what the next call did for the same operation, over a similar amount of work.');
     }
+    const rateTrend = trendRow(measured.trend, p => p.known > 0 ? p.failureRate : null, { label: 'Tool failure rate', format: percent });
+    if (rateTrend) {
+      html += section('Failure rate over time', rateTrend
+        + note('Share of timed tool calls with a known outcome that failed in each period. Calls with no recorded outcome are excluded.'));
+    }
     html += section('What followed a failed call', (barList([
       { label: 'The next call succeeded', value: f.succeeded, color: 'var(--s3)' },
       { label: 'The next call failed too', value: f.failed, color: 'var(--s2)' },
@@ -85,25 +109,29 @@ export function renderRecovery(report, { number, showCoverage = true } = {}) {
       { label: 'No later call', value: f.none, color: 'var(--muted-fg)' },
     ], { total: f.failures, format: value => `${number(value)} of ${number(f.failures)}` }) || '<p class="muted token-insight-note">No failed call has a usable start time, so none could be placed in order.</p>')
       + note(`Each of the ${things(f.failures, 'failed call')} is counted once. The next call is the next call of the same operation in the same conversation that started after the failed call finished. It can be a different request, not a repeat of the same one. Only calls in the selected dates and filters are compared.`));
+    const hasLiveOpStatus = rows.some(row => row.server && mcpLive.has(row.server));
     html += section('Operations with the most recorded failures', table('operations', ['Operation', 'Calls', 'Failed', 'Failure rate', 'Next call succeeded', 'Longest run', 'Time in failed calls'], rows.map(row => {
       const next = row.followed || {};
-      return [operation(row), number(row.calls), number(row.failures),
+      return [operationCell(row), number(row.calls), number(row.failures),
         [coverageValue(row.failureRate, row.unknown > 0, percent, showCoverage), `${number(row.failures)} of ${things(row.known, 'call')} with a known outcome failed${row.unknown ? `. ${things(row.unknown, 'call')} had no recorded outcome` : ''}`],
         [next.known ? `${number(next.succeeded)} of ${number(next.known)}` : 'No known next call', `After a failed call: ${number(next.succeeded)} next calls succeeded, ${number(next.failed)} failed too, ${number(next.unknown)} had no recorded outcome, ${number(next.none)} had no later call`],
         valid(row.longestRun) ? number(row.longestRun) : 'Unavailable',
         [duration(row.failedMs), `${number(row.failedCalls)} of ${things(row.failures, 'failed call')} with a recorded duration`]];
     })) + note(`Showing ${number(rows.length)} of ${things(measured.operations.failing, 'operation')} with a recorded failure, most failures first. Failure rate counts only calls with a known outcome. Next call succeeded counts only failed calls followed by a call with a known outcome. Hover over a value for its counts.`)
+      + (hasLiveOpStatus ? note('MCP server status badges reflect the current hosting session, separate from the selected historical dates. A failed tool call does not by itself prove a server outage.') : '')
       + note('Time in failed calls runs from the start of a call to its recorded completion. Calls can run at the same time, so these times do not add up to time spent waiting.'));
     const ranked = measured.operations.byRate || [];
     html += section('Failure rate by operation', (barList(ranked.map(row => ({ label: operation(row), value: row.failureRate, detail: `${number(row.failures)} of ${things(row.known, 'call')} with a known outcome failed` })), { total: 100, format: percent })
       || '<p class="muted token-insight-note">No operation with a recorded failure has enough known outcomes to be ranked by rate.</p>')
       + note(`An operation needs at least ${number(minimumKnown)} known outcomes to be ranked by rate. With fewer, one more call changes the rate a lot. Showing ${number(ranked.length)} of ${number(measured.operations.ranked)} that qualify and have a recorded failure. Each bar is drawn against 100%.`));
     const listed = runs.top || [];
-    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operation(run), run.session, number(run.length), then[run.then] || 'Unavailable', run.day]))
+    const hasLiveRunStatus = listed.some(run => run.server && mcpLive.has(run.server));
+    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operationCell(run), run.session, number(run.length), then[run.then] || 'Unavailable', run.day]))
       : '<p class="muted token-insight-note">No operation failed twice in a row in one conversation in this range.</p>')
-      + note(`${things(runs.repeated, 'run')} of ${number(runLength)} or more failures in a row, covering ${number(runs.repeatedFailures)} of ${things(measured.failures, 'failed call')}.${listed.length ? ` Showing the ${number(listed.length)} longest of ${things(runs.total, 'run')} of two or more.` : ''} A run is calls of one operation in one conversation that failed one after another, in order of start time. A success or a call with no recorded outcome ends a run.`));
+      + note(`${things(runs.repeated, 'run')} of ${number(runLength)} or more failures in a row, covering ${number(runs.repeatedFailures)} of ${things(measured.failures, 'failed call')}.${listed.length ? ` Showing the ${number(listed.length)} longest of ${things(runs.total, 'run')} of two or more.` : ''} A run is calls of one operation in one conversation that failed one after another, in order of start time. A success or a call with no recorded outcome ends a run.`)
+      + (hasLiveRunStatus && !hasLiveOpStatus ? note('MCP server status badges reflect the current hosting session, separate from the selected historical dates. A failed tool call does not by itself prove a server outage.') : ''));
   }
-  if (failures && !measured && rows.length) html += section('Operations with the most recorded failures', table('counts', ['Operation', 'Calls', 'Failed', 'Failure rate'], rows.map(row => [operation(row), number(row.calls), number(row.failures),
+  if (failures && !measured && rows.length) html += section('Operations with the most recorded failures', table('counts', ['Operation', 'Calls', 'Failed', 'Failure rate'], rows.map(row => [operationCell(row), number(row.calls), number(row.failures),
     [coverageValue(row.failureRate, row.unknown > 0, percent, showCoverage), `${number(row.failures)} of ${things(row.known, 'call')} with a known outcome failed`]]))
     + note('Failure rate counts only calls with a known outcome. What followed each failure is not measured in this report.'));
   html += section('MCP tools and other tools', `<div class="table-wrap"><table class="efficiency-outcomes"><thead><tr><th>Tools</th><th>Calls</th><th>Succeeded</th><th>Failed</th><th>Unknown</th><th>Success rate</th></tr></thead><tbody>${groups.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td><td>${esc(number(row.calls))}</td><td>${esc(number(row.successes))}</td><td>${esc(number(row.failures))}</td><td>${esc(number(row.unknown))}</td><td>${esc(row.successRate == null ? 'Unavailable' : coverageValue(row.successRate, row.unknown > 0, percent, showCoverage))}</td></tr>`).join('')}</tbody></table></div>`
