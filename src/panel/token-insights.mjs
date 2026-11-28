@@ -101,19 +101,31 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
       return top;
     };
     const tokenTotal = counted(totals) && totals.total > 0 ? totals.total : null, tokensIncomplete = !!totals.missingTokens;
+    const creditsIncomplete = !!(totals.missingCredits || totals.partialCredits);
     const holder = (rows, one, many, count = 1) => {
       const size = (rows || []).length, top = largest(rows, size > count ? count : 1), held = top.reduce((sum, row) => sum + row.total, 0), value = share(held, tokenTotal);
       if (!top.length || value == null) return null;
       const tokens = `${coverageValue(held, top.some(row => row.missingTokens), number, showCoverage)} of ${usageValue(totals, 'total', number, showCoverage)} measured tokens`, name = top[0].name || `Unnamed ${one}`;
+      let rowCredits = 0, creditLeader = null;
+      for (const row of rows || []) if (valid(row?.credits)) {
+        rowCredits += row.credits;
+        if (!creditLeader || row.credits > creditLeader.credits) creditLeader = row;
+      }
+      const heldCredits = top.reduce((sum, row) => sum + (valid(row?.credits) ? row.credits : 0), 0);
+      const anyHeldCredits = top.some(row => valid(row?.credits)), missingHeldCredits = top.some(row => !valid(row?.credits));
+      const creditPart = rowCredits > 0 && anyHeldCredits ? share(heldCredits, rowCredits) : null;
+      const creditNote = creditPart == null ? '' : `${coverageValue(creditPart, creditsIncomplete || missingHeldCredits, percent, showCoverage)} of recorded credits`;
+      const otherLeader = top.length === 1 && creditLeader && creditLeader !== top[0] && rowCredits > 0 && creditLeader.credits > (valid(top[0].credits) ? top[0].credits : -1)
+        ? `Largest by credits: ${creditLeader.name || `Unnamed ${one}`}, ${coverageValue(share(creditLeader.credits, rowCredits), creditsIncomplete, percent, showCoverage)}` : '';
       return top.length > 1
         ? { label: `${top.length === 5 ? 'Five' : number(top.length)} largest ${many}`, value, concentrated: top.length === 5 && size > 10 && value >= 50,
-          detail: `${tokens} · ${number(top.length)} of ${number(size)} ${many}. Largest: ${name}, ${percent(share(top[0].total, tokenTotal))}.` }
-        : { label: `Largest ${one}`, value, detail: `${name} · ${tokens} · ${size === 1 ? `the only ${one} in these filters` : `largest of ${number(size)} ${many}`}` };
+          detail: `${tokens} · ${number(top.length)} of ${number(size)} ${many}. Largest: ${name}, ${percent(share(top[0].total, tokenTotal))}.${creditNote ? ` ${creditNote}.` : ''}` }
+        : { label: `Largest ${one}`, value, detail: [name, tokens, size === 1 ? `the only ${one} in these filters` : `largest of ${number(size)} ${many}`, creditNote, otherLeader].filter(Boolean).join(' · ') };
     };
     const conversations = holder(report.sessions, 'conversation', 'conversations', 5);
     const holders = barList([holder(report.models, 'model', 'models'), holder(report.projects, 'project', 'projects'), conversations].filter(Boolean),
       { total: 100, format: value => coverageValue(value, tokensIncomplete, percent, showCoverage) });
-    const who = holders ? holders + note(`Shares of measured input and output tokens in these filters, ${report.query?.includeCache === false ? 'excluding' : 'including'} cached input. Token volume is not cost share, and a large share can simply be where most of the work happened. A conversation that spans projects is counted once per project.`)
+    const who = holders ? holders + note(`Shares of measured input and output tokens in these filters, ${report.query?.includeCache === false ? 'excluding' : 'including'} cached input. Token volume is not cost share, and a large share can simply be where most of the work happened. Credit shares use recorded charges only; missing or partial charges are not zero. A conversation that spans projects is counted once per project.`)
       : empty('Measured token totals are unavailable for these filters, so shares cannot be shown. Missing counts are not zero.');
 
     // Is it changing: the same earlier and later averages the trend row states. The sentence below
@@ -150,16 +162,24 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
     const setup = ['systemPrompt', 'customInstructions', 'systemTools', 'mcpTools'].map(category), setupTokens = setup.every(valid) ? setup.reduce((a, b) => a + b, 0) : null;
     let charged = 0, charges = 0, topCharge = 0;
     for (const row of report.sessions || []) if (valid(row.credits)) { charged++; charges += row.credits; topCharge = Math.max(topCharge, row.credits); }
-    const creditsIncomplete = !!(totals.missingCredits || totals.partialCredits), uses = report.skills?.invocations, toolCalls = report.tools?.calls;
+    const uses = report.skills?.invocations, skillFailures = report.skills?.failures, toolCalls = report.tools?.calls;
+    const resultsIndex = current
+      ? snapshot(category('messages'), 'Conversation and tool messages in the current conversation snapshot.', '')
+      : valid(toolCalls)
+        ? [`${number(toolCalls)} ${toolCalls === 1 ? 'tool call' : 'tool calls'}`, 'Recorded in the selected history. History does not record how many tokens their results used; inspect context for current messages.']
+        : ['Needs Inspect context', 'History does not record how many tokens tool results used.'];
+    const skillsIndex = current
+      ? snapshot(category('customInstructions'), 'Custom instructions in the current conversation snapshot.', '')
+      : valid(uses)
+        ? [`${number(uses)} ${uses === 1 ? 'use' : 'uses'}${valid(skillFailures) && skillFailures > 0 ? ` · ${number(skillFailures)} failed` : ''}`, 'Recorded in the selected history. History does not record how many tokens a skill added; inspect context for current instructions.']
+        : ['Needs Inspect context', 'History does not record how many tokens a skill added.'];
     const index = [
       ['context', 'Always-loaded context', ...snapshot(setupTokens != null && setupTokens <= context?.totalTokens ? setupTokens : null, 'Instructions and tool definitions in the current conversation snapshot.',
         'Instructions and tool definitions in the current conversation. History does not record them.')],
       ['tools', 'Tool and MCP footprint', measured(s.toolShare, s.toolRequests, s.requests, percent), `of measured input described the available tools · ${coverage(s.toolRequests)}`],
-      ['results', 'Files, searches, and tool results', ...snapshot(category('messages'), 'Conversation and tool messages in the current conversation snapshot.',
-        `${valid(toolCalls) ? `${number(toolCalls)} tool calls recorded in the selected history. ` : ''}History does not record how many tokens their results used.`)],
+      ['results', 'Files, searches, and tool results', ...resultsIndex],
       ['cache', 'Cache reuse', measured(s.cacheHitRate, s.cacheRequests, s.requests, percent), `of measured input was read from cache · ${coverage(s.cacheRequests)}`],
-      ['skills', 'Skills and instruction footprint', ...snapshot(category('customInstructions'), 'Custom instructions in the current conversation snapshot.',
-        `${valid(uses) ? `${number(uses)} skill uses recorded in the selected history. ` : ''}History does not record how many tokens a skill added.`)],
+      ['skills', 'Skills and instruction footprint', ...skillsIndex],
       ['prompts', 'Work behind each prompt', coverageValue(p.work?.averageRequests, p.eligiblePrompts < p.prompts || p.unlinkedRequests > 0, value => number(value, { maximumFractionDigits: 1 }), showCoverage),
         `model calls followed one submitted prompt on average · ${number(p.eligiblePrompts ?? 0)} of ${number(p.prompts ?? 0)} prompts eligible${p.modelFiltered ? ' · selected models only' : ''}`],
       ['delegation', 'Delegated work', percent(share(delegated?.requests, s.requests)),

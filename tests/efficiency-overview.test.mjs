@@ -109,14 +109,14 @@ test('the index lists the other nine sections once each, in catalog order, under
 });
 
 test('an empty history shows unavailable measurements, not zeros', () => {
-  for (const report of [{}, built([])]) {
+  for (const [report, needsInspect] of [[{}, 3], [built([]), 1]]) {
     const html = render(report), shown = text(html);
     assert.match(shown, /the mix is unavailable\. Missing counts are not zero/);
     assert.match(shown, /Measured token totals are unavailable/);
     assert.match(shown, /A trend needs at least four days/);
     assert.match(shown, /Start with measurement coverage/);
     assert.match(shown, /Compare afterward:/);
-    assert.equal((shown.match(/Needs Inspect context/g) || []).length, 3);
+    assert.equal((shown.match(/Needs Inspect context/g) || []).length, needsInspect);
     // Tools, cache, prompts, delegation, output and spend have no number to show.
     assert.equal((html.match(/<strong class="token-index-value">Unavailable<\/strong>/g) || []).length, 6);
     assert.match(shown, /No conversation charges are recorded in these filters/);
@@ -157,7 +157,8 @@ test('partial measurements keep their coverage and leave out what was not measur
   assert.match(text(render({ sessions: sessions([0, 0]) })), /Biggest spend drivers Unavailable The recorded charges in these filters are zero/);
   assert.match(text(render({ sessions: sessions([3, null, 1]), totals: { missingCredits: 1 } })), /Biggest spend drivers 75% \* of recorded AI credits were in the largest conversation · 2 conversations with charges/);
   assert.match(text(render({ promptCredits: { prompts: 4, eligiblePrompts: 3, modelFiltered: true, work: { averageRequests: 2.5 } } })), /Work behind each prompt 2\.5 \* model calls followed one submitted prompt on average · 3 of 4 prompts eligible · selected models only/);
-  assert.match(text(render({ tools: { calls: 7 }, skills: { invocations: 0 } })), /7 tool calls recorded in the selected history\..*0 skill uses recorded in the selected history\./);
+  assert.match(text(render({ tools: { calls: 7 }, skills: { invocations: 0 } })), /Files, searches, and tool results 7 tool calls Recorded in the selected history\..*Skills and instruction footprint 0 uses Recorded in the selected history\./);
+  assert.match(text(render({ tools: { calls: 1 }, skills: { invocations: 3, failures: 2 } })), /Files, searches, and tool results 1 tool call.*Skills and instruction footprint 3 uses · 2 failed/);
 });
 
 test('names from the history are escaped wherever the overview shows them', () => {
@@ -230,11 +231,41 @@ test('credits per call are drawn only when charges are recorded', () => {
   assert.doesNotMatch(text(render({ efficiency: { summary, trend: flat } })), /Credits per call/);
 });
 
-test('the three snapshot sections ask for Inspect context until a snapshot is supplied', () => {
+test('credit share appears beside token share and names a different credit leader when one leads', () => {
+  // Alpha holds more tokens (75%) while Beta holds more credits (80%).
+  const records = [
+    call(base, { model: 'Alpha', project: 'one', sessionId: 's1', sessionName: 'Chat 1', inputTotal: 2500, output: 500, nanoAiu: 1e9 }),
+    call(base + 1000, { model: '<Beta>', project: 'two', sessionId: 's2', sessionName: 'Chat 2', inputTotal: 800, output: 200, nanoAiu: 4e9 }),
+  ];
+  const html = render(built(records)), shown = text(html);
+  assert.match(shown, /Largest model 75% Alpha · 3000 of 4000 measured tokens · largest of 2 models · 20% of recorded credits · Largest by credits: &lt;Beta&gt;, 80%/);
+  assert.match(shown, /Largest project 75% one · 3000 of 4000 measured tokens · largest of 2 projects · 20% of recorded credits · Largest by credits: two, 80%/);
+  assert.doesNotMatch(html, /<Beta>/);
+  assert.match(html, /&lt;Beta&gt;/);
+  // Partial credit coverage marks the credit share, and zero/missing credits stay out.
+  const partial = text(render({
+    totals: { total: 1000, requests: 2, knownTokenRequests: 2, missingCredits: 1 },
+    models: [
+      { name: 'Alpha', total: 700, requests: 1, knownTokenRequests: 1, credits: 2 },
+      { name: 'Beta', total: 300, requests: 1, knownTokenRequests: 1, credits: 8 },
+    ],
+  }));
+  assert.match(partial, /20% \* of recorded credits · Largest by credits: Beta, 80% \*/);
+  const uncharged = text(render({
+    totals: { total: 1000, requests: 2, knownTokenRequests: 2 },
+    models: [{ name: 'Alpha', total: 1000, requests: 2, knownTokenRequests: 2, credits: null }],
+  }));
+  assert.doesNotMatch(uncharged, /of recorded credits|Largest by credits/);
+  // Five largest conversations also display their combined credit share when charges exist.
+  const six = Array.from({ length: 6 }, (_, i) => call(base + i, { sessionId: `s${i}`, sessionName: `Chat ${i}`, inputTotal: 1000 - i * 100, output: 100, nanoAiu: 1e9 }));
+  assert.match(text(render(built(six))), /Five largest conversations .* of recorded credits\./);
+});
+
+test('the snapshot sections show historical counts before a snapshot and switch to tokens once supplied', () => {
   const before = text(render(built()));
   assert.match(before, /Always-loaded context Needs Inspect context Instructions and tool definitions in the current conversation\. History does not record them\./);
-  assert.match(before, /Files, searches, and tool results Needs Inspect context/);
-  assert.match(before, /Skills and instruction footprint Needs Inspect context/);
+  assert.match(before, /Files, searches, and tool results 0 tool calls Recorded in the selected history\./);
+  assert.match(before, /Skills and instruction footprint 0 uses Recorded in the selected history\./);
   const context = { available: true, totalTokens: 1000, categories: { systemPrompt: 100, customInstructions: 50, systemTools: 80, mcpTools: 20, messages: 750 } };
   const after = text(render(built(), { context }));
   assert.match(after, /Always-loaded context 250 tokens Instructions and tool definitions in the current conversation snapshot\./);
@@ -281,7 +312,7 @@ test('every index button opens its section in the panel and keeps keyboard focus
     assert.equal(document.activeElement, index.querySelector(`[data-token-jump="${id}"]`));
   }
   // The overview never inspects context by itself, and reuses a snapshot once one was asked for.
-  assert.equal((index.innerHTML.match(/Needs Inspect context/g) || []).length, 3);
+  assert.equal((index.innerHTML.match(/Needs Inspect context/g) || []).length, 1);
   assert.equal(requests.filter(request => request.method === 'efficiency.context').length, 0);
   server.contextSnapshot = { available: true, checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, limit: 10000,
     categories: { systemPrompt: 100, customInstructions: 50, systemTools: 80, mcpTools: 20, messages: 750 }, entries: [], omitted: 0 };
