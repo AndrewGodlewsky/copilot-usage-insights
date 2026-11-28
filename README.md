@@ -4,7 +4,36 @@ A local usage dashboard for the **GitHub Copilot desktop app**. Explore recorded
 
 Forked from [Orca Usage Insights](https://github.com/Etherll/orca-usage-insights) by [Etherll](https://github.com/Etherll). The original MIT license and copyright notice are preserved.
 
-**Reviewing the repository?** Start with the [reviewer’s guide](docs/reviewing.md) for a demo, the architecture, source map, checks, and decisions worth discussing. The [documentation index](docs/README.md) links the complete user and maintainer guides.
+![Usage dashboard showing recorded AI credits, daily tokens, token types, and activity charts](images/usage.png)
+
+*Synthetic demo data. Screenshots show selected portions of the dashboard; no personal usage records are included.*
+
+<details>
+<summary>Explore Breakdown and Efficiency screenshots</summary>
+
+**Usage breakdown** — Expand models into projects, sessions, and individual model turns to inspect recorded tokens and credits.
+
+![Usage breakdown with Claude Sonnet expanded into eight synthetic projects](images/breakdown.png)
+
+**Where did the tokens go?** — Explore input and output, cache use, and which models and projects account for the most tokens.
+
+![Token usage overview showing input and output shares, request averages, and the largest contributors](images/token-usage.png)
+
+**Findings** — Review measured patterns alongside small experiments to try and guidance on what to compare afterward.
+
+![Findings showing larger input later in a session and tool-definition overhead, with suggested experiments](images/findings.png)
+
+**Conversation habits** — See how you interact with the agent and how those patterns change across periods.
+
+![Conversation habits showing prompts per conversation and a comparison with the previous period](images/conversation-habits.png)
+
+**Context growth** — Follow input across prompt positions, compare conversation shapes, and inspect cache reuse.
+
+![Context growth chart showing grouped input trends, conversation shapes, and cache reuse](images/context-growth.png)
+
+</details>
+
+**Reviewing the repository?** Start with the [reviewer's guide](docs/reviewing.md) for a demo, the architecture, source map, checks, and decisions worth discussing. The [documentation index](docs/README.md) links the complete user and maintainer guides.
 
 ## Try the synthetic demo
 
