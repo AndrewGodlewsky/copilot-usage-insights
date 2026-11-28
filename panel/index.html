@@ -2563,18 +2563,27 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
         + note(`The summary sentence below compares a row with the under 5 minutes row only when both have at least ${number(enoughCalls)} calls and the shares differ by at least ${number(clearGap)} percentage points.`)
       : empty('No main-conversation calls with a complete cache split match these filters, so reuse cannot be compared by timing. Missing data is not zero reuse.');
     const listed = timing?.sessions || [];
+    const hasSplitDetail = listed.some(r => valid(r.cacheWrite) && valid(r.uncached));
     const conversations = !timing?.measuredCalls ? '' : section('Conversations with the most input not read from cache', listed.length
-      ? table(['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'], listed.map(r => [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), percent(r.share)]))
-        + note(`Showing ${number(listed.length)} of ${number(timing.listedSessions)} conversations with at least ${number(timing.minimumSessionCalls)} measured main-conversation calls. Not read from cache is input minus cache reads, so it includes cache writes. A long conversation can lead this list with ordinary reuse; this is not proof of waste.`)
+      ? table(hasSplitDetail ? ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Cache write', 'Uncached', 'Read share']
+          : ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'],
+          listed.map(r => hasSplitDetail
+            ? [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
+            : [r.name || 'Unnamed session', number(r.calls), number(r.input), number(r.notRead), percent(r.share)]))
+        + note(`Showing ${number(listed.length)} of ${number(timing.listedSessions)} conversations with at least ${number(timing.minimumSessionCalls)} measured main-conversation calls. Not read from cache is input minus cache reads, split into cache writes and uncached input. A long conversation can lead this list with ordinary reuse; this is not proof of waste.`)
       : empty(`No conversation has at least ${number(timing.minimumSessionCalls)} measured main-conversation calls in this selection.`));
+    const ratio = value => `${number(value, { maximumFractionDigits: 1 })}×`;
     return metrics(metric('Uncached input', s.uncachedInput, 'Complete cache splits only', number, partial(s.cacheRequests)),
       metric('Cache read', s.cacheRequests ? s.cacheRead : null, 'Previously cached input reused', number, partial(s.cacheRequests)),
-      metric('Cache write', s.cacheRequests ? s.cacheWrite : null, 'Input recorded as a cache write', number, partial(s.cacheRequests)))
+      metric('Cache write', s.cacheRequests ? s.cacheWrite : null, 'Input recorded as a cache write', number, partial(s.cacheRequests)),
+      metric('Read back per write', s.cacheRequests && valid(s.cacheRead) && valid(s.cacheWrite) && s.cacheWrite > 0 ? s.cacheRead / s.cacheWrite : null,
+        s.cacheRequests ? (s.cacheWrite > 0 ? 'Tokens read from cache per token written; short chats read lower' : 'No cache writes recorded in complete splits') : 'Complete cache splits only',
+        ratio, partial(s.cacheRequests)))
       + bars([{ label: 'Uncached', value: s.uncachedInput, color: 'var(--s1)' }, { label: 'Cache read', value: s.cacheRequests ? s.cacheRead : null, color: 'var(--s3)' }, { label: 'Cache write', value: s.cacheRequests ? s.cacheWrite : null, color: 'var(--s4)' }], partial(s.cacheRequests))
       + trendRow(report.efficiency?.trend, point => point.cacheHitRate, { label: 'Share of input read from cache', format: percent })
       + section('When is input reused?', when)
       + conversations
-      + (rows.length ? section('Cache reuse by model', table(['Model', 'Measured calls', 'Input tokens', 'Read share'], rows.map(r => [r.name, coverage(r.cacheRequests, r.requests), measured(r.cacheInput, r.cacheRequests, r.requests), measured(r.cacheHitRate, r.cacheRequests, r.requests, percent)]))) : empty('No complete cache splits were recorded.'))
+      + (rows.length ? section('Cache reuse by model', table(['Model', 'Measured calls', 'Input tokens', 'Read share', 'Write share', 'Read / write'], rows.map(r => [r.name, coverage(r.cacheRequests, r.requests), measured(r.cacheInput, r.cacheRequests, r.requests), measured(r.cacheHitRate, r.cacheRequests, r.requests, percent), measured(share(r.cacheWrite, r.cacheInput), r.cacheRequests, r.requests, percent), r.cacheRequests && valid(r.cacheRead) && valid(r.cacheWrite) && r.cacheWrite > 0 ? measured(r.cacheRead / r.cacheWrite, r.cacheRequests, r.requests, ratio) : 'Unavailable']))) : empty('No complete cache splits were recorded.'))
       + (lower && lower === switched
         ? insight(`Right after a model change, calls read ${percent(lower.share)} of their input from cache. With no model change and under 5 minutes since the previous call, they read ${percent(quick.share)}.`,
           'Lower reuse after a model change is consistent with a cache that is not shared between models, but the data does not record why. For one piece of connected work, try choosing the model at the start and keeping it.',

@@ -30,12 +30,12 @@ test('each measured main call lands in one situation by what came just before it
   const result = measure(records);
   assert.deepEqual(result.situations.map(s => s.id), ['under5', 'mid', 'over60', 'first', 'modelChange']);
   // One minute, then one minute, then one millisecond short of five minutes.
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 4000, cacheRead: 2600, share: 65 });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 4000, cacheRead: 2600, cacheWrite: 0, share: 65 });
   // Exactly five minutes and exactly sixty minutes both belong to the middle row.
-  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 900, share: 45 });
-  assert.deepEqual(row(result, 'over60'), { calls: 1, input: 1000, cacheRead: 100, share: 10 });
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, share: 0 });
-  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 2000, cacheRead: 200, share: 10 });
+  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 900, cacheWrite: 0, share: 45 });
+  assert.deepEqual(row(result, 'over60'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, share: 10 });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, share: 0 });
+  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 2000, cacheRead: 200, cacheWrite: 0, share: 10 });
   assert.equal(result.mainCalls, 8);
   assert.equal(result.measuredCalls, 8);
   assert.equal(result.situations.reduce((sum, s) => sum + s.calls, 0), result.measuredCalls);
@@ -69,11 +69,11 @@ test('subagent and unlabelled calls are left out, and unmeasured main calls stil
   ]);
   assert.equal(result.mainCalls, 9);
   assert.equal(result.measuredCalls, 5);
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, share: 0 });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, share: 0 });
   // Three minutes after the first call, two minutes after an unmeasured call, and one minute after
   // the other conversation's unmeasured first call.
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1600, share: 1600 / 3000 * 100 });
-  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 1000, cacheRead: 100, share: 10 });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1600, cacheWrite: 0, share: 1600 / 3000 * 100 });
+  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, share: 10 });
   assert.equal(row(result, 'mid').calls, 0);
   assert.equal(row(result, 'over60').calls, 0);
 });
@@ -86,20 +86,20 @@ test('calls at the same instant keep their recorded order and separate conversat
     // Recorded out of order: the later call arrives first, then two calls at the same instant.
     call(base + 5 * MINUTE, { sessionId: 'c', cacheRead: 100 }), call(base, { sessionId: 'c' }), call(base, { sessionId: 'c', cacheRead: 400 }),
   ]);
-  assert.deepEqual(row(result, 'first'), { calls: 3, input: 3000, cacheRead: 0, share: 0 });
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1700, share: 1700 / 3000 * 100 });
-  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 350, share: 17.5 });
+  assert.deepEqual(row(result, 'first'), { calls: 3, input: 3000, cacheRead: 0, cacheWrite: 0, share: 0 });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1700, cacheWrite: 0, share: 1700 / 3000 * 100 });
+  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 350, cacheWrite: 0, share: 17.5 });
 });
 
 test('an empty or unplaceable history reports unknown shares, never zero', () => {
-  const none = { calls: 0, input: 0, cacheRead: 0, share: null };
+  const none = { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, share: null };
   assert.deepEqual(createCacheTiming().finish(), { mainCalls: 0, measuredCalls: 0, modelFiltered: false, minimumSessionCalls: 5, listedSessions: 0,
     situations: ['under5', 'mid', 'over60', 'first', 'modelChange'].map(id => ({ id, ...none })), sessions: [] });
   const result = measure([call(NaN), call(base, { sessionId: '' }), call(base, { sessionId: undefined }), call(base, { inputTotal: 0 })]);
   assert.equal(result.mainCalls, 4);
   assert.equal(result.measuredCalls, 1);
   // A call with no input tokens is counted, but a share of nothing is not 0%.
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 0, cacheRead: 0, share: null });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 0, cacheRead: 0, cacheWrite: 0, share: null });
 });
 
 test('the conversation list keeps five rows, needs five measured calls and uses session labels', () => {
@@ -113,12 +113,12 @@ test('the conversation list keeps five rows, needs five measured calls and uses 
   assert.equal(result.minimumSessionCalls, 5);
   assert.equal(result.listedSessions, 6);
   assert.deepEqual(result.sessions, [
-    { name: 'Second', calls: 5, input: 5000, cacheRead: 500, notRead: 4500, share: 10 },
-    { name: '<img src=x>', calls: 5, input: 5000, cacheRead: 1500, notRead: 3500, share: 30 },
-    { name: 'Third', calls: 6, input: 6000, cacheRead: 3000, notRead: 3000, share: 50 },
+    { name: 'Second', calls: 5, input: 5000, cacheRead: 500, cacheWrite: 0, uncached: 4500, notRead: 4500, share: 10 },
+    { name: '<img src=x>', calls: 5, input: 5000, cacheRead: 1500, cacheWrite: 0, uncached: 3500, notRead: 3500, share: 30 },
+    { name: 'Third', calls: 6, input: 6000, cacheRead: 3000, cacheWrite: 0, uncached: 3000, notRead: 3000, share: 50 },
     // Equal amounts fall back to the session id, so the order never depends on arrival.
-    { name: 'Fourth', calls: 5, input: 5000, cacheRead: 3500, notRead: 1500, share: 70 },
-    { name: 'Unnamed session', calls: 5, input: 5000, cacheRead: 3500, notRead: 1500, share: 70 },
+    { name: 'Fourth', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
+    { name: 'Unnamed session', calls: 5, input: 5000, cacheRead: 3500, cacheWrite: 0, uncached: 1500, notRead: 1500, share: 70 },
   ]);
   assert.deepEqual(measure(records.slice().reverse(), { sessionLabels }).sessions, result.sessions);
 });
@@ -142,7 +142,7 @@ test('the report measures inside the selected range and flags a model filter', (
   // The same call is "first" once the earlier day is outside the range: not the true start.
   const day = buildReport(records, { range: 'custom', startDate: '2026-06-09', endDate: '2026-06-09' }, now).efficiency.cacheTiming;
   assert.deepEqual(day.situations.map(s => s.calls), [0, 0, 0, 1, 2]);
-  assert.deepEqual(day.situations.find(s => s.id === 'first'), { id: 'first', calls: 1, input: 1000, cacheRead: 500, share: 50 });
+  assert.deepEqual(day.situations.find(s => s.id === 'first'), { id: 'first', calls: 1, input: 1000, cacheRead: 500, cacheWrite: 0, share: 50 });
   // With a model filter the call on the other model is not seen at all.
   const filtered = buildReport(records, { range: 'all', models: ['A'] }, now).efficiency.cacheTiming;
   assert.equal(filtered.modelFiltered, true);
@@ -180,7 +180,7 @@ test('the view shows when input is reused, with shares, calls, tokens, a trend a
   assert.match(shown, /at least 10 calls and the shares differ by at least 20 percentage points/);
   assert.match(shown, /Share of input read from cache by day .* in the earlier days, .* in the later days · 2026-06-01 to 2026-06-05, 5 days with measurements/);
   assert.match(html, /<h3>Conversations with the most input not read from cache<\/h3>/);
-  assert.match(html, /<td><span class="cell-text">9<\/span><\/td><td><span class="cell-text">9000<\/span><\/td><td><span class="cell-text">4000<\/span><\/td><td><span class="cell-text">55\.5\d+%<\/span><\/td>/);
+  assert.match(html, /<td><span class="cell-text">9<\/span><\/td><td><span class="cell-text">9000<\/span><\/td><td><span class="cell-text">4000<\/span><\/td><td><span class="cell-text">0<\/span><\/td><td><span class="cell-text">4000<\/span><\/td><td><span class="cell-text">55\.5\d+%<\/span><\/td>/);
   assert.match(shown, /Showing 5 of 5 conversations with at least 5 measured main-conversation calls/);
   assert.match(shown, /After a pause of over 60 minutes, calls read 10% of their input from cache\. With under 5 minutes since the previous call, they read 80%\./);
   assert.match(shown, /consistent with a cache that expired, but the data does not record why/);
@@ -269,4 +269,23 @@ test('the demo history has pauses and model changes for the cache view to compar
   assert.ok(share('under5') - share('over60') >= 20);
   assert.equal(timing.sessions.length, 5);
   assert.match(text(render({ efficiency: { summary: {}, cacheTiming: timing } })), /After a pause of over 60 minutes/);
+});
+
+test('cache writes are separated from uncached input and read-back ratio is shown when writes exist', () => {
+  const records = Array.from({ length: 5 }, (_, i) => call(base + i * MINUTE, {
+    sessionId: 'chat1', sessionName: 'Write heavy', model: 'Alpha',
+    inputTotal: 1000, cacheRead: 600, cacheWrite: 200, input: 200,
+  }));
+  const report = buildReport(records, { range: 'all' }, new Date(base + DAY));
+  const html = render(report), shown = text(html);
+  assert.match(shown, /Read back per write 3×/);
+  assert.match(shown, /Write share Read \/ write/);
+  assert.match(shown, /Alpha 5 of 5 model calls 5000 60% 20% 3×/);
+  assert.match(shown, /Write heavy 5 5000 2000 1000 1000 60%/);
+  assert.doesNotMatch(html, /NaN|undefined|Infinity/);
+  // Zero cache writes shows Unavailable for the ratio without dividing by zero.
+  const noWrites = buildReport(records.map(r => ({ ...r, cacheWrite: 0, input: 400 })), { range: 'all' }, new Date(base + DAY));
+  const zeroText = text(render(noWrites));
+  assert.match(zeroText, /Read back per write Unavailable No cache writes recorded/);
+  assert.match(zeroText, /Alpha 5 of 5 model calls 5000 60% 0% Unavailable/);
 });
