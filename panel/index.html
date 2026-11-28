@@ -3086,7 +3086,8 @@ const COMPACTION_REASONS = {
 
 // "Context reduction": what report.efficiency.compaction measured. `summary` is
 // report.efficiency.summary, used only to place the summary calls' charges among all charges.
-function renderCompactionTopic(data, { number, credits = number } = {}, summary = {}) {
+// `repetition` is report.efficiency.repetition, used only for the post-compaction repeat cross-link.
+function renderCompactionTopic(data, { number, credits = number } = {}, summary = {}, repetition = null) {
   const c = data || {}, t = c.tokens || {}, m = c.messages || {}, cost = c.cost || {}, x = c.next || {};
   const valid = value => Number.isFinite(value) && value >= 0;
   const n = value => valid(value) ? number(value) : 'Unavailable';
@@ -3162,6 +3163,27 @@ function renderCompactionTopic(data, { number, credits = number } = {}, summary 
       metric('Compacted again first', n(x.compactedAgain), 'Another compaction came before input was back'),
       metric('Still smaller at the end', n(x.ended), 'The recorded calls stopped first'))
     + note(`Follows the ${count(x.smaller, 'compaction')} where the first call after read less input. Only calls in the selected dates are followed, so a conversation that continued later can still grow back.`));
+
+  const rep = repetition?.compaction;
+  if (rep && (rep.after > 0 || rep.sessions > 0)) {
+    const repeatCopy = rep.after > 0
+      ? `${count(rep.afterReading || 0, 'reading or searching call')} repeated an identical call made before a compaction (${count(rep.after, 'repeated call')} in all across ${count(rep.sessions || 0, 'conversation')}).`
+      : `No recorded tool call repeated an identical call from before a compaction across ${count(rep.sessions || 0, 'conversation')}.`;
+    html += section('Repeated reading after a compaction',
+      `<p class="token-insight-note">${esc(repeatCopy)}</p>`
+      + '<div class="token-insight-actions"><button class="conversation-link" data-efficiency-jump-section="patterns" data-efficiency-jump-topic="repetition">Open Repeated exploration</button></div>'
+      + note('A compaction is one reason an agent may re-read files or repeat searches, not proof that the compaction caused it.'));
+  }
+
+  const projectRows = (c.projects || []).map(p => ({
+    label: p.name,
+    value: p.compactions,
+    detail: `${count(p.sessions, 'conversation')}${p.removed != null ? ` · ${lowered(p.removed, n)} tokens removed` : ''}`,
+  }));
+  if (c.projectCount > 1 && projectRows.length > 1) {
+    html += section('Compactions by project', barList(projectRows, { total: c.compactions, format: value => `${number(value)} (${percent(value / c.compactions * 100)})` })
+      + note(`Showing ${of(projectRows.length, c.projectCount)} projects with a recorded compaction.`));
+  }
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations compacted most',
@@ -3489,7 +3511,7 @@ function renderTokenTopic(id, report, formats) {
       metric('Later input / call', growth.late, 'Median of the last three measured calls'),
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
   }
-  if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary);
+  if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary, report.efficiency?.repetition);
   if (id === 'transitions') return renderTransitionsTopic(report.efficiency?.changeDetail, report.efficiency?.efforts, formats);
   if (id === 'repetition') return renderRepetitionTopic(report.efficiency?.repetition, formats);
   return '';
@@ -5400,6 +5422,15 @@ $('token-overview-panel').onclick = event => {
   if (!topic) return;
   showTokenTopic(topic, true);
   $('efficiency-topic').focus({ preventScroll: true });
+};
+$('pattern-detail-panel').onclick = event => {
+  const jump = event.target.closest('[data-efficiency-jump-topic]')?.dataset;
+  if (jump?.efficiencyJumpTopic) {
+    const tokens = jump.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+  }
 };
 function renderEfficiency() {
   renderReviewResult();

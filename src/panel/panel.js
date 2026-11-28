@@ -1251,6 +1251,15 @@ $('token-overview-panel').onclick = event => {
   showTokenTopic(topic, true);
   $('efficiency-topic').focus({ preventScroll: true });
 };
+$('pattern-detail-panel').onclick = event => {
+  const jump = event.target.closest('[data-efficiency-jump-topic]')?.dataset;
+  if (jump?.efficiencyJumpTopic) {
+    const tokens = jump.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(jump.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+  }
+};
 function renderEfficiency() {
   renderReviewResult();
   const efficiency = state.report?.efficiency;

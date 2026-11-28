@@ -13,7 +13,8 @@ const COMPACTION_REASONS = {
 
 // "Context reduction": what report.efficiency.compaction measured. `summary` is
 // report.efficiency.summary, used only to place the summary calls' charges among all charges.
-export function renderCompactionTopic(data, { number, credits = number } = {}, summary = {}) {
+// `repetition` is report.efficiency.repetition, used only for the post-compaction repeat cross-link.
+export function renderCompactionTopic(data, { number, credits = number } = {}, summary = {}, repetition = null) {
   const c = data || {}, t = c.tokens || {}, m = c.messages || {}, cost = c.cost || {}, x = c.next || {};
   const valid = value => Number.isFinite(value) && value >= 0;
   const n = value => valid(value) ? number(value) : 'Unavailable';
@@ -89,6 +90,27 @@ export function renderCompactionTopic(data, { number, credits = number } = {}, s
       metric('Compacted again first', n(x.compactedAgain), 'Another compaction came before input was back'),
       metric('Still smaller at the end', n(x.ended), 'The recorded calls stopped first'))
     + note(`Follows the ${count(x.smaller, 'compaction')} where the first call after read less input. Only calls in the selected dates are followed, so a conversation that continued later can still grow back.`));
+
+  const rep = repetition?.compaction;
+  if (rep && (rep.after > 0 || rep.sessions > 0)) {
+    const repeatCopy = rep.after > 0
+      ? `${count(rep.afterReading || 0, 'reading or searching call')} repeated an identical call made before a compaction (${count(rep.after, 'repeated call')} in all across ${count(rep.sessions || 0, 'conversation')}).`
+      : `No recorded tool call repeated an identical call from before a compaction across ${count(rep.sessions || 0, 'conversation')}.`;
+    html += section('Repeated reading after a compaction',
+      `<p class="token-insight-note">${esc(repeatCopy)}</p>`
+      + '<div class="token-insight-actions"><button class="conversation-link" data-efficiency-jump-section="patterns" data-efficiency-jump-topic="repetition">Open Repeated exploration</button></div>'
+      + note('A compaction is one reason an agent may re-read files or repeat searches, not proof that the compaction caused it.'));
+  }
+
+  const projectRows = (c.projects || []).map(p => ({
+    label: p.name,
+    value: p.compactions,
+    detail: `${count(p.sessions, 'conversation')}${p.removed != null ? ` · ${lowered(p.removed, n)} tokens removed` : ''}`,
+  }));
+  if (c.projectCount > 1 && projectRows.length > 1) {
+    html += section('Compactions by project', barList(projectRows, { total: c.compactions, format: value => `${number(value)} (${percent(value / c.compactions * 100)})` })
+      + note(`Showing ${of(projectRows.length, c.projectCount)} projects with a recorded compaction.`));
+  }
 
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations compacted most',

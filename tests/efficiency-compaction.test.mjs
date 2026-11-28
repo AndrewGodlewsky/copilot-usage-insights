@@ -167,6 +167,11 @@ test('compaction measurements count outcomes, reasons, sizes, cost and the calls
     regained: 1, regainCalls: 3, compactedAgain: 2, ended: 1 });
   assert.deepEqual(c.conversations.map(row => [row.compactions, row.pairs, row.removed]), [[3, 1, 3000], [3, 2, 2700], [1, 0, null]]);
   assert.ok(c.conversations.every(row => typeof row.name === 'string' && row.name && !('id' in row)));
+  assert.equal(c.projectCount, 2);
+  assert.deepEqual(c.projects, [
+    { name: 'p', compactions: 4, sessions: 2, removed: 2700 },
+    { name: 'q', compactions: 3, sessions: 1, removed: 3000 },
+  ]);
   assert.ok(JSON.stringify(c).length < 2000);
 });
 
@@ -349,6 +354,26 @@ test('the observation follows the evidence: failures, input that grows back, col
     assert.doesNotMatch(shown, /NaN|undefined|Infinity/);
     assert.doesNotMatch(shown, /\b(waste|wasted|saved|savings|inefficient)\b/i, 'an observation is never a verdict');
   }
+});
+
+test('compactions by project and post-compaction repeated reads render only when applicable', () => {
+  const h = history(), report = buildReport(h.records, { range: 'all' }, now, h.activity);
+  const multiHtml = renderCompactionTopic(report.efficiency.compaction, formats, report.efficiency.summary, { compaction: { sessions: 2, repeats: 5, after: 4, afterReading: 3 } });
+  assert.match(multiHtml, /<h3>Compactions by project<\/h3>/);
+  assert.match(text(multiHtml), /Showing 2 of 2 projects with a recorded compaction/);
+  assert.match(multiHtml, /<h3>Repeated reading after a compaction<\/h3>/);
+  assert.match(text(multiHtml), /3 reading or searching calls repeated an identical call made before a compaction \(4 repeated calls in all across 2 conversations\)/);
+  assert.match(multiHtml, /data-efficiency-jump-section="patterns" data-efficiency-jump-topic="repetition"/);
+  assert.match(multiHtml, /Open Repeated exploration/);
+  // Single project hides Compactions by project, and absent repetition hides the cross-link
+  const singleProject = buildReport(h.records, { range: 'all', project: 'q' }, now, h.activity);
+  assert.equal(singleProject.efficiency.compaction.projectCount, 1);
+  const singleHtml = renderCompactionTopic(singleProject.efficiency.compaction, formats, singleProject.efficiency.summary, null);
+  assert.doesNotMatch(singleHtml, /Compactions by project/);
+  assert.doesNotMatch(singleHtml, /Repeated reading after a compaction/);
+  // Zero post-compaction repeats with sessions > 0 still notes zero honestly
+  const zeroAfterHtml = renderCompactionTopic(singleProject.efficiency.compaction, formats, singleProject.efficiency.summary, { compaction: { sessions: 1, repeats: 0, after: 0, afterReading: 0 } });
+  assert.match(text(zeroAfterHtml), /No recorded tool call repeated an identical call from before a compaction/);
 });
 
 test('the demo history renders a complete, bounded compaction view', () => {

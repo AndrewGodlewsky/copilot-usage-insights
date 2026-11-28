@@ -92,7 +92,7 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
         }
       }
       const result = { compactions: 0, sessions: 0, succeeded: 0, failed: 0, unknownOutcome: 0, subagent: 0, omitted: 0, modelFiltered: !!query.models, repeatSessions: 0, repeatCompactions: 0 };
-      const reasons = new Map(), rows = [];
+      const reasons = new Map(), projects = new Map(), rows = [];
       const before = [], after = [], reduction = [], fillBefore = [], fillAfter = [], messagesRemoved = [], messagesBefore = [];
       const inputBefore = [], inputAfter = [], inputChange = [], cacheBefore = [], cacheAfter = [], regainCalls = [];
       let removed = 0, larger = 0, paired = 0, smaller = 0, compactedAgain = 0, ended = 0;
@@ -108,11 +108,16 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
         for (const e of events) {
           result[e.success === true ? 'succeeded' : e.success === false ? 'failed' : 'unknownOutcome']++;
           reasons.set(e.trigger, (reasons.get(e.trigger) || 0) + 1);
+          const projName = e.project || 'Unknown project';
+          let proj = projects.get(projName);
+          if (!proj) projects.set(projName, proj = { name: projName, compactions: 0, sessions: new Set(), pairs: 0, removed: 0 });
+          proj.compactions++; proj.sessions.add(id);
           if (e.success !== true) continue;
           const pre = e.preCompactionTokens, post = e.postCompactionTokens;
           if (known(pre) && pre > 0 && known(post)) {
             before.push(pre); after.push(post); reduction.push((pre - post) / pre * 100);
             removed += pre - post; sessionRemoved += pre - post; sessionPairs++;
+            proj.pairs++; proj.removed += pre - post;
             if (post > pre) larger++;
             if (known(e.tokenLimit) && e.tokenLimit > 0) { fillBefore.push(pre / e.tokenLimit * 100); fillAfter.push(post / e.tokenLimit * 100); }
           }
@@ -156,6 +161,9 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
         next: { paired, inputBefore: middle(inputBefore), inputAfter: middle(inputAfter), change: middle(inputChange), smaller,
           cachePairs: cacheBefore.length, cacheBefore: middle(cacheBefore), cacheAfter: middle(cacheAfter),
           regained: regainCalls.length, regainCalls: middle(regainCalls), compactedAgain, ended },
+        projectCount: projects.size,
+        projects: [...projects.values()].map(p => ({ name: p.name, compactions: p.compactions, sessions: p.sessions.size, removed: p.pairs ? p.removed : null }))
+          .sort((a, b) => b.compactions - a.compactions || (b.removed ?? -1) - (a.removed ?? -1) || a.name.localeCompare(b.name)).slice(0, 5),
         conversations: rows.map(row => ({ ...row, name: name(row.id) }))
           .sort((a, b) => b.compactions - a.compactions || (b.removed ?? -1) - (a.removed ?? -1) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
           .slice(0, 5).map(({ id, ...row }) => row) };

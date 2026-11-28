@@ -49,7 +49,7 @@ export function renderTokenTopic(id, report, formats) {
       metric('Later input / call', growth.late, 'Median of the last three measured calls'),
     ) + note(`${number(growth.samples)} of ${number(growth.requests)} calls measured. This is the largest rise meeting the current comparison rules in the selected history. Larger input can be necessary; this is not proof of waste.`);
   }
-  if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary);
+  if (id === 'compaction') return renderCompactionTopic(report.efficiency?.compaction, formats, report.efficiency?.summary, report.efficiency?.repetition);
   if (id === 'transitions') return renderTransitionsTopic(report.efficiency?.changeDetail, report.efficiency?.efforts, formats);
   if (id === 'repetition') return renderRepetitionTopic(report.efficiency?.repetition, formats);
   return '';
