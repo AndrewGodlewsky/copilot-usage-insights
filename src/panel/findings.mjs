@@ -4,7 +4,7 @@ import { esc } from './charts.mjs';
 // built by src/core/efficiency-findings.mjs. Each one pairs evidence with the obvious alternative
 // explanation, one experiment, a comparison for afterward, and a button that opens the view
 // holding the detail. The numbers are already checked; this only words them.
-const FINDING_VIEWS = { pause: 'Cache reuse', prompts: 'Work behind each prompt', failures: 'Calls and recovery', compaction: 'Context reduction', late: 'Context growth', switch: 'Model and effort changes' };
+const FINDING_VIEWS = { pause: 'Cache reuse', prompts: 'Work behind each prompt', failures: 'Calls and recovery', compaction: 'Context reduction', late: 'Context growth', switch: 'Model and effort changes', repetition: 'Repeated exploration', habits: 'Conversation habits' };
 const FINDING_THEN = { succeeded: 'The next call to that operation succeeded.', unknown: 'The next call to that operation has no recorded outcome.', none: 'No later call to that operation was recorded in that conversation.', failed: 'The next call to that operation also failed.' };
 
 function findingCopy(f, { number, credits }) {
@@ -44,6 +44,20 @@ function findingCopy(f, { number, credits }) {
     caveat: 'Larger input can be necessary as work develops, and a long conversation is not wasteful by itself.',
     action: 'Pick one long conversation. At the next change of phase, start a new one with a concise handoff and keep related follow-ups together.',
     compare: 'Compare input per call before and after the handoff on similar work, and check that important context was kept.',
+  };
+  if (f.kind === 'repetition') return {
+    title: 'Reading and searching calls repeated identical earlier calls',
+    evidence: `${number(f.repeated)} of ${number(f.measured)} compared reading and searching calls (${pct(f.share)}) repeated an identical earlier call in the same conversation.${f.topOperation ? ` Most repeated: ${f.topOperation} (${number(f.topCount)}).` : ''}${f.afterCompaction > 0 ? ` ${number(f.afterCompaction)} happened after a compaction.` : ''}`,
+    caveat: 'A repeat can be needed when a file changed or after context was compacted. Only exact tool-name and argument matches are counted.',
+    action: 'In your next long conversation, ask Copilot to keep short notes of the files it read and what it found, and to re-read a file only after it changes.',
+    compare: 'Compare the share of repeated reading and searching calls in conversations of a similar length.',
+  };
+  if (f.kind === 'habits') return {
+    title: 'Later prompts cost more credits than the first prompt in most conversations',
+    evidence: `In ${number(f.laterHigher)} of ${number(f.conversations)} conversations (${pct(f.share)}) with complete work figures for both first and later prompts, later prompts averaged more credits than the first.`,
+    caveat: 'Later prompts in a conversation are often harder or larger tasks, and conversation position does not by itself cause higher spend.',
+    action: 'On your next multi-step task, start a fresh conversation with a short handoff at a natural phase change instead of continuing in the same thread.',
+    compare: 'Compare credits and calls per prompt on similar work before and after the handoff, and verify key context was kept.',
   };
   return {
     title: 'Cache reuse dropped on the first call after a model change',

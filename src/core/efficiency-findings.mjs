@@ -14,10 +14,13 @@ export const FINDING_RULES = {
   compaction: { minimumConversations: 3, repeated: 2, share: 25 }, // compacted conversations; ones compacted more than once; percent of them
   late: { minimumCalls: 20, minimumConversations: 3, share: 50 },  // measured calls and conversations; percent of input after doubling
   switch: { minimumPairs: 5, gap: 20 },          // model changes with a complete cache split; points lower on the first call after
+  repetition: { minimumMeasured: 20, minimumRepeated: 5, share: 15 }, // compared reading/searching calls; repeats; percent repeated
+  habits: { minimumConversations: 5, share: 70 }, // paired conversations; percent where later prompts averaged more credits than first
 };
-export const FINDING_KINDS = ['pause', 'prompts', 'failures', 'compaction', 'late', 'switch'];
+export const FINDING_KINDS = ['pause', 'prompts', 'failures', 'compaction', 'late', 'switch', 'repetition', 'habits'];
 const LABELS = { pause: 'Cache reuse after pauses', prompts: 'Credits held by the heaviest prompts', failures: 'Failed tool calls in a row',
-  compaction: 'Conversations compacted more than once', late: 'Input after conversations doubled', switch: 'Cache reuse after a model change' };
+  compaction: 'Conversations compacted more than once', late: 'Input after conversations doubled', switch: 'Cache reuse after a model change',
+  repetition: 'Repeated reading and searching', habits: 'Later prompts costing more than the first' };
 const num = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 const found = (kind, strength, view, data) => ({ kind, status: 'found', strength, view, ...data });
@@ -78,9 +81,30 @@ function checkSwitch(e) {
     { before: n.cacheBefore, after: n.cacheAfter, gap, pairs: n.cachePairs, lower: n.lower });
 }
 
+function checkRepetition(e) {
+  const rule = FINDING_RULES.repetition, rep = e.repetition, reading = rep?.reading;
+  if (!reading || !num(reading.measured) || reading.measured < rule.minimumMeasured || !num(reading.repeated) || !num(reading.share))
+    return missing('repetition', `needs ${rule.minimumMeasured} compared reading and searching calls`);
+  if (reading.repeated < rule.minimumRepeated || reading.share < rule.share) return clear('repetition');
+  const top = reading.top?.[0];
+  return found('repetition', reading.share / rule.share, { section: 'patterns', topic: 'repetition' },
+    { repeated: reading.repeated, measured: reading.measured, share: reading.share,
+      topOperation: top ? (top.server ? `${top.server} / ${top.mcpTool || top.name}` : String(top.name ?? '')) : '',
+      topCount: top?.repeated ?? 0, afterCompaction: rep.compaction?.afterReading ?? 0 });
+}
+function checkHabits(e) {
+  const rule = FINDING_RULES.habits, h = e.habits, p = h?.paired;
+  if (!h || h.reason === 'model-filter' || !p || !num(p.conversations) || p.conversations < rule.minimumConversations || !num(p.laterHigher))
+    return missing('habits', h?.reason === 'model-filter' ? 'unavailable with a model filter' : `needs ${rule.minimumConversations} conversations with complete work figures for both first and later prompts`);
+  const share = p.laterHigher / p.conversations * 100;
+  if (share < rule.share) return clear('habits');
+  return found('habits', share / rule.share, { section: 'patterns', topic: 'habits' },
+    { laterHigher: p.laterHigher, conversations: p.conversations, share });
+}
+
 // Builds the checks from the finished sections. `e` is report.efficiency, `p` is report.promptCredits.
 export function buildFindings(e = {}, p = null) {
-  const results = [checkPause(e), checkPrompts(p), checkFailures(e), checkCompaction(e), checkLate(e), checkSwitch(e)];
+  const results = [checkPause(e), checkPrompts(p), checkFailures(e), checkCompaction(e), checkLate(e), checkSwitch(e), checkRepetition(e), checkHabits(e)];
   // Strongest first: how many times past its own threshold the measure is. Ties keep the order above.
   const qualified = results.filter(r => r.status === 'found').sort((a, b) => b.strength - a.strength || FINDING_KINDS.indexOf(a.kind) - FINDING_KINDS.indexOf(b.kind));
   return {

@@ -1256,18 +1256,25 @@ function renderEfficiency() {
   if (!$('efficiency-context-read').disabled) renderEfficiencyContextHistory();
   renderSelectedTokenTopic();
   renderSelectedPatternTopic();
+  const crossView = efficiency.findings;
+  const shownKinds = new Set((crossView?.shown || []).map(f => f.kind));
+  const failureFinding = crossView?.shown?.find(f => f.kind === 'failures');
+  const showFailedServer = Boolean(failedServer && !(failureFinding && String(failureFinding.operation || '').startsWith(failedServer.name + ' /')));
+  const visibleInsights = insights.map((insight, index) => ({ insight, index }))
+    .filter(({ insight }) => !(insight.kind === 'growth' && shownKinds.has('late')));
+  const insightViews = { tools: ['tokens', 'tools', 'Tool and MCP footprint'], cache: ['tokens', 'cache', 'Cache reuse'], spend: ['patterns', 'models', 'Model comparisons'], growth: ['patterns', 'growth', 'Context growth'] };
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
-  $('efficiency-insights').innerHTML = insights.length ? insights.map((insight, index) => {
-    const copy = efficiencyDirection(insight);
-    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${index + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
-  }).join('') : failedServer ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Open Model comparisons or try a wider date range.'}</p>`;
-  if (failedServer) {
+  $('efficiency-insights').innerHTML = visibleInsights.length ? visibleInsights.map(({ insight, index }, shownIndex) => {
+    const copy = efficiencyDirection(insight), view = insightViews[insight.kind];
+    const openView = view ? ` <button data-finding-section="${view[0]}" data-finding-topic="${view[1]}">Open ${esc(view[2])}<span class="sr-only">: ${esc(copy.title)}</span></button>` : '';
+    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${shownIndex + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><div class="token-insight-actions"><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button>${openView}</div></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
+  }).join('') : showFailedServer || crossView?.shown?.length ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Open Model comparisons or try a wider date range.'}</p>`;
+  if (showFailedServer) {
     const completed = failedServer.failures + failedServer.successes;
     $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
   }
-  const crossView = efficiency.findings;
   $('efficiency-findings').innerHTML = renderFindings(crossView, { number, credits: creditNumber });
-  $('efficiency-insight-count').textContent = `${insights.length + (failedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
+  $('efficiency-insight-count').textContent = `${visibleInsights.length + (showFailedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
   if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
   $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
@@ -1295,6 +1302,14 @@ async function inspectEfficiency(target) {
   if (JSON.stringify(query()) !== state.filterKey) await load();
 }
 $('efficiency-insights').onclick = event => {
+  const jump = event.target.closest('[data-finding-topic]')?.dataset;
+  if (jump?.findingTopic) {
+    const tokens = jump.findingSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(jump.findingTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+    return;
+  }
   if (event.target.closest('[data-efficiency-mcp]')?.dataset.efficiencyMcp) {
     showView('breakdown');
     $('breakdown-sections').onclick({ target: { dataset: { section: 'mcp' } } });
