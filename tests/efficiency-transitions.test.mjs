@@ -40,19 +40,54 @@ test('pairs the last call before a model change with the first call after it, on
   assert.deepEqual(result.models.map(r => [r.from, r.to, r.count]), [['m1', 'm2', 2]]);
   assert.deepEqual(result.efforts.map(r => [r.from, r.to, r.count]), [['high', 'low', 1], ['low', 'medium', 1]]);
   assert.deepEqual(result.sources, [{ id: 'model_picker', count: 2 }, { id: 'sdk', count: 1 }]);
-  assert.deepEqual(result.next, { paired: 1, sameModel: 1, inputBefore: 100, inputAfter: 200, change: -100, cachePairs: 1, cacheBefore: 80, cacheAfter: 10, lower: 1 });
+  assert.deepEqual(result.next, { paired: 1, sameModel: 1, inputBefore: 100, inputAfter: 200, change: -100, cachePairs: 1, cacheBefore: 80, cacheAfter: 10, lower: 1, creditPairs: 0, creditsBefore: null, creditsAfter: null });
   // s1 uses two models; s2 and s3 use one (a subagent call does not count).
   assert.deepEqual(result.usage, { sessions: 3, severalModels: 1 });
-  assert.deepEqual(result.chooser, { calls: 7, automatic: 0, selected: 7, unrecorded: 0 });
+  assert.deepEqual(result.chooser, { calls: 7, automatic: 0, selected: 7, unrecorded: 0, autoModelCount: 0, autoModels: [] });
   assert.deepEqual(result.conversations.map(r => [r.name, r.modelChanges, r.effortChanges]), [['First conversation', 1, 2], ['Unnamed session', 1, 0]]);
 });
 
 test('the choice recorded on each call is counted apart, and unknown stays unknown', () => {
   const result = run([call('s1', 0, 'm1', 1, 0, { isAuto: true }), call('s1', 1, 'm1', 1, 0, { isAuto: null }), call('s1', 2, 'm1', 1, 0, { isAuto: false })], []);
-  assert.deepEqual(result.chooser, { calls: 3, automatic: 1, selected: 1, unrecorded: 1 });
+  assert.deepEqual(result.chooser, { calls: 3, automatic: 1, selected: 1, unrecorded: 1, autoModelCount: 1,
+    autoModels: [{ name: 'M1', calls: 1, share: 100, creditCalls: 0, averageCredits: null }] });
   assert.equal(result.events, 0);
   assert.deepEqual(result.next.paired, 0);
   assert.equal(result.next.inputBefore, null);
+});
+
+test('credits before/after a model change and Auto-picked model breakdown exclude partial/missing charges', () => {
+  const calls = [
+    call('s1', 0, 'm1', 100, 80, { nanoAiu: 2e9, creditStatus: 'complete' }),
+    call('s1', 2, 'm2', 200, 20, { nanoAiu: 5e8, creditStatus: 'complete' }),
+    call('s2', 0, 'm1', 100, 80, { nanoAiu: 1e9, creditStatus: 'partial' }),
+    call('s2', 2, 'm2', 200, 20, { nanoAiu: 3e9, creditStatus: 'complete' }),
+    // 6 distinct auto-picked models (capped at top 5)
+    call('s3', 0, 'a1', 10, 0, { isAuto: true, nanoAiu: 1e9, creditStatus: 'complete' }),
+    call('s3', 1, 'a1', 10, 0, { isAuto: true, nanoAiu: 3e9, creditStatus: 'complete' }),
+    call('s3', 2, 'a2', 10, 0, { isAuto: true, nanoAiu: 2e9, creditStatus: 'partial' }),
+    call('s3', 3, 'a3', 10, 0, { isAuto: true, nanoAiu: 5e8, creditStatus: 'complete' }),
+    call('s3', 4, 'a4', 10, 0, { isAuto: true, nanoAiu: 5e8, creditStatus: 'complete' }),
+    call('s3', 5, 'a5', 10, 0, { isAuto: true, nanoAiu: 5e8, creditStatus: 'complete' }),
+    call('s3', 6, 'a6', 10, 0, { isAuto: true, nanoAiu: 5e8, creditStatus: 'complete' }),
+  ];
+  const result = run(calls, [change('s1', 1, 'm1', 'm2'), change('s2', 1, 'm1', 'm2')]);
+  assert.equal(result.next.paired, 2);
+  assert.equal(result.next.creditPairs, 1);
+  assert.equal(result.next.creditsBefore, 2);
+  assert.equal(result.next.creditsAfter, 0.5);
+  assert.equal(result.chooser.automatic, 7);
+  assert.equal(result.chooser.autoModelCount, 6);
+  assert.equal(result.chooser.autoModels.length, 5);
+  assert.deepEqual(result.chooser.autoModels[0], { name: 'A1', calls: 2, share: 2 / 7 * 100, creditCalls: 2, averageCredits: 2 });
+  assert.equal(result.chooser.autoModels[1].averageCredits, null);
+  const html = renderTransitionsTopic(result, [], formats), out = text(html);
+  assert.match(out, /AI credits of one model call/);
+  assert.match(out, /1 of 2 pairs have complete charges on both calls/);
+  assert.match(out, /Models Copilot picked/);
+  assert.match(out, /Showing 5 of 6 models picked by Copilot/);
+  assert.match(out, /Credits unavailable \(0 of 1 calls with complete charges\)/);
+  assert.doesNotMatch(out, /NaN|undefined|Infinity/);
 });
 
 test('missing input or an incomplete cache split leaves the measure out instead of using zero', () => {

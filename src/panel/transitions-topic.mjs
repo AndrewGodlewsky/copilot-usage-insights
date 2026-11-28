@@ -76,11 +76,21 @@ export function renderTransitionsTopic(detail, efforts, { number, credits = numb
   if (c.events || who.calls) {
     const sources = (c.sources || []).map(r => ({ label: Object.hasOwn(TRANSITION_SOURCES, r.id) ? TRANSITION_SOURCES[r.id] : TRANSITION_SOURCES.unknown, value: r.count }));
     const recorded = (who.automatic || 0) + (who.selected || 0);
+    const autoRows = who.automatic > 0 && who.autoModels?.length
+      ? `<p class="compaction-caption">Models Copilot picked</p>` + barList(who.autoModels.map(m => ({
+          label: m.name,
+          value: m.calls,
+          detail: m.creditCalls
+            ? `${credits(m.averageCredits)} / call (${of(m.creditCalls, m.calls)} calls with complete charges)`
+            : `Credits unavailable (${of(m.creditCalls, m.calls)} calls with complete charges)`,
+        })), { total: who.automatic, format: value => `${number(value)} (${percent(value / who.automatic * 100)})` })
+        + note(`${who.autoModelCount > who.autoModels.length ? `Showing ${n(who.autoModels.length)} of ${n(who.autoModelCount)} models picked by Copilot. ` : ''}Automatic routing shows where calls ran, not why Copilot chose that model.`)
+      : '';
     html += section('Who chose', (sources.length ? `<p class="compaction-caption">How each change was recorded</p>` + barList(sources, { total: c.events, format: value => `${number(value)} (${percent(value / c.events * 100)})` }) : '')
       + (who.calls ? `<p class="compaction-caption">Calls where Copilot picked the model</p>` + (recorded
         ? metrics(metric('Picked by Copilot', n(who.automatic), `${percent(who.automatic / recorded * 100)} of calls that record it`),
             metric('Selected in the session', n(who.selected), `${percent(who.selected / recorded * 100)} of calls that record it`),
-            metric('Not recorded', n(who.unrecorded), `${of(recorded, who.calls)} model calls record it`))
+            metric('Not recorded', n(who.unrecorded), `${of(recorded, who.calls)} model calls record it`)) + autoRows
         : empty('No call in these filters records whether Copilot picked the model, so automatic selection is unavailable.')) : '')
       + note('These are two separate records and are not linked: the first says how a setting was changed, the second flags a call on which Copilot chose the model itself. A call picked by Copilot may not appear as a change above.'));
   }
@@ -95,8 +105,12 @@ export function renderTransitionsTopic(detail, efforts, { number, credits = numb
       + (x.cachePairs
         ? compare('Share of that input read from cache', [{ label: 'Last call before', value: x.cacheBefore }, { label: 'First call after', value: x.cacheAfter, color: 'var(--s3)' }], { format: percent, total: 100 })
         : empty('Neither call has a complete cache split, so cache reuse around a change is unavailable.'))
+      + (x.creditPairs
+        ? compare('AI credits of one model call', [{ label: 'Last call before', value: x.creditsBefore }, { label: 'First call after', value: x.creditsAfter, color: 'var(--s3)' }], { format: credits })
+        : empty('Neither call has complete charges on both sides, so credits around a change are unavailable.'))
       + note(`Main-conversation calls in the selected dates; subagent calls are left out. Each bar is the middle value: half of the pairs were above it and half below. ${of(x.paired, c.modelChanges)} model changes have a measured call on a different model on both sides`
         + (x.cachePairs ? `, and ${of(x.cachePairs, x.paired)} of those have a complete cache split on both calls` : '')
+        + (x.creditPairs ? `; ${of(x.creditPairs, x.paired)} pairs have complete charges on both calls` : '')
         + '.' + (x.sameModel ? ` ${count(x.sameModel, 'change')} had the same model on both neighbouring calls and ${x.sameModel === 1 ? 'is' : 'are'} not compared.` : '')
         + ' Input here is what each call reported, cached input included. The two calls can be different work. See Cache reuse for cache reads after a model change across all calls.'
         + (x.cachePairs && x.cacheAfter < x.cacheBefore ? ' Lower cache reads after a change are consistent with a cache that does not carry across models, but this data does not record the cause. A pause before the call can lower them too.' : ''))

@@ -18,16 +18,29 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
     const day = dayOfMs(e.ms);
     if (day < start || day > end || query.project && query.project !== e.project || query.session && query.session !== e.sessionId) continue;
     let session = bySession.get(e.sessionId);
-    if (!session) bySession.set(e.sessionId, session = { events: [], times: [], input: [], cacheRead: [], model: [], used: false });
+    if (!session) bySession.set(e.sessionId, session = { events: [], times: [], input: [], cacheRead: [], model: [], nano: [], used: false });
     session.events.push(e);
   }
   const chooser = { calls: 0, automatic: 0, selected: 0, unrecorded: 0 };
+  const autoModels = new Map();
   const flags = new Map(), names = new Map(), seenModels = new Set();
   let multi = 0, mainSessions = 0, lastSession = NONE, current, flag;
   return {
     add(r) {
       chooser.calls++;
-      if (r.isAuto === true) chooser.automatic++; else if (r.isAuto === false) chooser.selected++; else chooser.unrecorded++;
+      const completeCharge = Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete';
+      if (r.isAuto === true) {
+        chooser.automatic++;
+        const label = r.model || r.modelId || 'Unknown model';
+        let am = autoModels.get(label);
+        if (!am) autoModels.set(label, am = { name: label, calls: 0, creditCalls: 0, nano: 0, wide: 0n });
+        am.calls++;
+        if (completeCharge) {
+          am.creditCalls++;
+          if (am.nano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { am.wide += BigInt(am.nano); am.nano = 0; }
+          am.nano += r.nanoAiu;
+        }
+      } else if (r.isAuto === false) chooser.selected++; else chooser.unrecorded++;
       const model = r.modelId || r.model || '';
       if (model) { seenModels.add(model); if (r.model) seenModels.add(r.model); }
       if (r.sessionId !== lastSession) { lastSession = r.sessionId; current = bySession.get(lastSession); flag = flags.get(lastSession); }
@@ -43,6 +56,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
       current.times.push(r.ms); current.model.push(code);
       current.input.push(known(r.inputTotal) ? r.inputTotal : -1);
       current.cacheRead.push(r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal ? r.cacheRead : -1);
+      current.nano.push(completeCharge ? r.nanoAiu : -1);
     },
     finish() {
       const excluded = new Set(activity.skillExcludedSessions || []), unresolved = new Set();
@@ -59,7 +73,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
       const wanted = model => !modelFiltered || seenModels.has(model);
       const result = { events: 0, sessions: 0, modelChanges: 0, effortChanges: 0, omitted: 0 };
       const sources = new Map(SOURCES.map(id => [id, 0])), modelPairs = new Map(), effortPairs = new Map(), rows = [];
-      const inputBefore = [], inputAfter = [], inputChange = [], cacheBefore = [], cacheAfter = [];
+      const inputBefore = [], inputAfter = [], inputChange = [], cacheBefore = [], cacheAfter = [], creditsBefore = [], creditsAfter = [];
       let paired = 0, sameModel = 0, lower = 0;
       for (const [id, session] of bySession) {
         if (!session.used && modelFiltered) continue;
@@ -90,7 +104,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
         rows.push({ id, modelChanges: modelCount, effortChanges: effortCount });
         // Pair the last main call before a model change with the first one after it. With a model
         // filter the calls kept are only the selected models', so neighbours cannot be trusted.
-        const { times, input, cacheRead, model } = session, calls = times.length;
+        const { times, input, cacheRead, model, nano } = session, calls = times.length;
         if (modelFiltered || !calls || !modelCount) continue;
         const order = Array.from(times.keys()).sort((a, b) => times[a] - times[b] || a - b);
         let previous = -1;
@@ -108,18 +122,30 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
             cacheBefore.push(before); cacheAfter.push(after);
             if (after < before) lower++;
           }
+          if (nano[was] >= 0 && nano[next] >= 0) {
+            creditsBefore.push(nano[was] / 1e9); creditsAfter.push(nano[next] / 1e9);
+          }
         }
       }
       const name = id => sessionLabels.get(id) || 'Unnamed session';
+      const autoList = [...autoModels.values()]
+        .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name))
+        .slice(0, 5)
+        .map(m => {
+          const totalCredits = m.creditCalls ? (m.wide ? Number(m.wide + BigInt(m.nano)) : m.nano) / 1e9 : null;
+          return { name: m.name, calls: m.calls, share: chooser.automatic ? m.calls / chooser.automatic * 100 : null,
+            creditCalls: m.creditCalls, averageCredits: m.creditCalls ? totalCredits / m.creditCalls : null };
+        });
       return { ...result, modelFiltered,
         sources: SOURCES.map(id => ({ id, count: sources.get(id) })).filter(row => row.count),
         modelPairsTotal: modelPairs.size, effortPairsTotal: effortPairs.size,
         models: top(modelPairs, ({ from, to, count }) => ({ from, to, count })),
         efforts: top(effortPairs, ({ from, to, count }) => ({ from, to, count })),
         usage: { sessions: modelFiltered ? null : mainSessions, severalModels: modelFiltered ? null : multi },
-        chooser: { ...chooser },
+        chooser: { ...chooser, autoModelCount: autoModels.size, autoModels: autoList },
         next: { paired, sameModel, inputBefore: middle(inputBefore), inputAfter: middle(inputAfter), change: middle(inputChange),
-          cachePairs: cacheBefore.length, cacheBefore: middle(cacheBefore), cacheAfter: middle(cacheAfter), lower },
+          cachePairs: cacheBefore.length, cacheBefore: middle(cacheBefore), cacheAfter: middle(cacheAfter), lower,
+          creditPairs: creditsBefore.length, creditsBefore: middle(creditsBefore), creditsAfter: middle(creditsAfter) },
         conversations: rows.map(row => ({ ...row, name: name(row.id) }))
           .sort((a, b) => b.modelChanges + b.effortChanges - a.modelChanges - a.effortChanges || b.modelChanges - a.modelChanges || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
           .slice(0, 5).map(({ id, ...row }) => row) };
