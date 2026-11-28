@@ -12,6 +12,8 @@ import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
 import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
+import { createTopicExplorer } from './topic-explorer.mjs';
+import { formatDiagnosticText, bindReleaseNotesDialog } from './panel-dialogs.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
 import { mergeMcpInventory } from '../core/integrations.mjs';
 import { publicModelLabels } from '../core/public-models.mjs';
@@ -140,59 +142,9 @@ async function request(method, input = {}, refresh = false, signal, known) {
   return clientDiagnostics.measure('api.request', fields, work);
 }
 function diagnosticText(server = cachedServerDiagnostics, cached = true) {
-  const client = clientDiagnostics.snapshot();
-  const lines = [`Usage Insights v${BUILD_VERSION}`, `Exported: ${new Date().toISOString()}`,
-    server ? `Server: v${server.version}, Node ${server.runtime.node}, ${server.runtime.platform}/${server.runtime.arch}${server.runtime.processId ? `, process ${server.runtime.processId}` : ''}` : 'Server logs unavailable.',
-    `Dashboard started: ${client.startedAt}; retained ${client.entries.length}/${client.limit} entries; dropped ${client.dropped}`];
-  if (server) lines.push(`Server started: ${server.startedAt}; retained ${server.entries.length}/${server.limit} entries; dropped ${server.dropped}`);
-  if (server && cached) lines.push(`Cached server snapshot from ${server.capturedAt || server.startedAt}; this is not a live connection check.`);
-  if (server?.persisted) lines.push(`Recent local runtime logs: ${server.persisted.available ? 'available' : 'partly unavailable'}; retained ${server.persisted.entries.length} entries. These can include earlier extension processes.`);
-  if (importedRuntimeLogs) lines.push(`Manually loaded runtime logs: ${importedRuntimeLogs.entries.length} entries; loaded ${importedRuntimeLogs.at}. These are a file snapshot, not a live connection check.`);
-  lines.push('Structured diagnostics only: no prompts, names, paths, raw error messages, or credentials.', 'Timings are milliseconds; UI timings measure JavaScript/DOM updates, not final browser paint.', '');
-  const runtime = new Map();
-  for (const entry of [...(server?.persisted?.entries || []), ...(importedRuntimeLogs?.entries || [])]) runtime.set(JSON.stringify(entry), entry);
-  const entries = [...client.entries.map(entry => ({ ...entry, source: 'dashboard' })), ...(server?.entries || []).map(entry => ({ ...entry, source: 'server' })), ...[...runtime.values()].map(entry => ({ ...entry, source: 'runtime' }))];
-  entries.sort((a, b) => a.at.localeCompare(b.at));
-  // Retain startup evidence from failed opens, labelled by process; older history timings
-  // must not be presented as stages of this dashboard's current usage load.
-  lines.push(loadTimingSummary(entries.filter(entry => entry.source !== 'runtime' || /^(extension\.(sdk|join)|canvas\.(open|queue)|server\.(start|import|assets|bind|page|endpointRead))$/.test(entry.event))), '', 'Structured events', '');
-  return lines.concat(entries.map(entry => JSON.stringify(entry))).join('\n');
+  return formatDiagnosticText({ buildVersion: BUILD_VERSION, clientDiagnostics, server, cached, importedRuntimeLogs });
 }
-const releaseFamily = version => version.split('.').slice(0, 2).join('.');
-function showReleaseNote(version) {
-  const release = RELEASE_NOTES.find(entry => entry.version === version);
-  if (!release) return;
-  $('release-note-title').textContent = `v${release.version}`;
-  $('release-installed').hidden = release.version !== BUILD_VERSION;
-  $('release-summary').textContent = release.summary;
-  $('release-note').scrollTop = 0;
-  for (const button of $('release-versions').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.releaseVersion === release.version));
-}
-function showReleaseFamily(family, version) {
-  const releases = RELEASE_NOTES.filter(entry => releaseFamily(entry.version) === family);
-  if (!releases.length) return;
-  for (const button of $('release-families').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.releaseFamily === family));
-  $('release-versions').innerHTML = releases.map(entry => `<button data-release-version="${esc(entry.version)}" aria-pressed="false" aria-controls="release-note"><span>v${esc(entry.version)}</span>${entry.version === BUILD_VERSION ? '<span class="release-installed-label">Installed</span>' : ''}</button>`).join('');
-  $('release-versions').scrollTop = 0;
-  showReleaseNote(version || releases[0].version);
-}
-$('plugin-version').onclick = () => {
-  const families = [...new Set(RELEASE_NOTES.map(entry => releaseFamily(entry.version)))];
-  $('release-families').innerHTML = families.map(family => `<button data-release-family="${esc(family)}" aria-pressed="false" aria-controls="release-versions"><span>v${esc(family)}.x</span></button>`).join('');
-  showReleaseFamily(releaseFamily(BUILD_VERSION), BUILD_VERSION);
-  if (!$('release-notes-dialog').open) $('release-notes-dialog').showModal();
-  $('release-versions').querySelector('[aria-pressed="true"]')?.focus();
-};
-$('release-families').onclick = event => {
-  const button = event.target.closest('[data-release-family]');
-  if (button) showReleaseFamily(button.dataset.releaseFamily);
-};
-$('release-versions').onclick = event => {
-  const button = event.target.closest('[data-release-version]');
-  if (button) showReleaseNote(button.dataset.releaseVersion);
-};
-$('release-notes-close').onclick = () => $('release-notes-dialog').close();
-$('release-notes-dialog').onclose = () => $('plugin-version').focus({ preventScroll: true });
+bindReleaseNotesDialog({ getElement: $, releaseNotes: RELEASE_NOTES, buildVersion: BUILD_VERSION });
 let logsLoading = false;
 async function showLogs() {
   if (!$('logs-dialog').open) $('logs-dialog').showModal();
@@ -1081,62 +1033,10 @@ function showEfficiencySection(section) {
 $('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
 let tokenTopic = 'overview';
 const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
-function createTopicExplorer(prefix, rangeId, topics, initial, onSelect) {
-  let selected = initial;
-  const lens = $(rangeId), stops = $(`${prefix}-topic-stops`), nodes = $(`${prefix}-track-nodes`);
-  lens.max = String(topics.length - 1);
-  $(`${prefix}-track-inner`).style.setProperty('--token-topic-count', topics.length);
-  nodes.innerHTML = topics.map(topic => `<span data-${prefix}-node="${topic.id}"></span>`).join('');
-  stops.innerHTML = topics.map(topic => `<button data-${prefix}-stop="${topic.id}" title="${esc(topic.label)}" aria-label="${esc(topic.label)}" aria-controls="${prefix}-topic-content">${tokenTopicIcon(topic)}</button>`).join('');
-  function sync() {
-    const index = topics.findIndex(topic => topic.id === selected), topic = topics[index];
-    lens.value = String(index);
-    lens.title = topic.label;
-    lens.style.setProperty('--lens-icon', `url("data:image/svg+xml,${encodeURIComponent(tokenTopicIcon(topic, true))}")`);
-    lens.setAttribute('aria-valuetext', `${topic.label}, section ${index + 1} of ${topics.length}`);
-    for (const button of stops.querySelectorAll(`[data-${prefix}-stop]`)) button.setAttribute('aria-current', String(button.dataset[`${prefix}Stop`] === selected));
-    for (const node of nodes.querySelectorAll(`[data-${prefix}-node]`)) node.classList.toggle('current', node.dataset[`${prefix}Node`] === selected);
-    $(`${prefix}-topic-position`).textContent = `${topic.group || (prefix === 'token' ? 'Summary' : 'Patterns')} · ${index + 1} of ${topics.length}`;
-    $(`${prefix}-selected-title`).textContent = topic.label;
-    $(`${prefix}-topic-prev`).disabled = index === 0;
-    $(`${prefix}-topic-next`).disabled = index === topics.length - 1;
-  }
-  function select(id, announce = false) {
-    const topic = topics.find(topic => topic.id === id);
-    if (!topic || selected === id) return;
-    selected = id;
-    sync();
-    // Keep short panels from shrinking the document past the current viewport during navigation.
-    const content = $(`${prefix}-topic-content`);
-    content.style.minHeight = `${Math.max(0, (document.documentElement.clientHeight || innerHeight) - Math.max(0, content.getBoundingClientRect().top))}px`;
-    onSelect(id);
-    if (announce) $(`${prefix}-topic-announcement`).textContent = `Showing ${topic.label}`;
-  }
-  lens.oninput = () => select(topics[Number(lens.value)]?.id);
-  lens.onkeydown = event => {
-    const index = topics.findIndex(topic => topic.id === selected);
-    const keys = { ArrowRight: index + 1, ArrowUp: index + 1, ArrowLeft: index - 1, ArrowDown: index - 1, Home: 0, End: topics.length - 1 };
-    if (!(event.key in keys)) return;
-    event.preventDefault();
-    select(topics[Math.max(0, Math.min(topics.length - 1, keys[event.key]))].id);
-  };
-  stops.onclick = event => select(event.target.closest(`[data-${prefix}-stop]`)?.dataset[`${prefix}Stop`], true);
-  for (const [direction, step] of [['prev', -1], ['next', 1]]) {
-    const button = $(`${prefix}-topic-${direction}`);
-    button.onclick = () => {
-      const focused = document.activeElement === button;
-      const index = topics.findIndex(topic => topic.id === selected);
-      select(topics[index + step]?.id, true);
-      if (button.disabled && focused) lens.focus({ preventScroll: true });
-    };
-  }
-  sync();
-  return select;
-}
 const showTokenTopic = createTopicExplorer('token', 'efficiency-topic', TOKEN_TOPICS, tokenTopic, id => {
   tokenTopic = id;
   renderSelectedTokenTopic();
-});
+}, { getElement: $ });
 function renderSelectedTokenTopic() {
   const contextFocused = document.activeElement?.dataset.tokenContext === 'true';
   const promptFocused = document.activeElement?.dataset.promptSession;
@@ -1227,7 +1127,7 @@ const unmeasuredPatternTopics = [];
 const showPatternTopic = createTopicExplorer('pattern', 'efficiency-pattern-topic', PATTERN_TOPICS, patternTopic, id => {
   patternTopic = id;
   renderSelectedPatternTopic();
-});
+}, { getElement: $ });
 function renderSelectedPatternTopic() {
   const panel = patternPanelNames.includes(patternTopic) ? patternTopic : 'detail';
   for (const name of patternPanelNames) $(`pattern-${name}-panel`).hidden = name !== panel;
