@@ -232,3 +232,33 @@ test('the demo history renders a complete view whose split matches the report', 
   }
   assert.equal(JSON.stringify(report.skills), before);
 });
+
+test('failing skills outside top five uses are surfaced and live enabled plugins are contrasted with skill activity', () => {
+  const rows = [
+    row('s1', { agent: 10 }, { plugin: 'active-kit' }),
+    row('s2', { agent: 9 }),
+    row('s3', { agent: 8 }),
+    row('s4', { agent: 7 }),
+    row('s5', { agent: 6 }),
+    row('<broken-skill>', {}, { plugin: 'broken-kit', failures: 4 }),
+  ];
+  const plugins = {
+    available: true,
+    rows: [
+      { name: 'active-kit', installed: true, enabled: true },
+      { name: '<quiet-plugin>', installed: true, enabled: true },
+      { name: 'disabled-plugin', installed: true, enabled: false },
+    ],
+  };
+  const html = render({ skills: skillsOf(rows), plugins }), text = plain(html);
+  assert.match(text, /Skills with failed loads/);
+  assert.match(html, /&lt;broken-skill&gt;/);
+  assert.doesNotMatch(html, /<broken-skill>|<quiet-plugin>/);
+  assert.match(text, /Enabled plugins and recorded skill activity/);
+  assert.match(text, /Enabled plugins 2 Current session/);
+  assert.match(text, /With recorded skill activity 1 Matched by exact recorded source plugin/);
+  assert.match(html, /&lt;quiet-plugin&gt;/);
+  assert.doesNotMatch(text, /disabled-plugin/);
+  // Unavailable plugin inventory omits the enabled-plugin section cleanly.
+  assert.doesNotMatch(render({ skills: skillsOf(rows), plugins: { available: false, rows: plugins.rows } }), /Enabled plugins and recorded skill activity/);
+});

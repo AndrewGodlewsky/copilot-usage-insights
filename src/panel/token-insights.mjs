@@ -611,6 +611,29 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
     } else found = ['No skill uses or failed loads were recorded in this view.', 'Try a wider date range or fewer filters.',
       'recorded skill uses and failed loads in the wider view. No recorded use does not show that no skill was in context.'];
 
+    const shownSet = new Set(rows);
+    const failedSkills = all.filter(r => valid(r.failures) && r.failures > 0).sort((a, b) => b.failures - a.failures || String(a.name).localeCompare(String(b.name)));
+    const hiddenFailures = failedSkills.some(r => !shownSet.has(r));
+    const failedTable = hiddenFailures
+      ? section('Skills with failed loads', table(['Skill', 'Source plugin', 'Failed loads', 'Successful uses', 'Conversations', 'Last used'],
+          failedSkills.slice(0, 5).map(r => [r.name || 'Unnamed skill', r.plugin || 'None recorded', count(r.failures), count(r.invocations), count(r.sessions), usedOn(r)]))
+        + note(`Showing ${number(Math.min(failedSkills.length, 5))} of ${things(failedSkills.length, 'skill')} with recorded failed loads, most failures first. Unresolved failures are recorded by skill name only.`))
+      : '';
+    const livePlugins = report.plugins?.available === true && Array.isArray(report.plugins.rows) ? report.plugins.rows : null;
+    let pluginCoverage = '';
+    if (livePlugins) {
+      const enabledPlugins = livePlugins.filter(p => p.installed && p.enabled === true);
+      const activePlugins = new Set(all.map(r => r.plugin).filter(Boolean));
+      const matchedPlugins = enabledPlugins.filter(p => activePlugins.has(p.name));
+      const quietPlugins = enabledPlugins.filter(p => !activePlugins.has(p.name)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const quietList = quietPlugins.slice(0, 5).map(p => p.name || 'Unnamed plugin').join(', ');
+      pluginCoverage = section('Enabled plugins and recorded skill activity', metrics(
+          metric('Enabled plugins', enabledPlugins.length, 'Current session · separate from selected history'),
+          metric('With recorded skill activity', matchedPlugins.length, 'Matched by exact recorded source plugin in these dates'))
+        + (quietPlugins.length ? note(`Enabled plugins with no recorded skill activity in these dates: ${quietList}${quietPlugins.length > 5 ? ` (and ${number(quietPlugins.length - 5)} more)` : ''}.`) : '')
+        + note('Live plugin inventory reflects the current session and ignores date and usage filters. An enabled plugin with no recorded skill uses may provide tools, MCP servers, or commands rather than skills, or may not have been needed in these dates.'));
+    }
+
     return metrics(metric('Recorded skill uses', skills?.invocations ?? null, 'Selected dates, project, and session'),
       metric('Skills used', used, failedOnly > 0 ? `Different skills with a recorded use; ${things(failedOnly, 'other')} had only failed loads` : 'Different skills with at least one recorded use'),
       metric('Conversations with skill activity', skills?.sessions ?? null, `At least one recorded use or failed load.${scale}`),
@@ -619,6 +642,8 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
         ? splitBar + note('A preloaded skill was loaded when the conversation\'s context was set up, so it takes up context whether or not the task goes on to need it. An invoked skill was loaded during the conversation, when the agent or you asked for it.')
         : empty('No recorded skill uses match these filters, only failed loads.')) : '')
       + section('Most-used skills in selected history', rows.length ? mostUsed() : empty('No skill uses or failed loads match these filters.'))
+      + failedTable
+      + pluginCoverage
       + section('Current instruction, skill and plugin footprint', footprint())
       + `<ul class="footnote token-skill-notes">${caveats.map(caveat => `<li>${esc(caveat)}</li>`).join('')}</ul>`
       + insight(...found);
