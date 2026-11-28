@@ -2496,10 +2496,18 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
     const left = sessions ? [[sessions.subagent, 'recorded subagent calls, whose tool calls cannot be told apart from the main conversation'],
       [sessions.unknownInitiator, 'recorded model calls with no initiator'], [sessions.noToolEvents, 'recorded no tool events'], [sessions.tooShort, 'had only one model call']]
       .filter(([count]) => count > 0).map(([count, why]) => `${things(count, 'conversation')} ${why}`) : [];
+    const familyRows = (added?.byFamily || []).filter(row => row.steps > 0);
+    const byFamilyTable = familyRows.length
+      ? '<p class="compaction-caption">Typical added input by tool kind</p>'
+        + table(['Tool kind in between', 'Steps', 'Typical added input', 'Input shrank'], familyRows.map(row => [row.label, number(row.steps),
+          row.grew >= 3 ? `${number(row.middle)} tokens` : row.grew > 0 ? `Too few steps (${number(row.grew)})` : 'Unavailable', number(row.shrunk)]))
+        + note('Single-family steps ran only tools of that kind between two model calls. Steps mixing kinds are grouped under Multiple tool kinds so added input is not attributed to one kind. Needs at least 3 growing steps for a typical value.')
+      : '';
     const between = !added?.steps ? empty(sessions?.total
       ? 'No step between two main-conversation model calls could be measured in these filters. A step needs the input and output of the earlier call and the input of the next. Missing counts are not zero.'
       : 'No main-conversation model calls match these filters, so input added between calls cannot be estimated.')
       : table(['Tool calls in between', 'Steps', 'Typical added input', 'Input shrank'], groups.map(row => [row.label, number(row.steps), row.grew ? `${number(row.middle)} tokens` : 'Unavailable', number(row.shrunk)]))
+        + byFamilyTable
         + note(`An estimate, not a measurement: the next call's input minus the earlier call's input and output. It covers tool results and any new message from you. Typical means half of the steps added less. ${things(added.steps, 'step')} from ${number(sessions.used)} of ${things(sessions.total, 'conversation')}${added.unmeasured ? `; ${things(added.unmeasured, 'more step')} lacked an input or output count` : ''}. ${added.shrunk ? `${things(added.shrunk, 'step')} where input shrank (a compaction or changed history) ${added.shrunk === 1 ? 'is' : 'are'} counted but left out of the typical values. ` : ''}${left.length ? `Left out: ${left.join('; ')}. ` : ''}Subagent calls cannot be put in order, so they are not steps.${added.modelFiltered ? ' A model filter is on, so calls on other models are missing and some steps span more than one call.' : ''}`);
     // A comparison between groups needs enough steps on both sides and a clear difference.
     const enough = 10, typical = groups.filter(row => row.grew >= enough && valid(row.middle) && row.middle > 0);
@@ -2508,9 +2516,15 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
       ? `Steps with ${most.label.toLowerCase()} between model calls added a typical ${number(most.middle)} tokens of input, against ${number(least.middle)} with ${least.label.toLowerCase()}.`
       : valid(added?.middle) && added.grew >= enough ? `Half of the ${number(added.grew)} steps where input grew added less than ${number(added.middle)} tokens of input.`
       : messages == null ? 'Tool activity is visible before its context footprint is measurable.' : `${number(messages)} tokens are in conversation and tool messages combined.`;
-    return metrics(metric('Conversation context', messages, 'Current user, assistant, and tool messages together'),
-      metric('Of occupied context', share(messages, context?.totalTokens), 'Current snapshot only', percent),
-      metric('Recorded tool calls', report.tools?.calls ?? null, 'Selected history; activity, not token charges'))
+    const topMetrics = current
+      ? metrics(metric('Conversation context', messages, 'Current user, assistant, and tool messages together'),
+          metric('Of occupied context', share(messages, context?.totalTokens), 'Current snapshot only', percent),
+          metric('Recorded tool calls', report.tools?.calls ?? null, 'Selected history; activity, not token charges'),
+          metric('Typical added input / step', added?.grew ? added.middle : null, added?.grew ? `Half of ${things(added.grew, 'growing step')} added less` : 'Needs measured consecutive calls'))
+      : metrics(metric('Recorded tool calls', report.tools?.calls ?? null, 'Selected history; activity, not token charges'),
+          metric('Typical added input / step', added?.grew ? added.middle : null, added?.grew ? `Half of ${things(added.grew, 'growing step')} added less` : 'Needs measured consecutive calls'),
+          metric('Calls with a recorded duration', shown ? shown.timedCalls : null, shown ? `Of ${things(shown.calls, 'recorded tool call')}` : 'Selected history'));
+    return topMetrics
       + section('What the agent ran', ran)
       + section('Input added between model calls', between)
       + contextStamp() + (current ? sources(['tool'], 'Largest tool-attributed context sources') + inspect : inspect)

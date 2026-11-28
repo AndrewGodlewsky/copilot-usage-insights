@@ -143,3 +143,30 @@ test('the view escapes names, shows unknown as Unavailable and handles a report 
   assert.match(none, /No tool calls match these filters/);
   assert.match(none, /input added between calls cannot be estimated|No main-conversation model calls/);
 });
+
+test('added input by tool kind separates single-family steps from mixed-family steps and improves snapshot-free summary', () => {
+  // 3 read-only steps (+200, +400, +600 -> median 400), 1 mixed step (read + search -> +700), 1 shrunk command step.
+  const calls = [
+    call(0, 1000, 100), call(10, 1300, 100), call(20, 1800, 100), call(30, 2500, 100),
+    call(40, 3300, 100), call(50, 1000, 100),
+  ];
+  const tools = [
+    tool(5, 'view'), tool(15, 'view'), tool(25, 'view'), tool(26, 'read_file'),
+    tool(35, 'view'), tool(36, 'grep'), tool(45, 'bash'),
+  ];
+  const material = build(calls, tools);
+  const byFamily = id => material.added.byFamily.find(row => row.id === id);
+  assert.deepEqual([byFamily('read').steps, byFamily('read').grew, byFamily('read').middle], [3, 3, 400]);
+  assert.deepEqual([byFamily('mixed').steps, byFamily('mixed').grew, byFamily('mixed').middle], [1, 1, 700]);
+  assert.deepEqual([byFamily('command').steps, byFamily('command').grew, byFamily('command').shrunk, byFamily('command').middle], [1, 0, 1, null]);
+  // Arrival order of tools does not change family attribution.
+  assert.deepEqual(build(calls.slice().reverse(), tools.slice().reverse()), material);
+
+  const noSnap = renderTokenTopic('results', { efficiency: { toolMaterial: material }, tools: { calls: 7, rows: [] } }, { ...formats, context: { available: false } });
+  assert.match(noSnap, /Typical added input \/ step/);
+  assert.match(noSnap, /Typical added input by tool kind/);
+  assert.match(noSnap, /Reading files.*400 tokens/);
+  assert.match(noSnap, /Multiple tool kinds.*Too few steps \(1\)/);
+  assert.match(noSnap, /Running commands.*Unavailable/);
+  assert.doesNotMatch(noSnap, /Conversation context.*Unavailable/);
+});

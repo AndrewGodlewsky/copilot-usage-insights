@@ -28,7 +28,8 @@ FAMILIES.forEach((family, index) => { for (const name of family.names) FAMILY_OF
 const GROUPS = [{ id: 'none', label: 'No tool call', low: 0, high: 0 }, { id: 'one', label: '1 tool call', low: 1, high: 1 },
   { id: 'few', label: '2 to 3 tool calls', low: 2, high: 3 }, { id: 'many', label: '4 or more tool calls', low: 4, high: Infinity }];
 const groupOf = count => count === 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : 3;
-const STRIDE = 3, LIST = 5, NAME_LIMIT = 200;
+const STRIDE = 3, TOOL_STRIDE = 2, LIST = 5, NAME_LIMIT = 200;
+const STEP_FAMILIES = [...FAMILIES.map(({ id, label }) => ({ id, label })), { id: 'mixed', label: 'Multiple tool kinds' }];
 const NONE = Symbol('none');
 const known = value => Number.isFinite(value) && value >= 0;
 const share = (part, whole) => whole > 0 ? part / whole * 100 : null;
@@ -87,11 +88,12 @@ export function createToolMaterial({ query = {}, now = new Date() } = {}) {
       }
       if (typeof tool.sessionId !== 'string' || !tool.sessionId) return;
       const s = place(tool.sessionId);
-      s.tools.push(ms);
+      s.tools.push(ms, family);
       if (ms < s.toolLatest) s.toolsOrdered = false; else s.toolLatest = ms;
     },
     finish() {
       const stats = GROUPS.map(() => ({ steps: 0, shrunk: 0, added: [] }));
+      const familyStats = STEP_FAMILIES.map(() => ({ steps: 0, shrunk: 0, added: [] }));
       const used = { total: 0, used: 0, subagent: 0, unknownInitiator: 0, noToolEvents: 0, tooShort: 0 };
       let mainCalls = 0, steps = 0, unmeasured = 0, shrunk = 0, grew = 0;
       for (const s of sessions.values()) {
@@ -107,20 +109,42 @@ export function createToolMaterial({ query = {}, now = new Date() } = {}) {
         const list = s.calls;
         // Equal times keep the order the calls were recorded in.
         const order = s.ordered ? null : Array.from({ length: count }, (_, index) => index).sort((a, b) => list[a * STRIDE] - list[b * STRIDE] || a - b);
-        const tools = s.toolsOrdered ? s.tools : Float64Array.from(s.tools).sort();
+        const toolCount = s.tools.length / TOOL_STRIDE;
+        let tools = s.tools;
+        if (!s.toolsOrdered) {
+          const toolOrder = Array.from({ length: toolCount }, (_, index) => index * TOOL_STRIDE)
+            .sort((a, b) => tools[a] - tools[b] || tools[a + 1] - tools[b + 1]);
+          const sorted = new Array(tools.length);
+          for (let i = 0; i < toolOrder.length; i++) {
+            sorted[i * TOOL_STRIDE] = tools[toolOrder[i]];
+            sorted[i * TOOL_STRIDE + 1] = tools[toolOrder[i] + 1];
+          }
+          tools = sorted;
+        }
         const at = index => (order ? order[index] : index) * STRIDE;
         // Tool calls that started at or after one call and before the next belong to the step
         // between them. One pointer moves through the tool calls as the model calls advance.
         let pointer = 0;
-        while (pointer < tools.length && tools[pointer] < list[at(0)]) pointer++;
+        while (pointer < toolCount && tools[pointer * TOOL_STRIDE] < list[at(0)]) pointer++;
         for (let index = 1; index < count; index++) {
           const before = at(index - 1), after = at(index), start = pointer;
-          while (pointer < tools.length && tools[pointer] < list[after]) pointer++;
+          let singleFamily = -1, mixed = false;
+          while (pointer < toolCount && tools[pointer * TOOL_STRIDE] < list[after]) {
+            const fam = tools[pointer * TOOL_STRIDE + 1];
+            if (singleFamily === -1) singleFamily = fam;
+            else if (singleFamily !== fam) mixed = true;
+            pointer++;
+          }
           const inputBefore = list[before + 1], outputBefore = list[before + 2], inputAfter = list[after + 1];
           if (inputBefore < 0 || outputBefore < 0 || inputAfter < 0) { unmeasured++; continue; }
-          const group = stats[groupOf(pointer - start)], added = inputAfter - inputBefore - outputBefore;
+          const inStep = pointer - start, group = stats[groupOf(inStep)], added = inputAfter - inputBefore - outputBefore;
           steps++; group.steps++;
           if (added < 0) { shrunk++; group.shrunk++; } else { grew++; group.added.push(added); }
+          if (inStep > 0) {
+            const fRow = familyStats[mixed ? FAMILIES.length : singleFamily];
+            fRow.steps++;
+            if (added < 0) fRow.shrunk++; else fRow.added.push(added);
+          }
         }
       }
       const total = families.reduce((sum, row) => sum + row.calls, 0);
@@ -139,6 +163,10 @@ export function createToolMaterial({ query = {}, now = new Date() } = {}) {
           groups: GROUPS.map((group, index) => {
             const row = stats[index];
             return { id: group.id, label: group.label, steps: row.steps, shrunk: row.shrunk, grew: row.added.length, middle: middleOf(row.added) };
+          }),
+          byFamily: STEP_FAMILIES.map((family, index) => {
+            const row = familyStats[index];
+            return { id: family.id, label: family.label, steps: row.steps, shrunk: row.shrunk, grew: row.added.length, middle: middleOf(row.added) };
           }),
         },
       };
