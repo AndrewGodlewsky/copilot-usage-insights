@@ -275,6 +275,7 @@ async function loadInventory(refresh = false) {
     if (state.report) {
       renderEfficiencyReliability();
       if (['tools', 'skills'].includes(tokenTopic)) renderSelectedTokenTopic();
+      if (!$('efficiency-context-read').disabled) renderEfficiencyContextHistory();
     }
     if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
   }
@@ -797,10 +798,10 @@ function renderEfficiencyContext() {
 function renderEfficiencyContextPart(contextPart) {
   return renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot, previousContext: previousContextSnapshot, contextPart });
 }
-// The comparison with the selected history sits outside the snapshot's live region, so it can
-// follow the filters without redrawing the snapshot or closing its source table.
+// The historical baseline (and snapshot-to-history comparison once inspected) sits outside the
+// snapshot's live region, so it follows filters and live inventory without redrawing the snapshot.
 function renderEfficiencyContextHistory() {
-  $('efficiency-context-history').innerHTML = efficiencyContextSnapshot?.available ? renderEfficiencyContextPart('history') : '';
+  $('efficiency-context-history').innerHTML = renderEfficiencyContextPart('history');
 }
 let reviewRunning = false, reviewConnectionPending = false, reviewRun, reviewResult, reviewResultFormat, reviewProgressTimer;
 const reviewMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -1259,6 +1260,7 @@ $('token-detail-panel').onclick = event => {
   if (prompt?.promptSession) return inspectEfficiency({ model: $('model').value, project: prompt.promptProject, session: prompt.promptSession });
 };
 $('token-cache-detail').onclick = event => { handleEfficiencyNavigation(event); };
+$('efficiency-context-history').onclick = event => { handleEfficiencyNavigation(event); };
 $('efficiency-habits-detail').onclick = event => { handleEfficiencyNavigation(event); };
 $('efficiency-reliability').onclick = event => { handleEfficiencyNavigation(event); };
 $('token-overview-panel').onclick = event => {

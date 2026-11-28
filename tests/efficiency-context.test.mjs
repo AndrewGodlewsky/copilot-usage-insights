@@ -223,17 +223,74 @@ test('the two halves of the view are separable and only the history half reads t
   assert.match(related, /Compare afterward:/);
 });
 
-test('an unmeasured snapshot shows no figures, and no variant prints a broken number', () => {
+test('an unmeasured snapshot shows historical starting context without inventing snapshot figures', () => {
   for (const context of [undefined, null, { available: false, reason: 'timeout' }, { available: false, reason: 'empty' }]) {
     const html = render(context, history);
     assert.match(html, /Current context has not been measured here/);
-    assert.doesNotMatch(html, /Room left|Illustration|selected history/);
+    assert.match(html, /Starting context in selected history/);
+    assert.match(html, /Tool definitions \/ call<\/span><strong class="value">1200 \*<\/strong>/);
+    assert.doesNotMatch(html, /Room left|Illustration/);
   }
+  // Completely empty report without history or live inventory stays clean.
+  assert.doesNotMatch(render(undefined, {}), /Starting context in selected history|Active setup in this session/);
   const variants = [snapshot(), snapshot({ limit: null }), snapshot({ limit: 800 }), snapshot({ categories: {} }), snapshot({ totalTokens: 0, limit: 0, categories: {} }),
     snapshot({ entries: [{ kind: 'tool', id: 'a', label: 'a', tokens: 0 }] }), { available: true, totalTokens: 100, categories: { systemPrompt: 80, customInstructions: 80, systemTools: 0, mcpTools: 0 } }];
   for (const context of variants) for (const report of [{}, history, { efficiency: {}, promptCredits: {} }]) {
     for (const number of [formats.number, formatNumber]) assert.doesNotMatch(render(context, report, { number }), /NaN|undefined|Infinity|null/);
   }
+});
+
+test('before clicking Inspect context, historical baseline shows Prompt 1 start, tool defs by model, preloaded skills, and live setup', async () => {
+  const rich = {
+    efficiency: {
+      summary: { requests: 20, toolRequests: 16, averageToolTokens: 1500, toolShare: 18.5, averageAvailableTools: 14.2 },
+      growthSummary: { minimumConversations: 3, positions: [{ prompt: 1, conversations: 12, input: 18500, multiple: 1 }] },
+      models: [
+        { name: 'Model <A>', requests: 12, toolRequests: 12, averageToolTokens: 2000, toolShare: 20, toolCountRequests: 12, averageAvailableTools: 16 },
+        { name: 'Model B', requests: 8, toolRequests: 4, averageToolTokens: 1000, toolShare: 12, toolCountRequests: 0, averageAvailableTools: null },
+      ],
+    },
+    skills: {
+      rows: [
+        { name: 'skill-<pre>', plugin: 'kit', invocations: 8, sessions: 5, triggers: { preloaded: 6, agent: 2, manual: 0, unknown: 0 } },
+        { name: 'skill-manual', plugin: 'kit', invocations: 4, sessions: 2, triggers: { preloaded: 0, agent: 0, manual: 4, unknown: 0 } },
+      ],
+    },
+    mcp: { available: true, rows: [{ name: 'srv-1', status: 'connected', toolsLoaded: true }, { name: 'srv-2', status: 'failed', toolsLoaded: false }] },
+    plugins: { available: true, rows: [{ name: 'p1', installed: true, enabled: true }, { name: 'p2', installed: true, enabled: false }] },
+  };
+  const html = render(undefined, rich, { contextPart: 'history' }), shown = text(html);
+  assert.match(shown, /Starting context in selected history/);
+  assert.match(shown, /Typical conversation start \(Prompt 1\) 18500 Median first main-agent call across 12 conversations/);
+  assert.match(shown, /Tool definitions \/ call 1500 \* 16 of 20 model calls · 14\.2 tools available on average/);
+  assert.match(shown, /Tool definition share 18\.5% \*/);
+  assert.match(shown, /Preloaded skill uses 6 50% of 12 recorded skill uses/);
+  assert.match(shown, /Tool definitions by model/);
+  assert.match(html, /Model &lt;A&gt;/);
+  assert.match(html, /data-efficiency-jump-section="tokens" data-efficiency-jump-topic="tools"/);
+  assert.match(shown, /Skills preloaded at conversation start/);
+  assert.match(html, /skill-&lt;pre&gt;/);
+  assert.match(html, /data-efficiency-jump-section="tokens" data-efficiency-jump-topic="skills"/);
+  assert.match(shown, /Active setup in this session/);
+  assert.match(shown, /Connected MCP servers 1 1 of 2 listed · 1 reporting tools loaded/);
+  assert.match(shown, /Enabled plugins 1 1 of 2 installed plugins enabled/);
+  assert.match(shown, /18\.5% of measured input \(1500 tokens per call\) described available tools\./);
+  assert.doesNotMatch(html, /<A>|<pre>|NaN|undefined|Infinity/);
+
+  // Panel mounts populated baseline immediately on load without calling efficiency.context.
+  const baseReport = buildReport([], {});
+  const panelReport = { ...baseReport, ...rich, efficiency: { ...baseReport.efficiency, ...rich.efficiency }, sources: [], coverage: {} };
+  const { get, requests, server } = await mountPanel(panelReport);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  assert.equal(requests.some(r => r.method === 'efficiency.context'), false);
+  assert.match(get('efficiency-context-history').innerHTML, /Starting context in selected history/);
+  assert.match(get('efficiency-context-history').innerHTML, /Tool definitions by model/);
+  assert.match(get('efficiency-context-history').innerHTML, /Skills preloaded at conversation start/);
+  // Clicking Inspect context transitions into live snapshot + snapshot-to-history comparison cleanly.
+  server.contextSnapshot = snapshot();
+  await get('efficiency-context-read').onclick();
+  assert.match(get('efficiency-context-result').innerHTML, /Room left/);
+  assert.match(get('efficiency-context-history').innerHTML, /Beside your selected history/);
 });
 
 test('the demo snapshot reads as plausible, complete evidence', () => {
@@ -333,7 +390,8 @@ test('the panel draws the snapshot once, keeps the source table, and lets histor
 
   server.contextSnapshot = { available: false, reason: 'empty' };
   await get('efficiency-context-read').onclick();
-  assert.equal(get('efficiency-context-history').innerHTML, '');
+  assert.match(get('efficiency-context-history').innerHTML, /Starting context in selected history/);
+  assert.doesNotMatch(get('efficiency-context-history').innerHTML, /Beside your selected history/);
   assert.match(get('token-topic-body').innerHTML, /not been measured/);
 });
 

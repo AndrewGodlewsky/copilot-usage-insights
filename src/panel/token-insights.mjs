@@ -185,9 +185,16 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       : valid(uses)
         ? [`${number(uses)} ${uses === 1 ? 'use' : 'uses'}${valid(skillFailures) && skillFailures > 0 ? ` · ${number(skillFailures)} failed` : ''}`, 'Recorded in the selected history. History does not record how many tokens a skill added; inspect context for current instructions.']
         : ['Needs Inspect context', 'History does not record how many tokens a skill added.'];
+    const prompt1 = report.efficiency?.growthSummary?.positions?.find(row => row.prompt === 1);
+    const contextIndex = current
+      ? snapshot(setupTokens != null && setupTokens <= context?.totalTokens ? setupTokens : null, 'Instructions and tool definitions in the current conversation snapshot.', '')
+      : valid(prompt1?.input)
+        ? [`${number(prompt1.input)} tokens at start`, `Typical Prompt 1 input across ${number(prompt1.conversations)} conversations in selected history; inspect context for current setup breakdown.`]
+        : valid(s.averageToolTokens)
+          ? [`${number(s.averageToolTokens)} tool-def tokens`, `Average tool definitions per call in selected history; inspect context for current instructions and tool definitions.`]
+          : ['Needs Inspect context', 'Instructions and tool definitions in the current conversation. History does not record them.'];
     const index = [
-      ['context', 'Always-loaded context', ...snapshot(setupTokens != null && setupTokens <= context?.totalTokens ? setupTokens : null, 'Instructions and tool definitions in the current conversation snapshot.',
-        'Instructions and tool definitions in the current conversation. History does not record them.')],
+      ['context', 'Always-loaded context', ...contextIndex],
       ['tools', 'Tool and MCP footprint', measured(s.toolShare, s.toolRequests, s.requests, percent), `of measured input described the available tools · ${coverage(s.toolRequests)}`],
       ['results', 'Files, searches, and tool results', ...resultsIndex],
       ['cache', 'Cache reuse', measured(s.cacheHitRate, s.cacheRequests, s.requests, percent), `of measured input was read from cache · ${coverage(s.cacheRequests)}`],
@@ -208,7 +215,88 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       + section('Explore the other sections', `<ul class="token-index" role="list">${index.map(([topic, label, value, detail]) => `<li>${jump(topic, label)}<strong class="token-index-value">${esc(value)}</strong><span class="token-index-detail">${esc(detail)}</span></li>`).join('')}</ul>`);
   }
   if (id === 'context') {
-    if (!current) return contextStamp();
+    if (!current) {
+      if (contextPart === 'snapshot') return contextStamp();
+      const prompt1 = report.efficiency?.growthSummary?.positions?.find(row => row.prompt === 1);
+      const minConvs = report.efficiency?.growthSummary?.minimumConversations ?? 3;
+      const toolModels = measuredModels('toolRequests', 'averageToolTokens');
+      const skillRows = report.skills?.rows || [];
+      let totalSkillUses = 0, preloadedUses = 0;
+      const preloadedSkills = [];
+      for (const r of skillRows) {
+        const uses = valid(r.invocations) ? r.invocations : 0;
+        const pre = valid(r.triggers?.preloaded) ? r.triggers.preloaded : 0;
+        totalSkillUses += uses; preloadedUses += pre;
+        if (pre > 0) preloadedSkills.push({ name: r.name || 'Unnamed skill', plugin: r.plugin || 'None recorded', preloaded: pre, uses, sessions: r.sessions });
+      }
+      preloadedSkills.sort((a, b) => b.preloaded - a.preloaded || String(a.name).localeCompare(String(b.name)));
+      const preloadedShare = totalSkillUses > 0 ? preloadedUses / totalSkillUses * 100 : null;
+      const liveMcp = report.mcp?.available === true && Array.isArray(report.mcp.rows) ? report.mcp.rows : null;
+      const livePlugins = report.plugins?.available === true && Array.isArray(report.plugins.rows) ? report.plugins.rows : null;
+      const connectedMcp = liveMcp ? liveMcp.filter(r => r.status === 'connected') : [];
+      const loadedMcp = connectedMcp.filter(r => r.toolsLoaded === true);
+      const installedPlugins = livePlugins ? livePlugins.filter(p => p.installed) : [];
+      const enabledPlugins = installedPlugins.filter(p => p.enabled === true);
+      const hasHistory = (s.requests || 0) > 0 || valid(prompt1?.input) || (s.toolRequests || 0) > 0 || skillRows.length > 0;
+      const hasInventory = Boolean(liveMcp || livePlugins);
+      if (!hasHistory && !hasInventory) return contextPart === 'history' ? '' : contextStamp();
+
+      let baseline = '';
+      if (hasHistory) {
+        baseline += section('Starting context in selected history', metrics(
+            metric('Typical conversation start (Prompt 1)', valid(prompt1?.input) ? prompt1.input : null,
+              valid(prompt1?.input) ? `Median first main-agent call across ${number(prompt1.conversations)} conversations` : `Needs at least ${number(minConvs)} conversations with recorded input`),
+            metric('Tool definitions / call', s.averageToolTokens,
+              s.toolRequests ? `${coverage(s.toolRequests)}${valid(s.averageAvailableTools) ? ` · ${number(s.averageAvailableTools, { maximumFractionDigits: 1 })} tools available on average` : ''}` : 'Not recorded in these filters',
+              number, partial(s.toolRequests)),
+            metric('Tool definition share', s.toolShare,
+              s.toolRequests ? 'Share of measured input describing available tools' : 'Matched input and definition counts needed',
+              percent, partial(s.toolRequests)),
+            metric('Preloaded skill uses', skillRows.length ? preloadedUses : null,
+              totalSkillUses > 0 ? `${percent(preloadedShare)} of ${number(totalSkillUses)} recorded skill uses (ignores model filter)`
+                : skillRows.length ? 'Only failed skill loads recorded' : 'No recorded skill activity in these filters'))
+          + note('Measured from your selected history and filters. Prompt 1 input includes system instructions, custom instructions, tool definitions, and your opening message (cached input included). Click Inspect context above for an exact per-category breakdown of this hosting conversation.'));
+      }
+      if (toolModels.length) {
+        baseline += section('Tool definitions by model', table(['Model', 'Definitions / call', 'Input share', 'Tools available / call', 'Measured calls'], toolModels.map(r => [
+            r.name, measured(r.averageToolTokens, r.toolRequests, r.requests), measured(r.toolShare, r.toolRequests, r.requests, percent),
+            r.toolCountRequests ? measured(r.averageAvailableTools, r.toolCountRequests, r.requests, value => number(value, { maximumFractionDigits: 1 })) : 'Unavailable',
+            coverage(r.toolRequests, r.requests)]))
+          + `<p class="footnote token-insight-note">Top models by average tool-definition tokens per call in the selected history. ${topicJumpButton('tokens', 'tools', 'Open Tool and MCP footprint')} for project and tool-count breakdowns.</p>`);
+      }
+      if (preloadedSkills.length) {
+        const shownSkills = preloadedSkills.slice(0, 5);
+        baseline += section('Skills preloaded at conversation start', table(['Skill', 'Source plugin', 'Preloaded uses', 'Share of its uses', 'Conversations'], shownSkills.map(r => [
+            r.name, r.plugin, number(r.preloaded), r.uses > 0 ? percent(r.preloaded / r.uses * 100) : 'Unavailable', valid(r.sessions) ? number(r.sessions) : 'Unavailable']))
+          + `<p class="footnote token-insight-note">${esc(`Showing ${number(shownSkills.length)} of ${number(preloadedSkills.length)} preloaded ${preloadedSkills.length === 1 ? 'skill' : 'skills'}. Preloaded skills load when a conversation starts whether or not the task later needs them. `)}${topicJumpButton('tokens', 'skills', 'Open Skills and instruction footprint')} for all skill activity.</p>`);
+      }
+      if (hasInventory) {
+        baseline += section('Active setup in this session', metrics(
+            ...(liveMcp ? [metric('Connected MCP servers', connectedMcp.length, `${number(connectedMcp.length)} of ${number(liveMcp.length)} listed · ${number(loadedMcp.length)} reporting tools loaded`)] : []),
+            ...(livePlugins ? [metric('Enabled plugins', enabledPlugins.length, `${number(enabledPlugins.length)} of ${number(installedPlugins.length)} installed plugins enabled`)] : []))
+          + note('Current hosting session inventory, separate from selected dates and filters. Connected servers and enabled plugins do not show token sizes here—click Inspect context above to measure what is loaded in this conversation.'));
+      }
+      let lead, act, cmp;
+      if (valid(s.toolShare) && s.toolShare >= 10 && valid(s.averageToolTokens)) {
+        lead = `${percent(s.toolShare)} of measured input (${number(s.averageToolTokens)} tokens per call) described available tools.`;
+        act = 'Click Inspect context above to see which MCP servers or tool definitions take the largest share in this session, then disable an unused server for your next task.';
+        cmp = 'tool-definition tokens per call in a fresh snapshot and in your selected history, while confirming the agent still has the tools it needs.';
+      } else if (valid(preloadedShare) && preloadedShare >= 25 && preloadedUses > 0) {
+        lead = `${number(preloadedUses)} of ${number(totalSkillUses)} recorded skill uses (${percent(preloadedShare)}) were preloaded at conversation start.`;
+        act = 'Click Inspect context above to check how many tokens preloaded skills occupy, and try a conversation where task-specific skills load only when invoked.';
+        cmp = 'starting context size in two snapshots and whether the agent still follows the guidance it needs.';
+      } else if (valid(prompt1?.input)) {
+        lead = `A typical conversation starts at ${number(prompt1.input)} input tokens on Prompt 1 across ${number(prompt1.conversations)} conversations.`;
+        act = 'Click Inspect context above to break down how much of that starting context comes from instructions, tool definitions, and conversation messages in this session.';
+        cmp = 'Prompt 1 input across similar tasks after adjusting instructions, preloaded skills, or connected MCP servers.';
+      } else {
+        lead = 'Historical starting-context coverage is partial in these filters.';
+        act = 'Click Inspect context above for an immediate breakdown of this hosting conversation, or choose a wider date range to measure starting input and tool definitions across history.';
+        cmp = 'setup tokens in the live snapshot alongside historical tool-definition averages.';
+      }
+      baseline += insight(lead, act, `${cmp} Historical averages reflect past sessions; the live snapshot covers only this hosting conversation.`);
+      return contextPart === 'history' ? baseline : contextStamp() + baseline;
+    }
     const total = context.totalTokens;
     const parts = [['systemPrompt', 'System instructions', 'var(--s1)'], ['customInstructions', 'Custom instructions', 'var(--s2)'], ['systemTools', 'Built-in tool definitions', 'var(--s3)'],
       ['mcpTools', 'MCP tool definitions', 'var(--s4)'], ['messages', 'Conversation and tool results', 'var(--s5)']].map(([key, label, color]) => ({ key, label, color, value: category(key) }));

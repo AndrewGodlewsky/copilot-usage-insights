@@ -69,7 +69,7 @@ Use **Refresh** to reread usage and **Settings** to configure sources. See the [
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **2.0.0** expands all Efficiency views with deeper cost, cache, compaction, reliability, and model-routing insights—including Credits / 1M tokens, cache read-back ratios, before/after context diffs, live MCP status on failing tools, and compaction markers on session curves—plus consistent clickable links between related views and Breakdown. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **2.1.0** populates **Always-loaded context** right away with historical starting context—typical Prompt 1 input, tool definitions by model, preloaded skills, and active MCP and plugin setup—before you click **Inspect context**, and updates **Overview** to reflect that baseline while keeping live conversation inspection on demand. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ## What the numbers mean
 

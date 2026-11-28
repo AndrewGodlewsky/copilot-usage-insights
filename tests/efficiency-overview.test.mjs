@@ -322,3 +322,16 @@ test('every index button opens its section in the panel and keeps keyboard focus
   assert.match(index.innerHTML, />250 tokens<\/strong>/);
   assert.equal(requests.filter(request => request.method === 'efficiency.context').length, 1);
 });
+
+test('the overview shows historical starting context for Always-loaded context before a live snapshot', () => {
+  const withStart = text(render({
+    efficiency: {
+      summary: { requests: 10, toolRequests: 8, averageToolTokens: 1200 },
+      growthSummary: { positions: [{ prompt: 1, conversations: 5, input: 14000 }] },
+    },
+  }));
+  assert.match(withStart, /Always-loaded context 14000 tokens at start Typical Prompt 1 input across 5 conversations/);
+  assert.doesNotMatch(withStart, /Always-loaded context Needs Inspect context/);
+  const toolOnly = text(render({ efficiency: { summary: { requests: 10, toolRequests: 8, averageToolTokens: 1200 } } }));
+  assert.match(toolOnly, /Always-loaded context 1200 tool-def tokens Average tool definitions per call/);
+});
