@@ -264,6 +264,51 @@ test('a report built from real journal lines counts the repeats and carries no a
   assert.deepEqual(new Set(strings(r).filter(value => SECRET.test(value))), new Set());
 });
 
+test('repeated call durations and per-model repeat comparison enforce thresholds and handle missing metadata', () => {
+  const events = [];
+  // Model A: 20 reading calls (5 repeated), all timed at 250ms except one future completion ignored
+  for (let i = 0; i < 20; i++) {
+    const rep = i < 5 ? 1 : 0;
+    events.push(tool('s1', i, 'view', rep, rep ? 0 : null, { model: 'raw-a', completedMs: i === 0 ? now.getTime() + 5000 : base + i * MINUTE + 250 }));
+  }
+  // Model B: 20 reading calls (2 repeated), untimed
+  for (let i = 0; i < 20; i++) {
+    const rep = i < 2 ? 1 : 0;
+    events.push(tool('s1', 30 + i, 'grep', rep, rep ? 30 : null, { model: 'raw-b', completedMs: null }));
+  }
+  // Model C: only 10 reading calls (below minimumModelCalls = 20)
+  for (let i = 0; i < 10; i++) events.push(tool('s1', 60 + i, 'view', i < 5 ? 1 : 0, i < 5 ? 60 : null, { model: 'raw-c', completedMs: base + (60 + i) * MINUTE + 100 }));
+  // Unattributed model call (missing model) + non-reading timed repeat
+  events.push(tool('s1', 80, 'view', 0, null, { model: '' }));
+  events.push(tool('s1', 81, 'bash', 1, 80, { model: 'raw-a', completedMs: base + 81 * MINUTE + 400 }));
+  const records = [{ modelId: 'raw-a', model: 'Model <A>' }, { modelId: 'raw-b', model: 'Model B' }];
+  const topic = createRepetitionTopic({ now, records });
+  for (const e of events) topic.add(e);
+  const res = topic.finish();
+  // Timed repeats: 4 from Model A (i=1..4 -> 1000ms), 5 from Model C (500ms), 1 bash (400ms) -> 10 timed, 1900ms total, 9 reading -> 1500ms
+  assert.deepEqual(res.time, { repeatedMs: 1900, timedCalls: 10, readingMs: 1500, readingTimedCalls: 9 });
+  assert.equal(res.modelsMeasured, 3);
+  assert.equal(res.unattributedModelCalls, 1);
+  assert.deepEqual(res.byModel.map(m => [m.name, m.readingMeasured, m.readingRepeated, m.readingShare]), [
+    ['Model <A>', 20, 5, 25],
+    ['Model B', 20, 2, 10],
+  ]);
+  const html = renderRepetitionTopic(res, formats), shown = text(html);
+  assert.match(shown, /Time in repeated calls/);
+  assert.match(shown, /10 of 13 repeated calls with a recorded duration/);
+  assert.match(shown, /Repeated reading and searching by model/);
+  assert.match(html, /Model &lt;A&gt;/);
+  assert.doesNotMatch(html, /Model <A>|raw-c/);
+  assert.match(shown, /1 compared call had no recorded model/);
+  // Missing completedMs on all repeats renders Unavailable gracefully
+  const untimed = createRepetitionTopic({ now });
+  untimed.add(tool('s', 0, 'view', 0, null, { completedMs: null }));
+  untimed.add(tool('s', 1, 'view', 1, 0, { completedMs: null }));
+  const untimedRes = untimed.finish();
+  assert.equal(untimedRes.time.repeatedMs, null);
+  assert.match(text(renderRepetitionTopic(untimedRes, formats)), /Time in repeated calls Unavailable No repeated call has a recorded duration/);
+});
+
 test('the demo history renders a complete, bounded view of repeated calls', () => {
   const at = new Date(2026, 10, 20, 12), demo = demoData(at), again = demoData(at);
   const report = buildReport(demo.records, { range: '30d' }, at, demo), r = report.efficiency.repetition;

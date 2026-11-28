@@ -53,7 +53,7 @@ export function readsOrSearches(name, mcpTool = '') {
   return words.some(word => readingWords.has(word)) && !words.some(word => shellWords.has(word));
 }
 
-const LIST = 5, SOON = 5 * 60_000, LATER = 60 * 60_000;
+const LIST = 5, MINIMUM_MODEL_CALLS = 20, SOON = 5 * 60_000, LATER = 60 * 60_000;
 const share = (part, whole) => whole > 0 ? part / whole * 100 : null;
 const text = (a, b) => String(a).localeCompare(String(b));
 const byIdentity = (a, b) => text(a.name, b.name) || text(a.server, b.server) || text(a.mcpTool, b.mcpTool);
@@ -67,8 +67,10 @@ function compactedBetween(times, earlier, ms) {
 // earlier call was, across a compaction, and by conversation. An operation is one (name, server,
 // MCP tool), as in the tool report. Counters are kept per operation and per conversation, never
 // per call.
-export function createRepetitionTopic({ query = {}, now = new Date(), sessionLabels, activity = {} } = {}) {
+export function createRepetitionTopic({ query = {}, now = new Date(), sessionLabels, activity = {}, records = [] } = {}) {
   const nowMs = now.getTime(), NONE = Symbol('none');
+  const modelDisplay = new Map();
+  for (const r of records || []) if (r?.modelId && r.model) modelDisplay.set(r.modelId, r.model);
   // When each conversation's own context was reduced. A failed compaction changed nothing, and
   // a subagent's compaction says nothing about the calls of the main conversation.
   const compactions = new Map();
@@ -78,8 +80,8 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
     if (times) times.push(e.ms); else compactions.set(e.sessionId, [e.ms]);
   }
   for (const times of compactions.values()) times.sort((a, b) => a - b);
-  const byName = new Map(), operations = [], sessions = new Map();
-  let sessionId = NONE, session;
+  const byName = new Map(), operations = [], sessions = new Map(), byModel = new Map();
+  let sessionId = NONE, session, repeatedMs = 0, timedCalls = 0, readingMs = 0, readingTimedCalls = 0, unattributedModelCalls = 0;
   return {
     add(tool) {
       const name = tool.name ?? '', server = tool.server || '', mcpTool = tool.mcpTool || '';
@@ -98,6 +100,15 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
       const repeat = tool.repeat;
       if (!Number.isSafeInteger(repeat) || repeat < 0) return;
       op.measured++;
+      const rawModel = typeof tool.model === 'string' && tool.model ? tool.model : '';
+      if (rawModel) {
+        const modelName = modelDisplay.get(rawModel) || rawModel;
+        let modelStats = byModel.get(modelName);
+        if (!modelStats) byModel.set(modelName, modelStats = { name: modelName, measured: 0, repeated: 0, readingMeasured: 0, readingRepeated: 0 });
+        modelStats.measured++;
+        if (repeat > 0) modelStats.repeated++;
+        if (op.reading) { modelStats.readingMeasured++; if (repeat > 0) modelStats.readingRepeated++; }
+      } else unattributedModelCalls++;
       if (tool.sessionId !== sessionId) {
         sessionId = tool.sessionId; session = sessions.get(sessionId);
         if (!session) sessions.set(sessionId, session = { id: sessionId, measured: 0, repeated: 0, times: 0, op: null, compactions: compactions.get(sessionId) });
@@ -105,11 +116,17 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
       session.measured++;
       if (!repeat) return;
       op.repeated++; session.repeated++;
+      const ms = tool.ms;
+      if (Number.isFinite(ms) && Number.isFinite(tool.completedMs) && tool.completedMs >= ms && tool.completedMs <= nowMs) {
+        const dur = tool.completedMs - ms;
+        repeatedMs += dur; timedCalls++;
+        if (op.reading) { readingMs += dur; readingTimedCalls++; }
+      }
       // The same call made `repeat + 1` times so far. Equal counts keep the first name in order.
       const times = repeat + 1;
       if (times > session.times || times === session.times && byIdentity(op, session.op) < 0) { session.times = times; session.op = op; }
       // The time between two calls needs both starts, in the order the journal recorded them.
-      const ms = tool.ms, earlier = tool.repeatOfMs;
+      const earlier = tool.repeatOfMs;
       if (!Number.isFinite(ms) || !Number.isFinite(earlier) || earlier > ms) return;
       op.timed++;
       const gap = ms - earlier;
@@ -139,9 +156,17 @@ export function createRepetitionTopic({ query = {}, now = new Date(), sessionLab
         rows.push(row);
         if (!most || row.times > most.times || row.times === most.times && (text(row.name, most.name) || text(row.id, most.id) || byIdentity(row.op, most.op)) < 0) most = row;
       }
+      const modelRows = [...byModel.values()]
+        .filter(m => m.readingMeasured >= MINIMUM_MODEL_CALLS)
+        .map(m => ({ name: m.name, measured: m.measured, repeated: m.repeated, share: share(m.repeated, m.measured),
+          readingMeasured: m.readingMeasured, readingRepeated: m.readingRepeated, readingShare: share(m.readingRepeated, m.readingMeasured) }))
+        .sort((a, b) => (b.readingShare ?? -1) - (a.readingShare ?? -1) || b.readingRepeated - a.readingRepeated || text(a.name, b.name))
+        .slice(0, LIST);
       return { limits: { ...REPEAT_LIMITS }, readingWords: READING_WORDS, shellWords: SHELL_WORDS, modelFiltered: !!query.models,
         calls: reading.calls + other.calls, measured, repeated, share: share(repeated, measured), sessions: sessions.size, repeatSessions: rows.length,
         reading, other,
+        time: { repeatedMs: timedCalls ? repeatedMs : null, timedCalls, readingMs: readingTimedCalls ? readingMs : null, readingTimedCalls },
+        minimumModelCalls: MINIMUM_MODEL_CALLS, modelsMeasured: byModel.size, unattributedModelCalls, byModel: modelRows,
         most: most && { times: most.times, name: most.op.name, server: most.op.server, mcpTool: most.op.mcpTool, session: most.name },
         compaction: { sessions: compacted, repeats: reading.compactable + other.compactable, after: reading.afterCompaction + other.afterCompaction, afterReading: reading.afterCompaction },
         conversations: rows.sort((a, b) => b.repeated - a.repeated || b.share - a.share || text(a.name, b.name) || text(a.id, b.id)).slice(0, LIST)

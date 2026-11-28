@@ -3383,6 +3383,13 @@ function renderRepetitionTopic(data, { number } = {}) {
   // Counts are written in full: "1.2K of 1.2K" would hide the calls that were not compared.
   const n = value => valid(value) ? number(value, { simplify: false }) : 'Unavailable';
   const percent = value => valid(value) ? `${number(value, { maximumFractionDigits: 1 })}%` : 'Unavailable';
+  const duration = ms => {
+    if (!valid(ms)) return 'Unavailable';
+    if (ms < 1000) return `${number(Math.round(ms))} ms`;
+    if (ms < 60_000) return `${number(ms / 1000, { maximumFractionDigits: 1 })} s`;
+    const seconds = Math.round(ms / 1000), hours = Math.floor(seconds / 3600), minutes = Math.floor(seconds % 3600 / 60);
+    return hours ? `${number(hours)} h ${number(minutes)} min` : `${number(minutes)} min ${number(seconds % 60)} s`;
+  };
   const of = (part, total) => `${n(part ?? 0)} of ${n(total ?? 0)}`;
   const count = (value, one, many = one + 's') => `${n(value)} ${value === 1 ? one : many}`;
   const operation = row => row.server ? `${row.server} / ${row.mcpTool || row.name}` : String(row.name ?? '');
@@ -3408,11 +3415,21 @@ function renderRepetitionTopic(data, { number } = {}) {
     + '<p class="token-insight-note">Unavailable is not zero. Whether these calls repeated an earlier one was not measured.</p>'
     + note(`${uncompared} ${kept}`);
 
+  const time = r.time || {};
+  const timeTile = r.repeated
+    ? metric('Time in repeated calls', duration(time.repeatedMs), time.timedCalls
+      ? `${of(time.timedCalls, r.repeated)} repeated calls with a recorded duration${time.readingTimedCalls ? ` · ${duration(time.readingMs)} in reading and searching` : ''}`
+      : 'No repeated call has a recorded duration')
+    : '';
   let html = metrics(
     metric('Repeated calls', n(r.repeated), `${percent(r.share)} of ${count(r.measured, 'compared call')} repeated an identical earlier call`),
     metric('Calls compared', of(r.measured, r.calls), 'Tool calls in this view whose name and arguments could be compared'),
     metric('Conversations with a repeat', of(r.repeatSessions, r.sessions), 'Conversations with at least one compared call'),
-    metric('Most times one call was made', r.most ? `${n(r.most.times)} times` : 'Once', r.most ? `${operation(r.most)} · ${r.most.session}` : 'No compared call was made twice in one conversation'));
+    metric('Most times one call was made', r.most ? `${n(r.most.times)} times` : 'Once', r.most ? `${operation(r.most)} · ${r.most.session}` : 'No compared call was made twice in one conversation'),
+    timeTile);
+  if (r.repeated && time.timedCalls) {
+    html += note('Time in repeated calls runs from call start to completion. Calls can overlap, so total duration is not wall-clock wait time.');
+  }
 
   // One list per group: the operations that repeated most, each with the calls it rests on.
   const operations = g => {
@@ -3445,6 +3462,16 @@ function renderRepetitionTopic(data, { number } = {}) {
         metric('Reading and searching among them', n(c.afterReading), `${n(c.after - c.afterReading)} were other calls`))
       + note(`Counted when a successful compaction of the main conversation is recorded after the earlier identical call started and before the repeat did. ${count(c.sessions, 'conversation')} with compared calls in this view ${c.sessions === 1 ? 'has such a compaction. It holds' : 'have such a compaction. They hold'} ${n(c.repeats)} of the ${count(timed, 'repeated call')} with a usable time. A compaction is one explanation, not a proven cause: the file may have changed, or the call may have been needed again for another reason.`)
     : empty('No conversation with compared calls in this view has a recorded successful compaction, so no repeat can be placed after one.'));
+
+  const modelRows = r.byModel || [];
+  if (modelRows.length >= 2) {
+    const minCalls = valid(r.minimumModelCalls) ? r.minimumModelCalls : 20;
+    html += section('Repeated reading and searching by model',
+      `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${['Model', 'Compared reading & searching', 'Repeated', 'Share repeated'].map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${modelRows.map(row => `<tr><td class="text-cell"><span class="cell-text">${esc(row.name)}</span></td>${[n(row.readingMeasured), n(row.readingRepeated), percent(row.readingShare)].map(cell => `<td><span class="cell-text">${esc(cell)}</span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+      + note(`Models with at least ${n(minCalls)} compared reading and searching calls (showing ${of(modelRows.length, r.modelsMeasured)} models with compared calls).`
+        + (r.unattributedModelCalls ? ` ${count(r.unattributedModelCalls, 'compared call')} had no recorded model and ${r.unattributedModelCalls === 1 ? 'is' : 'are'} left out.` : '')
+        + ' Models handle different tasks and conversations, so a higher share is not proof a model is worse.'));
+  }
 
   const rows = r.conversations || [];
   if (rows.length) html += section('Conversations with the most repeated calls',
