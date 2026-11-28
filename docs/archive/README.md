@@ -56,3 +56,12 @@ The archive retains the original documents and their links. Future development p
 - [2026-11-15 — Compact refresh feedback](specs/2026-11-15-refresh-feedback-design.md)
 - [2026-11-15 — AI review desktop animation](specs/2026-11-15-review-desktop-animation-design.md)
 - [2026-11-15 — AI review copy and excerpt settings](specs/2026-11-15-review-settings-cleanup.md)
+
+## Dated audits and reviews
+
+- [2026-11-17 — Security and performance review](audits/security-performance-review-2026-11-17.md)
+- [2026-11-17 — Source audit](audits/source-audit-2026-11-17.md)
+- [2026-11-17 — Report scale audit](audits/report-scale-audit-2026-11-17.md)
+- [2026-11-17 — Panel audit](audits/panel-audit-2026-11-17.md)
+- [2026-11-16 — Feedback implementation](audits/feedback-2026-11-16.md)
+- [2026-11-15 — Opening performance review](audits/performance-review-2026-11-15.md)

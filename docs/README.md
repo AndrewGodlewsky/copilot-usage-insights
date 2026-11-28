@@ -40,14 +40,14 @@ These documents preserve evidence at the version and date they name. Their test 
 
 | Review | Scope |
 | --- | --- |
-| [Security and performance, 2026-11-17](security-performance-review-2026-11-17.md) | Audit overview, architecture, fixes shipped in v0.1.111, and remaining limits |
-| [Source audit, 2026-11-17](source-audit-2026-11-17.md) | Readers, schema safety, caching, and synthetic harnesses |
-| [Report scale audit, 2026-11-17](report-scale-audit-2026-11-17.md) | Accounting/report construction, memory, and response size |
-| [Panel audit, 2026-11-17](panel-audit-2026-11-17.md) | Rendering work, simulated DOM measurements, and limits |
-| [Opening performance, 2026-11-15](performance-review-2026-11-15.md) | Startup, WSL/VS Code timing, recent-first loading, and reproduction commands |
+| [Security and performance, 2026-11-17](archive/audits/security-performance-review-2026-11-17.md) | Audit overview, architecture, fixes shipped in v0.1.111, and remaining limits |
+| [Source audit, 2026-11-17](archive/audits/source-audit-2026-11-17.md) | Readers, schema safety, caching, and synthetic harnesses |
+| [Report scale audit, 2026-11-17](archive/audits/report-scale-audit-2026-11-17.md) | Accounting/report construction, memory, and response size |
+| [Panel audit, 2026-11-17](archive/audits/panel-audit-2026-11-17.md) | Rendering work, simulated DOM measurements, and limits |
+| [Opening performance, 2026-11-15](archive/audits/performance-review-2026-11-15.md) | Startup, WSL/VS Code timing, recent-first loading, and reproduction commands |
 | [Efficiency pipeline review](efficiency-review.md) | Earlier v0.1.70 baseline, end-to-end measurements, and optimizations |
 | [Recent-first loading record](recent-first-loading-plan.md) | Implemented loading contract and v0.1.101 validation |
-| [Feedback implementation, 2026-11-16](feedback-2026-11-16.md) | Historical feedback decisions and delivery corrections |
+| [Feedback implementation, 2026-11-16](archive/audits/feedback-2026-11-16.md) | Historical feedback decisions and delivery corrections |
 
 ## Research and historical plans
 

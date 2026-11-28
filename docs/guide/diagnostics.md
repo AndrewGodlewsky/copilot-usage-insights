@@ -24,7 +24,7 @@ After completion, environment, date, model, project, and session filters reuse t
 
 Usage appears before the separate plugin/MCP inventory read finishes. Those sections show a loading state while the rest of the dashboard remains usable. Filters reuse the latest inventory; explicit and automatic refreshes request an update without holding up usage. A refresh arriving during an inventory read queues one follow-up read. Late inventory results merge with the current filters, and failures leave historical MCP activity visible. Number formatters are reused, and token Overview/Cache details are generated only when selected.
 
-The [performance review](../performance-review-2026-11-15.md) records measured results, remaining limits, and commands for the synthetic benchmarks. It also explains which diagnostic timings to check if opening the dashboard remains slow.
+The [performance review](../archive/audits/performance-review-2026-11-15.md) records measured results, remaining limits, and commands for the synthetic benchmarks. It also explains which diagnostic timings to check if opening the dashboard remains slow.
 
 For recent-first loading, **Show logs → Download MD** includes **Recent journals ready**, **Remaining history verification**, and **History displayed** for the recent and complete phases. `scanId` connects these stages; `filesDeferred` and `databasesDeferred` show work left after the first pass. Read/byte counters show the actual work. No prompts, source paths, or project names are added to these traces. Download logs after the history-loading message disappears, or while it is stuck if completion never arrives.
 

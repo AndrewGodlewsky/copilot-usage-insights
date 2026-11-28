@@ -61,7 +61,7 @@ The main usage index is held in memory. Preferences, endpoint recovery metadata,
 - **Local inspection and AI submission stay distinct.** Ordinary usage refresh does not trigger inference. AI review sends prepared evidence and, when enabled, bounded prompt excerpts. Excerpts default on; the setting and prepared evidence must be understandable to the user.
 - **Findings stay descriptive.** A correlation in cache use, tool repetition, or conversation habits does not establish poor work or savings. Structural tests do not establish AI recommendation quality.
 
-The [security policy](../SECURITY.md) is the current boundary reference. The [dated audit](security-performance-review-2026-11-17.md) explains fixes and measurements at its recorded version; those measurements are not a current benchmark of every workload.
+The [security policy](../SECURITY.md) is the current boundary reference. The [dated audit](archive/audits/security-performance-review-2026-11-17.md) explains fixes and measurements at its recorded version; those measurements are not a current benchmark of every workload.
 
 ## Feedback and decisions requested
 
