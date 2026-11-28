@@ -276,3 +276,36 @@ test('a heaviest prompt opens its conversation in Breakdown and keeps the model 
   assert.deepEqual(requests.at(-1).input.models, ['Model A']);
   assert.equal(requests.filter(r => r.method === 'usage.requests').length, 0, 'opening a conversation does not read prompts');
 });
+
+test('delegationSplit compares main-only and delegated prompts and trend tracks per-prompt averages over time', () => {
+  const combined = metrics([...ladder('a', 'A').events, ...delegated().events]);
+  assert.equal(combined.delegationSplit.mainOnly.prompts, 10);
+  assert.equal(combined.delegationSplit.mainOnly.medianCalls, 1);
+  assert.equal(combined.delegationSplit.mainOnly.medianCredits, 5.5);
+  assert.equal(combined.delegationSplit.delegated.prompts, 1);
+  assert.equal(combined.delegationSplit.delegated.medianCalls, 3);
+  assert.equal(combined.delegationSplit.delegated.medianCredits, 6);
+  const html = render(combined), shown = text(html);
+  assert.match(shown, /Main-only prompts beside delegated prompts/);
+  assert.match(shown, /Main conversation only 10 1 5\.5cr/);
+  assert.match(shown, /With subagent work 1 3 6cr/);
+
+  // Multi-day trend (5 days) renders both sparklines; pending hides credits sparkline and credits columns.
+  const multi = [];
+  for (let d = 0; d < 5; d++) {
+    const f = fixture(`day-${d}`, 'P');
+    const shift = (d - 4) * 86_400_000;
+    f.user(`p${d}`); f.call(`p${d}`, `c${d}`, (d + 1) * 1e9);
+    for (const e of f.events) e.timestamp = new Date(Date.parse(e.timestamp) + shift).toISOString();
+    multi.push(...f.events);
+  }
+  const timed = metrics(multi);
+  assert.equal(timed.trend.unit, 'day');
+  assert.equal(timed.trend.points.length, 5);
+  const timedHtml = text(render(timed));
+  assert.match(timedHtml, /Model calls per prompt by day/);
+  assert.match(timedHtml, /Credits per prompt by day/);
+  const pendingHtml = text(render({ ...timed, delegationSplit: combined.delegationSplit, pending: true, credits: null, averageCredits: null }));
+  assert.match(pendingHtml, /Model calls per prompt by day/);
+  assert.doesNotMatch(pendingHtml, /Credits per prompt by day|5\.5cr|6cr/);
+});

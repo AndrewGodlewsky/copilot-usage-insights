@@ -115,7 +115,13 @@ const ELIGIBLE = 0, ATTRIBUTION = 1, ACCOUNTING = 2, UNFINISHED = 3;
 const ROLES = ['initial', 'continuation', 'subagent', 'unrecorded'];
 const INITIAL = 0, CONTINUATION = 1, SUBAGENT = 2, UNRECORDED = 3;
 const CALL_BINS = ['1 call', '2 to 5 calls', '6 to 15 calls', '16+ calls'];
-const HEAVIEST = 5;
+const HEAVIEST = 5, TREND_POINTS = 62;
+
+function medianOf(values) {
+  if (!values.length) return null;
+  const sorted = Float64Array.from(values).sort(), low = Math.floor((sorted.length - 1) / 2), high = Math.floor(sorted.length / 2);
+  return (sorted[low] + sorted[high]) / 2;
+}
 
 // The spread behind the per-prompt averages, over the same eligible prompts and the same
 // selected charges. Charges of eligible prompts are complete, so each total is exact. The
@@ -123,6 +129,8 @@ const HEAVIEST = 5;
 // and the heaviest prompts are reported.
 function promptSpread() {
   const callCounts = [], bins = CALL_BINS.map(() => ({ prompts: 0, nano: 0 })), roles = ROLES.map(() => ({ requests: 0, nano: 0 })), top = [];
+  const sides = [0, 1].map(() => ({ calls: [], nano: [], requests: 0, nanoTotal: exactTotal() }));
+  const days = new Map();
   let totals = new Float64Array(1024), count = 0, delegatedPrompts = 0;
   // A total order, so equal charges rank the same however the history was read.
   const outranks = (nano, prompt, other) => nano !== other.nano ? nano > other.nano
@@ -141,6 +149,13 @@ function promptSpread() {
       bin.prompts++; bin.nano += nano;
       callCounts[calls] = (callCounts[calls] || 0) + 1;
       if (delegated) delegatedPrompts++;
+      const side = sides[delegated ? 1 : 0];
+      side.calls.push(calls); side.nano.push(nano); side.requests += calls; side.nanoTotal.add(nano);
+      if (Number.isFinite(prompt.day)) {
+        let d = days.get(prompt.day);
+        if (!d) days.set(prompt.day, d = { prompts: 0, requests: 0, nano: exactTotal() });
+        d.prompts++; d.requests += calls; d.nano.add(nano);
+      }
       if (count === totals.length) { const grown = new Float64Array(count * 2); grown.set(totals); totals = grown; }
       totals[count++] = nano;
       if (nano > 0 && (top.length < HEAVIEST || outranks(nano, prompt, top[top.length - 1]))) {
@@ -182,7 +197,31 @@ function promptSpread() {
       ROLES.forEach((name, i) => { mix[name] = { requests: roles[i].requests, credits: roles[i].requests ? credits(roles[i].nano) : null }; });
       const heaviest = top.map(({ prompt, nano, requests, tokens }) => ({ day: dayKey(prompt.day), session: prompt.sessionId, sessionName: labels?.get(prompt.sessionId) ?? null,
         project: prompt.project, requests, tokens, credits: credits(nano) }));
-      return { spread, mix, heaviest };
+      const finishSide = side => {
+        const prompts = side.calls.length, sumCredits = prompts ? credits(side.nanoTotal.number()) : null;
+        return { prompts, medianCalls: medianOf(side.calls), averageCalls: prompts ? side.requests / prompts : null,
+          medianCredits: prompts ? credits(medianOf(side.nano)) : null, averageCredits: prompts ? sumCredits / prompts : null, credits: sumCredits };
+      };
+      const delegationSplit = { mainOnly: finishSide(sides[0]), delegated: finishSide(sides[1]) };
+      const orderedDays = [...days].sort((a, b) => a[0] - b[0]);
+      let trend = { unit: 'day', points: [] };
+      if (orderedDays.length) {
+        const first = orderedDays[0][0], weekly = orderedDays.at(-1)[0] - first >= TREND_POINTS, span = weekly ? 7 : 1, points = [];
+        let startBucket = null, cur = null;
+        const flush = () => {
+          if (!cur) return;
+          points.push({ day: dayKey(startBucket), prompts: cur.prompts, averageRequests: cur.requests / cur.prompts,
+            averageCredits: credits(cur.nano.number()) / cur.prompts });
+        };
+        for (const [day, d] of orderedDays) {
+          const bucket = first + Math.floor((day - first) / span) * span;
+          if (bucket !== startBucket) { flush(); startBucket = bucket; cur = { prompts: 0, requests: 0, nano: exactTotal() }; }
+          cur.prompts += d.prompts; cur.requests += d.requests; cur.nano.add(d.nano.number());
+        }
+        flush();
+        trend = { unit: weekly ? 'week' : 'day', points: points.slice(-TREND_POINTS) };
+      }
+      return { spread, mix, heaviest, delegationSplit, trend };
     },
   };
 }

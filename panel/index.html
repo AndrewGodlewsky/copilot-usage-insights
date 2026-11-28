@@ -2765,12 +2765,27 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
       : d && !p.pending && valid(d.heavyShare) ? `The heaviest tenth of prompts held ${percent(d.heavyShare)} of credits${selected}. A typical prompt recorded no charge.`
       : valid(d?.medianRequests) ? `A typical prompt led to ${number(d.medianRequests)} model calls${selected}. The largest led to ${number(w.maxRequests)}.`
       : `One submitted prompt led to ${number(w.averageRequests)} model calls on average${selected}.`;
+    const split = p.delegationSplit;
+    const splitRows = split?.delegated?.prompts > 0
+      ? [['Main conversation only', split.mainOnly], ['With subagent work', split.delegated]].filter(([, row]) => row?.prompts > 0)
+      : [];
+    const splitTable = splitRows.length
+      ? '<p class="compaction-caption">Main-only prompts beside delegated prompts</p>'
+        + table(p.pending ? ['Prompt type', 'Eligible prompts', 'Typical calls', 'Average calls'] : ['Prompt type', 'Eligible prompts', 'Typical calls', 'Typical credits', 'Share of credits'],
+          splitRows.map(([label, row]) => p.pending
+            ? [label, number(row.prompts), number(row.medianCalls, { maximumFractionDigits: 1 }), number(row.averageCalls, { maximumFractionDigits: 1 })]
+            : [label, number(row.prompts), number(row.medianCalls, { maximumFractionDigits: 1 }), credits(row.medianCredits), p.credits > 0 ? percent(share(row.credits, p.credits)) : 'Unavailable']))
+        + note('Prompts that triggered subagent work often correspond to larger or multi-part tasks, so higher calls or credits do not establish that delegation was inefficient.')
+      : '';
+    const promptTrend = trendRow(p.trend, point => point.averageRequests, { label: 'Model calls per prompt', format: value => number(value, { maximumFractionDigits: 1 }) })
+      + (!p.pending ? trendRow(p.trend, point => point.averageCredits, { label: 'Credits per prompt', format: credits }) : '');
     return (p.modelFiltered ? '<p class="token-topic-status">Selected-model contribution only</p>' : '')
       + metrics(...(d ? [metric('Typical calls / prompt', d.medianRequests, 'Half of eligible prompts needed this many or fewer', number, incomplete)] : []),
         metric(d ? 'Average calls / prompt' : 'Model calls / prompt', w.averageRequests, `${number(eligible)} of ${number(p.prompts ?? 0)} prompts eligible`, number, incomplete),
         metric('Most calls for one prompt', w.maxRequests, 'Within the eligible prompt set', number, incomplete),
         metric('Tokens / prompt', w.averageTokens, `Average of ${number(w.tokenPrompts ?? 0)} eligible prompts with complete token counts`, number, incomplete || w.tokenPrompts < p.eligiblePrompts))
       + note(`Includes initial calls, agent continuations, and subagent work with reliable parent links. ${number(w.requests ?? 0)} linked calls in this view. Tokens include cached input once. Prompts are dated by submission, grouping all linked work before filters; model filters show only selected-model contributions.`)
+      + promptTrend
       + (d ? section('How many model calls prompts needed', (spreadBars || empty('No eligible prompts in these filters, so there is no spread to show. Unavailable figures are not zero.'))
         + (valid(d.medianRequests) && w.averageRequests > d.medianRequests ? note(`The average (${number(w.averageRequests)}) is above the typical prompt (${number(d.medianRequests)}). That happens when a smaller number of prompts need many more calls than the rest.`) : '')) : '')
       + section('Where the credits go', metrics(...(d ? [metric('Typical credits / prompt', charged(d.medianCredits), 'Half of eligible prompts used this much or less', credits, incomplete)] : []),
@@ -2778,8 +2793,8 @@ function renderTokenInsight(id, report, { number, credits, context, previousCont
         ...(d ? [metric('Held by the heaviest tenth', charged(d.heavyShare), d.heavyPrompts > 0 ? details(`${number(d.heavyPrompts)} of ${number(eligible)} eligible prompts`, valid(charged(d.heavyCredits)) && valid(p.credits) ? `${credits(d.heavyCredits)} of ${credits(p.credits)} credits` : '') : 'Needs at least 10 eligible prompts', percent, incomplete),
           metric('Prompts behind half the credits', charged(d.halfPrompts), valid(d.halfPrompts) ? `The fewest prompts that together hold half, out of ${number(eligible)}` : 'Needs a recorded charge above zero', number, incomplete)] : []))
         + (d ? note(`${p.pending ? 'Charges per prompt are still being verified while older history loads. ' : ''}Eligible prompts only: every linked call has a complete charge. A heavy prompt is often a large task. This shows where credits went, not whether the work was needed.`) : ''))
-      + (mix ? section('What the work consists of', mixBars ? mixBars + note('A call counts as subagent work when it is linked to a parent tool call. Every other call uses the initiator Copilot recorded: the call a message starts, then the calls the agent makes as it continues. Nothing is inferred from timing.')
-        : empty('No linked calls from eligible prompts in these filters.')) : '')
+      + (mix ? section('What the work consists of', (mixBars ? mixBars + note('A call counts as subagent work when it is linked to a parent tool call. Every other call uses the initiator Copilot recorded: the call a message starts, then the calls the agent makes as it continues. Nothing is inferred from timing.')
+        : empty('No linked calls from eligible prompts in these filters.')) + splitTable) : '')
       + (d ? section('Heaviest prompts by credits', heaviest) : '')
       + section('Accounting coverage', table(['Excluded for attribution', 'Incomplete charges', 'Unfinished work', 'Unlinked requests'], [[number(p.excluded?.attribution ?? 0), number(p.excluded?.accounting ?? 0), number(p.excluded?.unfinished ?? 0), number(p.unlinkedRequests ?? 0)]]))
       + insight(observation,
