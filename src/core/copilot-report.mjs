@@ -328,7 +328,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
   for (let d = activeDays.has(today) ? today : today - 1; activeDays.has(d); d--) current++;
   const activityStart = q.range === 'all' ? -Infinity : start;
   const promptCredits = summarizePromptCredits(activity.promptEvents, records, { ...input, models: q.models }, activityStart, end, now,
-    { memo: activity.cache, unique: activity.cache?.uniquePromptEvents === true, sessionLabels, interactions: activity.interactions || [] });
+    { memo: activity.cache, unique: activity.cache?.uniquePromptEvents === true, sessionLabels, interactions: activity.interactions || [], compactionEvents: activity.compactionEvents || [] });
   const { projectPrompts, modelPrompts, sessionPrompts, conversations, contextGrowth, habits, ...promptSummary } = promptCredits;
   const promptCounts = new Map(projectPrompts.map(p => [p.name, p]));
   const modelCounts = new Map(modelPrompts.map(p => [p.name, p]));

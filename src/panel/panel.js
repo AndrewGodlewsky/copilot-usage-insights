@@ -1181,6 +1181,14 @@ for (const id of ['project', 'model']) $('growth-' + id).onchange = event => {
 $('efficiency-growth').onclick = event => {
   const button = event.target.closest('button'), data = button?.dataset;
   if (!data || button.disabled) return;
+  if (data.efficiencyJumpTopic) {
+    const tokens = data.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(data.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+    return;
+  }
+  if (data.efficiencyOpenSession) return inspectEfficiency({ project: data.efficiencyOpenProject || '', session: data.efficiencyOpenSession });
   if (['input', 'change'].includes(data.growthMode)) growthMode = data.growthMode;
   else if (Object.hasOwn(CONTEXT_SHAPES, data.growthPattern)) { growthPattern = growthPattern === data.growthPattern ? '' : data.growthPattern; growthSession = ''; }
   else return;

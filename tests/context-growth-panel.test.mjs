@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderContextGrowth, contextGrowthChart } from '../src/panel/context-growth.mjs';
+import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt } from '../src/panel/context-growth.mjs';
 import { createContextGrowthAccumulator } from '../src/core/context-growth.mjs';
 const now = new Date(2026, 10, 16), a = createContextGrowthAccumulator({}, 1, 1, now);
 for (let s = 0; s < 4; s++) for (let i = 0; i < 8; i++) a.add({ identity: true, humanDelivery: true, provider: true, linksKnown: true, day: 1, sessionId: String(s), project: '<img src=x>',
@@ -19,6 +19,21 @@ test('growth chart supports deltas, contributor counts and accessible individual
   assert.match(detail, /growth-prompt/); assert.match(detail, /role="img"/);
   assert.doesNotMatch(detail, /<script>/);
 });
+test('compaction markers appear on inspected session charts, prompt readouts, and breakdown open actions', () => {
+  const withCompaction = structuredClone(growth);
+  withCompaction.examples[0].points[3].compactedBefore = true;
+  const key = withCompaction.examples[0].key;
+  const svg = contextGrowthChart(withCompaction, { number, sessionKey: key, prompt: 4 });
+  assert.match(svg, /class="growth-compaction"/);
+  assert.match(svg, /Compaction recorded before Prompt 4/);
+  const readout = contextGrowthPrompt(withCompaction, { number, sessionKey: key, prompt: 4 });
+  assert.match(readout, /Compaction recorded before this prompt/);
+  const html = renderContextGrowth(withCompaction, { number, sessionKey: key, prompt: 4 });
+  assert.match(html, /data-efficiency-open-session="/);
+  assert.match(html, /Open in Breakdown/);
+  assert.match(html, /\(\+/);
+});
+
 test('sparse, missing and loading growth views do not invent curves or zeroes', () => {
   assert.match(renderContextGrowth(undefined, { number, loading: true }), /Loading/);
   assert.match(renderContextGrowth({ ...growth, sessions: 0 }, { number }), /No confirmed/);

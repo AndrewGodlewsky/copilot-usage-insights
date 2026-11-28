@@ -136,6 +136,42 @@ test('context observations use submission dates, preserve model-filter gaps and 
   assert.equal(filtered.patterns.mixed.sessions, 1); assert.equal(filtered.examples[0].points[3].visible, false);
   assert.equal(run({ environment: 'missing' }).sessions, 0);
 });
+test('high-growth sessions are included in the 25-example cap alongside newest sessions', () => {
+  const a = accumulator();
+  // Create 40 growing sessions: session 0 is oldest but has by far the biggest growth; sessions 1..39 are newer with small growth.
+  for (let s = 0; s < 40; s++) {
+    const baseMs = startMs + s * 100;
+    const growth = s === 0 ? 500000 : 10000;
+    [10000, 10000, 10000, 10000 + growth, 10000 + growth, 10000 + growth].forEach((input, i) => {
+      a.add({ identity: true, humanDelivery: true, provider: true, linksKnown: true, sessionId: `g-${s}`, project: 'p', day,
+        sample: { ms: baseMs + i, promptId: `g-${s}-${i}` }, contextRecord: { inputTotal: input, modelId: 'raw-a', model: 'Model', ms: baseMs + i + 1, cacheRead: 0, cacheWrite: 0 } });
+    });
+  }
+  const r = a.finish();
+  assert.equal(r.examples.length, 25);
+  assert.ok(r.examples.some(e => e.key === 'g-0'), 'largest-growth session is retained');
+  assert.ok(r.examples.some(e => e.key === 'g-39'), 'newest session is retained');
+});
+
+test('successful main-conversation compactions set compactedBefore while failed and subagent compactions do not', () => {
+  const compactions = [
+    { key: 'c1', sessionId: 'session', project: 'project', ms: startMs + 25, success: true, subagent: false },
+    { key: 'c2', sessionId: 'session', project: 'project', ms: startMs + 35, success: false, subagent: false },
+    { key: 'c3', sessionId: 'session', project: 'project', ms: startMs + 45, success: true, subagent: true },
+    { key: 'c4', sessionId: 'session', project: 'other', ms: startMs + 55, success: true, subagent: false },
+  ];
+  const a = createContextGrowthAccumulator({ project: 'project' }, day, day, reviewNow, compactions);
+  [10000, 20000, 30000, 15000, 25000, 35000].forEach((input, i) => {
+    a.add({ identity: true, humanDelivery: true, provider: true, linksKnown: true, sessionId: 'session', project: 'project', day,
+      sample: { ms: startMs + i * 10, promptId: `p-${i}` }, contextRecord: { inputTotal: input, modelId: 'raw-a', model: 'Model', ms: startMs + i * 10 + 1, cacheRead: 0, cacheWrite: 0 } });
+  });
+  const pts = a.finish().examples[0].points;
+  assert.equal(pts[3].compactedBefore, true, 'successful main compaction between prompt 3 and 4 is marked');
+  assert.equal(pts[0].compactedBefore, undefined);
+  assert.equal(pts[4].compactedBefore, undefined, 'failed compaction is ignored');
+  assert.equal(pts[5].compactedBefore, undefined, 'subagent compaction is ignored');
+});
+
 test('AI review receives bounded aggregate context patterns without local examples or private names', async () => {
   const f = reviewFixture({ project: 'SECRET PROJECT', sessionId: 'SECRET SESSION' });
   for (let p = 0; p < 8; p++) { f.user(String(p)); f.call(String(p), String(p), { inputTokens: (p + 1) * 10000 }); }

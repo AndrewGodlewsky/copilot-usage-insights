@@ -67,7 +67,10 @@ test('the summary is reported with the efficiency topics and stays small', () =>
 test('the view shows the measured numbers, points to Context reduction, and is clean', () => {
   const build = (id, factor) => Array.from({ length: 5 }, (_, i) => call(id, i + 1, 100 * (i === 4 ? factor : 1)));
   const g = run([...build('a', 2), ...build('b', 4), ...build('c', 6)]);
-  const shown = text(renderGrowthSummary(g, formats, { compaction: { compactions: 4, sessions: 2 } }));
+  const html = renderGrowthSummary(g, formats, { compaction: { compactions: 4, sessions: 2 } });
+  const shown = text(html);
+  assert.match(html, /data-efficiency-jump-section="patterns"/);
+  assert.match(html, /data-efficiency-jump-topic="compaction"/);
   assert.match(shown, /User prompt Conversations Typical input Compared with prompt 1/);
   assert.match(shown, /5 3 400 4 times/);
   assert.match(shown, /Reached 2 times the start 3 of 3/);

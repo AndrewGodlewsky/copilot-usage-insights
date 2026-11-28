@@ -3531,9 +3531,15 @@ function contextGrowthChart(data, { number, width = 760, mode = 'input', pattern
   const tickCount = Math.min(maxTurn, W < 500 ? 4 : 6);
   for (let i = 0; i < tickCount; i++) { const turn = Math.round(1 + (maxTurn - 1) * i / (tickCount - 1)); body += `<text x="${x(turn)}" y="${H - 26}" text-anchor="middle">${turn}</text>`; }
   body += `<text x="${L}" y="13">${delta ? 'Change in input' : 'Input tokens'}</text><text x="${(L + W - R) / 2}" y="${H - 5}" text-anchor="middle">User prompt number</text>`;
-  if (example) for (const part of parts) {
-    body += `<path class="growth-line" d="${path(part.map(p => [x(p.turn), y(p.value)]))}"/>`;
-    body += part.map(p => `<circle class="growth-point${p.turn === prompt ? ' selected' : ''}" cx="${x(p.turn)}" cy="${y(p.value)}" r="${p.turn === prompt ? 5 : 2.5}"><title>Prompt ${p.turn}: ${esc(number(p.input))} input tokens</title></circle>`).join('');
+  if (example) {
+    for (const p of example.points) if (p.compactedBefore && p.turn > 1) {
+      const mx = (x(p.turn - 1) + x(p.turn)) / 2;
+      body += `<line class="growth-compaction" x1="${mx.toFixed(2)}" x2="${mx.toFixed(2)}" y1="${T}" y2="${H - B}" stroke="var(--s3)" stroke-dasharray="3 3" stroke-width="1.5"><title>Compaction recorded before Prompt ${p.turn}</title></line>`;
+    }
+    for (const part of parts) {
+      body += `<path class="growth-line" d="${path(part.map(p => [x(p.turn), y(p.value)]))}"/>`;
+      body += part.map(p => `<circle class="growth-point${p.turn === prompt ? ' selected' : ''}" cx="${x(p.turn)}" cy="${y(p.value)}" r="${p.turn === prompt ? 5 : 2.5}"><title>Prompt ${p.turn}: ${esc(number(p.input))} input tokens${p.compactedBefore ? ' · Compaction recorded before this prompt' : ''}</title></circle>`).join('');
+    }
   } else for (const s of series) {
     // Ordinal cohorts can become sparse: never draw across a missing position.
     const segments = []; let part = [];
@@ -3551,7 +3557,8 @@ function contextGrowthChart(data, { number, width = 760, mode = 'input', pattern
 function contextGrowthPrompt(data, { sessionKey, prompt = 1, number }) {
   const p = growthExample(data, sessionKey)?.points.find(p => p.turn === prompt);
   if (!p) return '';
-  return !p.visible ? `Prompt ${prompt}: outside the model filter.` : `Prompt ${prompt}: ${p.input == null ? 'input unavailable' : number(p.input) + ' input tokens'} · ${p.model || 'Model unavailable'} · ${p.cache == null || !p.input ? 'cache reuse unavailable' : number(p.cache / p.input * 100) + '% read from cache'}`;
+  const compacted = p.compactedBefore ? ' · Compaction recorded before this prompt' : '';
+  return (!p.visible ? `Prompt ${prompt}: outside the model filter.` : `Prompt ${prompt}: ${p.input == null ? 'input unavailable' : number(p.input) + ' input tokens'} · ${p.model || 'Model unavailable'} · ${p.cache == null || !p.input ? 'cache reuse unavailable' : number(p.cache / p.input * 100) + '% read from cache'}`) + compacted;
 }
 function renderContextGrowth(data, options = {}) {
   const { number, loading, mode = 'input', pattern = '', sessionKey = '', prompt = 1 } = options;
@@ -3569,8 +3576,8 @@ function renderContextGrowth(data, options = {}) {
     <div id="growth-plot">${contextGrowthChart(data, options)}</div><p class="footnote">First main-agent call per user prompt · includes cache · ${example ? 'Individual session' : `First ${data.curveLimit} prompt positions; at least ${data.minimumContributors} sessions per position`}</p>
     <div class="growth-patterns">${Object.entries(CONTEXT_SHAPES).map(([k, label]) => `<button class="growth-pattern growth-${k}" id="growth-pattern-${k}" data-growth-pattern="${k}" aria-pressed="${pattern === k}" ${data.patterns[k].sessions ? '' : 'disabled'}><span>${esc(label)}</span><strong>${n(data.patterns[k].sessions)} <small>/ ${n(data.sessions)}</small></strong></button>`).join('')}</div><p class="footnote growth-hint">Select a shape to isolate its trend. Select it again to show all shapes. Sparse groups remain available through session inspection.</p>
     <div class="growth-takeaways"><section><h3>How much does input change?</h3><strong class="growth-value">${esc(growthSigned(bucket.medianChange, number))}</strong><p>Median earlier-to-later change in input per prompt.</p><p class="footnote">${n(bucket.comparable)} comparable sessions · first 3 vs. last 3 prompts${pattern ? ' · ' + esc(CONTEXT_SHAPES[pattern]) : ''}</p></section><section><h3>Is the input being reused?</h3><strong class="growth-value">${reuse == null ? 'Unavailable' : n(reuse) + '%'}</strong><p>Of matched input read from cache.</p><p class="footnote">${n(bucket.cacheRequests)} of ${n(bucket.inputRequests)} measured prompts have a complete cache split. Reuse is not a savings estimate.</p></section></div>
-    <section class="growth-inspect"><label for="growth-session">Inspect a session</label><select id="growth-session"><option value="">Grouped trends</option>${data.examples.map(e => `<option value="${esc(e.key)}"${e.key === sessionKey ? ' selected' : ''}>${esc(e.project)} · ${esc(e.name)} · ${esc(CONTEXT_SHAPES[e.kind])}</option>`).join('')}</select><p class="footnote">${n(data.examples.length)} examples, newest within each shape; ${n(data.examplesOmitted)} more sessions are included in the totals.</p>
-    ${example ? `<dl class="growth-detail"><div><dt>Earlier median</dt><dd>${n(example.early)}</dd></div><div><dt>Later median</dt><dd>${n(example.late)}</dd></div><div><dt>Peak input</dt><dd>${n(example.peak)}</dd></div><div><dt>Measured prompts</dt><dd>${n(example.measured)} / ${n(example.prompts)}</dd></div></dl><label class="growth-prompt-picker">Inspect prompt <input id="growth-prompt" type="range" min="1" max="${example.points.length}" step="1" value="${prompt}" aria-describedby="growth-prompt-readout" aria-valuetext="${esc(contextGrowthPrompt(data, { sessionKey, prompt, number }))}"></label><p id="growth-prompt-readout" class="footnote" aria-live="polite">${esc(contextGrowthPrompt(data, { sessionKey, prompt, number }))}</p><p class="footnote">${example.filtered ? 'Some prompt positions use other models and are hidden. ' : ''}${example.kind === 'mixed' ? 'Incomplete, short, changing-model or irregular histories remain unclassified. ' : ''}${example.pointsOmitted ? `Only the first ${example.points.length} positions are drawn; ${number(example.pointsOmitted)} later positions are omitted. Summary measurements use the full selected history.` : ''}</p>` : ''}</section>
+    <section class="growth-inspect"><label for="growth-session">Inspect a session</label><select id="growth-session"><option value="">Grouped trends</option>${data.examples.map(e => `<option value="${esc(e.key)}"${e.key === sessionKey ? ' selected' : ''}>${esc(e.project)} · ${esc(e.name)} · ${esc(CONTEXT_SHAPES[e.kind])}${e.change != null ? ` (${esc(growthSigned(e.change, number))})` : ''}</option>`).join('')}</select><p class="footnote">${n(data.examples.length)} examples, including largest-growth and recent sessions within each shape; ${n(data.examplesOmitted)} more sessions are included in the totals.</p>
+    ${example ? `<dl class="growth-detail"><div><dt>Earlier median</dt><dd>${n(example.early)}</dd></div><div><dt>Later median</dt><dd>${n(example.late)}</dd></div><div><dt>Peak input</dt><dd>${n(example.peak)}</dd></div><div><dt>Measured prompts</dt><dd>${n(example.measured)} / ${n(example.prompts)}</dd></div></dl><div class="token-insight-actions"><button id="growth-open-breakdown" class="conversation-link" data-efficiency-open-session="${esc(example.key)}" data-efficiency-open-project="${esc(example.project === 'Multiple projects' ? '' : example.project || '')}">Open in Breakdown<span class="sr-only">: ${esc(example.name)}</span></button></div><label class="growth-prompt-picker">Inspect prompt <input id="growth-prompt" type="range" min="1" max="${example.points.length}" step="1" value="${prompt}" aria-describedby="growth-prompt-readout" aria-valuetext="${esc(contextGrowthPrompt(data, { sessionKey, prompt, number }))}"></label><p id="growth-prompt-readout" class="footnote" aria-live="polite">${esc(contextGrowthPrompt(data, { sessionKey, prompt, number }))}</p><p class="footnote">${example.filtered ? 'Some prompt positions use other models and are hidden. ' : ''}${example.kind === 'mixed' ? 'Incomplete, short, changing-model or irregular histories remain unclassified. ' : ''}${example.pointsOmitted ? `Only the first ${example.points.length} positions are drawn; ${number(example.pointsOmitted)} later positions are omitted. Summary measurements use the full selected history.` : ''}</p>` : ''}</section>
     <details id="growth-measurements" class="growth-notes"><summary>Measurements and coverage · ${n(data.inputRequests)} / ${n(data.prompts)} prompts have input counts</summary><p>Input is what the model processed, including cache once; it is not context-window fullness or a record of exactly which files and messages were retained. Continuations may process more input than the first call shown here. Missing or ambiguous prompt links remain unknown. ${n(data.unconfirmedPrompts)} submissions lack confirmed human identity and are excluded.</p><p>These are prompt positions inside the selected dates, not necessarily the start of a new conversation. Whole-session patterns need six complete, ordered prompts using one exact model identity. A model filter preserves original positions; partial or mixed-model histories remain unclassified. Missing inputs, uncertain ordering and model changes break individual lines.</p><p>A rise or fall exceeds both 8K tokens and 25% of the early median. A spike exceeds both end medians by 60% and 20K, then settles below 65% of its peak. A level shape stays within the larger of 16K or 40% of its median. These descriptive thresholds are not validated efficiency benchmarks.</p><p>Shading is the 25th–75th percentile, not confidence in a recommendation. Later positions contain only sessions that reached those prompts, so changes in the group can affect its curve. Use individual sessions before drawing conclusions about growth. No shape establishes waste, task success, or the cause of a change.</p></details>
     ${!example && groupedDetails.length ? `<details id="growth-values" class="growth-notes"><summary>Grouped values and contributing sessions</summary><div class="table-wrap"><table><thead><tr><th>Shape</th><th>Prompt</th><th>Sessions</th><th>Median input${mode === 'change' ? ' change' : ''}</th><th>Middle 50%</th></tr></thead><tbody>${groupedDetails.join('')}</tbody></table></div></details>` : ''}`;
 }
@@ -3975,9 +3982,10 @@ function renderGrowthSummary(data, { number, credits = number } = {}, efficiency
     : '<p class="muted token-insight-note">No main-agent call has recorded input, so the share after growth is unavailable.</p>');
 
   const compaction = efficiency?.compaction;
+  const compactionButton = '<button class="model-toggle" data-efficiency-jump-section="patterns" data-efficiency-jump-topic="compaction">See Context reduction</button>';
   html += section('What makes it shrink again', compaction?.compactions
-    ? `<p class="token-insight-note">${esc(`${compaction.sessions <= g.conversations ? of(compaction.sessions, g.conversations) : n(compaction.sessions)} conversations in these dates have a recorded compaction (${n(compaction.compactions)} in total).`)} See Context reduction for what a compaction removed and how soon input grew back.</p>`
-    : '<p class="muted token-insight-note">No compaction is recorded for these dates and filters. See Context reduction for what a compaction is.</p>');
+    ? `<p class="token-insight-note">${esc(`${compaction.sessions <= g.conversations ? of(compaction.sessions, g.conversations) : n(compaction.sessions)} conversations in these dates have a recorded compaction (${n(compaction.compactions)} in total).`)} ${compactionButton} for what a compaction removed and how soon input grew back.</p>`
+    : `<p class="muted token-insight-note">No compaction is recorded for these dates and filters. ${compactionButton} for what a compaction is.</p>`);
 
   let observation, action;
   if (l.totalInput > 0 && l.calls) {
@@ -5323,6 +5331,14 @@ for (const id of ['project', 'model']) $('growth-' + id).onchange = event => {
 $('efficiency-growth').onclick = event => {
   const button = event.target.closest('button'), data = button?.dataset;
   if (!data || button.disabled) return;
+  if (data.efficiencyJumpTopic) {
+    const tokens = data.efficiencyJumpSection === 'tokens';
+    showEfficiencySection(tokens ? 'tokens' : 'patterns');
+    (tokens ? showTokenTopic : showPatternTopic)(data.efficiencyJumpTopic, true);
+    $(tokens ? 'efficiency-topic' : 'efficiency-pattern-topic').focus({ preventScroll: true });
+    return;
+  }
+  if (data.efficiencyOpenSession) return inspectEfficiency({ project: data.efficiencyOpenProject || '', session: data.efficiencyOpenSession });
   if (['input', 'change'].includes(data.growthMode)) growthMode = data.growthMode;
   else if (Object.hasOwn(CONTEXT_SHAPES, data.growthPattern)) { growthPattern = growthPattern === data.growthPattern ? '' : data.growthPattern; growthSession = ''; }
   else return;

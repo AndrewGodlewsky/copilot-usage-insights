@@ -655,7 +655,7 @@ export function summarizePromptCredits(events = [], records = [], query, start, 
   const { outcomes } = attributePrompts(events, records, now.getTime(), options);
   const models = query.models && new Set(query.models), work = result.work, nano = exactTotal(), projectPrompts = new Map(), modelPrompts = new Map(), sessionPrompts = new Map();
   const conversations = createConversationAccumulator(records, query, start, end, now);
-  const contextGrowth = createContextGrowthAccumulator(query, start, end, now);
+  const contextGrowth = createContextGrowthAccumulator(query, start, end, now, options?.compactionEvents);
   const habits = options?.interactions ? createHabitsAccumulator(query, start, end, now, options.interactions) : null;
   const spread = promptSpread();
   let previousCharges, selectedCharges, groupModels;

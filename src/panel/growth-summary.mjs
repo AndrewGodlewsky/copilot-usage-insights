@@ -41,9 +41,10 @@ export function renderGrowthSummary(data, { number, credits = number } = {}, eff
     : '<p class="muted token-insight-note">No main-agent call has recorded input, so the share after growth is unavailable.</p>');
 
   const compaction = efficiency?.compaction;
+  const compactionButton = '<button class="model-toggle" data-efficiency-jump-section="patterns" data-efficiency-jump-topic="compaction">See Context reduction</button>';
   html += section('What makes it shrink again', compaction?.compactions
-    ? `<p class="token-insight-note">${esc(`${compaction.sessions <= g.conversations ? of(compaction.sessions, g.conversations) : n(compaction.sessions)} conversations in these dates have a recorded compaction (${n(compaction.compactions)} in total).`)} See Context reduction for what a compaction removed and how soon input grew back.</p>`
-    : '<p class="muted token-insight-note">No compaction is recorded for these dates and filters. See Context reduction for what a compaction is.</p>');
+    ? `<p class="token-insight-note">${esc(`${compaction.sessions <= g.conversations ? of(compaction.sessions, g.conversations) : n(compaction.sessions)} conversations in these dates have a recorded compaction (${n(compaction.compactions)} in total).`)} ${compactionButton} for what a compaction removed and how soon input grew back.</p>`
+    : `<p class="muted token-insight-note">No compaction is recorded for these dates and filters. ${compactionButton} for what a compaction is.</p>`);
 
   let observation, action;
   if (l.totalInput > 0 && l.calls) {
