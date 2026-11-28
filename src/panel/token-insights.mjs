@@ -819,11 +819,39 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
     const comparable = [...byModel.values()].filter(group => group.levels.length > 1).sort((a, b) => b.matched - a.matched || String(a.name).localeCompare(String(b.name)));
     const compared = comparable.slice(0, 5);
     for (const group of compared) group.levels.sort((a, b) => a.rank - b.rank);
+    const singleModels = comparable.length ? [] : [...byModel.values()].filter(group => group.levels.length === 1).sort((a, b) => b.matched - a.matched || String(a.name).localeCompare(String(b.name)));
+    const singleShown = singleModels.slice(0, 5);
     const effortSection = !(e.efforts || []).length ? '' : section('Reasoning by effort level', compared.length
-      ? table(['Model', 'Effort', 'Reasoning share', 'Output / call', 'Average call duration'], compared.flatMap(group => group.levels.map(({ row: r }) => [group.name, r.effort,
-        withCalls(r.reasoningShare, r.reasoningRequests, r.requests, percent), withCalls(r.averageOutput, r.outputRequests, r.requests, whole), withCalls(r.averageDuration, r.durationRequests, r.requests, seconds)])))
-        + note(`Compare rows of the same model only. A level is listed when at least ${number(enough)} of its calls report both reasoning and output, and a model needs two such levels.${comparable.length > compared.length ? ` Showing ${number(compared.length)} of ${number(comparable.length)} models with comparable levels.` : ''} Calls with no recorded effort level are left out, because unknown is not a level: ${number(compared.reduce((sum, group) => sum + group.unknown, 0))} of ${number(compared.reduce((sum, group) => sum + group.requests, 0))} calls on the models shown. The calls at each level were different work, so a gap between levels is not the effect of effort alone.`)
-      : empty(`No model has two recorded effort levels with at least ${number(enough)} calls each that report both reasoning and output, so levels are not compared here. Calls with no recorded effort level are not counted as a level.`));
+      ? table(['Model', 'Effort', 'Reasoning share', 'Output / call', 'Average call duration', 'Credits / call'], compared.flatMap(group => group.levels.map(({ row: r }) => [group.name, r.effort,
+        withCalls(r.reasoningShare, r.reasoningRequests, r.requests, percent), withCalls(r.averageOutput, r.outputRequests, r.requests, whole), withCalls(r.averageDuration, r.durationRequests, r.requests, seconds),
+        withCalls(r.averageCredits, r.creditRequests, r.requests, credits)])))
+        + note(`Compare rows of the same model only. A level is listed when at least ${number(enough)} of its calls report both reasoning and output, and a model needs two such levels.${comparable.length > compared.length ? ` Showing ${number(compared.length)} of ${number(comparable.length)} models with comparable levels.` : ''} Calls with no recorded effort level are left out, because unknown is not a level: ${number(compared.reduce((sum, group) => sum + group.unknown, 0))} of ${number(compared.reduce((sum, group) => sum + group.requests, 0))} calls on the models shown. Credits use complete recorded charges only. The calls at each level were different work, so a gap between levels is not the effect of effort alone.`)
+      : singleShown.length
+        ? note(`No model has two recorded effort levels with at least ${number(enough)} calls each, so levels cannot be compared within one model yet. These models had one recorded effort level meeting that threshold:`)
+          + table(['Model', 'Effort', 'Reasoning share', 'Output / call', 'Credits / call'], singleShown.map(group => {
+            const r = group.levels[0].row;
+            return [group.name, r.effort, withCalls(r.reasoningShare, r.reasoningRequests, r.requests, percent), withCalls(r.averageOutput, r.outputRequests, r.requests, whole), withCalls(r.averageCredits, r.creditRequests, r.requests, credits)];
+          }))
+          + note(`${singleModels.length > singleShown.length ? `Showing ${number(singleShown.length)} of ${number(singleModels.length)} models with one qualifying level. ` : ''}Calls with no recorded effort level are not counted as a level. Credits use complete recorded charges only.`)
+        : empty(`No model has two recorded effort levels with at least ${number(enough)} calls each that report both reasoning and output, so levels are not compared here. Calls with no recorded effort level are not counted as a level.`));
+
+    // Main-conversation vs. subagent reasoning split, shown when both sides have matched reasoning calls.
+    const init = e.byInitiator || [];
+    const sumInit = ids => {
+      const subset = init.filter(r => ids.includes(r.id));
+      const addField = key => subset.reduce((total, r) => total + (valid(r[key]) ? r[key] : 0), 0);
+      const requests = addField('requests'), outputRequests = addField('outputRequests'), outputTokens = addField('outputTokens');
+      const reasoningRequests = addField('reasoningRequests'), reasoningTokens = addField('reasoningTokens'), reasoningOutput = addField('reasoningOutput');
+      return { requests, outputRequests, averageOutput: outputRequests ? outputTokens / outputRequests : null,
+        reasoningRequests, reasoningTokens, reasoningShare: reasoningOutput > 0 ? reasoningTokens / reasoningOutput * 100 : null };
+    };
+    const mainInit = sumInit(['user', 'agent']), subInit = sumInit(['sub-agent']);
+    const initiatorSection = mainInit.reasoningRequests > 0 && subInit.reasoningRequests > 0
+      ? section('Reasoning by initiator', table(['Initiator', 'Reasoning share', 'Output / call', 'Reported reasoning'], [
+          ['Main conversation', withCalls(mainInit.reasoningShare, mainInit.reasoningRequests, mainInit.requests, percent), withCalls(mainInit.averageOutput, mainInit.outputRequests, mainInit.requests, whole), number(mainInit.reasoningTokens)],
+          ['Subagents', withCalls(subInit.reasoningShare, subInit.reasoningRequests, subInit.requests, percent), withCalls(subInit.averageOutput, subInit.outputRequests, subInit.requests, whole), number(subInit.reasoningTokens)],
+        ]) + note('Main conversation is user-initiated calls plus agent continuations; calls with no recorded initiator are not included here. Main-conversation and subagent calls do different work, so a difference is not proof of waste.'))
+      : '';
 
     const speed = s.durationRequests > 0 ? section('Speed and call duration by model',
       metrics(metric('Output tokens per second of call time', s.outputPerSecond, coverage(s.paceRequests), whole, partial(s.paceRequests)),
@@ -864,7 +892,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       + note('Reasoning is part of output. The split subtracts only on the same measured calls; it can cover fewer calls than Generated output. Other output can include tool-call arguments and is not an answer-length estimate.')
       + overTime + spread
       + (rows.length ? section('Output by model', table(['Model', 'Output / call', 'Output coverage', 'Reasoning share', 'Reasoning coverage'], rows.map(r => [r.name, measured(r.averageOutput, r.outputRequests, r.requests), coverage(r.outputRequests, r.requests), measured(r.reasoningShare, r.reasoningRequests, r.requests, percent), coverage(r.reasoningRequests, r.requests)]))) : empty('No output measurements were recorded for these filters.'))
-      + effortSection + speed + finding;
+      + effortSection + initiatorSection + speed + finding;
   }
   if (id === 'drivers') {
     const all = (report.sessions || []).filter(r => valid(r.credits)).slice().sort((a, b) => b.credits - a.credits || a.name.localeCompare(b.name));

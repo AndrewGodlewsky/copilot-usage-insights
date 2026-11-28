@@ -228,3 +228,32 @@ test('the demo history fills every part of the view', async () => {
   assert.match(part(shown, 'How output is spread across calls'), /Calls over \S+ output tokens were \S+% of measured calls and produced \S+% of output\./);
   clean(shown);
 });
+
+test('effort levels include credits per call, show single-level summaries, and compare main vs. subagent reasoning', () => {
+  // Multi-level model includes Credits / call with complete-charge coverage.
+  const multi = render(reportOf([
+    ...many(30, { effort: 'medium', output: 1000, reasoning: 100, nanoAiu: 1e9 }),
+    ...many(30, { effort: 'high', output: 2000, reasoning: 800, nanoAiu: 3e9 }),
+  ]));
+  const effortMulti = part(multi, 'Reasoning by effort level');
+  assert.match(effortMulti, /Credits \/ call/);
+  assert.match(effortMulti, />1 \(30 of 30 model calls\)</);
+  assert.match(effortMulti, />3 \(30 of 30 model calls\)</);
+
+  // Single-level model shows its recorded effort instead of hiding behind an empty state.
+  const single = render(reportOf([...many(35, { model: 'AlwaysHigh', effort: 'high', output: 1000, reasoning: 400, nanoAiu: 2e9 })]));
+  const effortSingle = part(single, 'Reasoning by effort level');
+  assert.match(effortSingle, /These models had one recorded effort level meeting that threshold/);
+  assert.match(effortSingle, /AlwaysHigh.*high.*40% \(35 of 35 model calls\).*2 \(35 of 35 model calls\)/);
+  assert.doesNotMatch(single.split('<aside class="token-insight">')[1], /On AlwaysHigh,/);
+
+  // Main vs. subagent reasoning split renders when both sides have matched reasoning calls.
+  const split = render(reportOf([
+    ...many(3, { initiator: 'user', output: 1000, reasoning: 500 }),
+    ...many(2, { initiator: 'sub-agent', output: 400, reasoning: 40 }),
+  ]));
+  const byInit = part(split, 'Reasoning by initiator');
+  assert.match(byInit, /Main conversation.*50% \(3 of 3 model calls\)/);
+  assert.match(byInit, /Subagents.*10% \(2 of 2 model calls\)/);
+  clean(split);
+});
