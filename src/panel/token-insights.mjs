@@ -25,7 +25,7 @@ export function barList(rows, { format = String, total } = {}) {
 // Render from the report and the explicitly requested context snapshot only.
 // `contextPart` splits the context view for the panel: 'snapshot' reads the snapshot alone and
 // stays fixed until the next inspection; 'history' also reads the report and follows its filters.
-export function renderTokenInsight(id, report, { number, credits, context, showCoverage = true, contextPart } = {}) {
+export function renderTokenInsight(id, report, { number, credits, context, previousContext, showCoverage = true, contextPart } = {}) {
   const s = report.efficiency?.summary || {}, models = report.efficiency?.models || [];
   const valid = value => Number.isFinite(value) && value >= 0;
   const percent = value => valid(value) ? `${number(value, { maximumFractionDigits: 1 })}%` : 'Unavailable';
@@ -266,7 +266,48 @@ export function renderTokenInsight(id, report, { number, credits, context, showC
     const advice = insight(top == null ? 'Some context categories are unavailable.' : top.value > 0 ? `${top.label} are the largest part you can change: ${number(top.value)} tokens, ${ofContext(top.value)} of this context.` : 'The parts you can change hold no tokens in this snapshot.',
       action, `${compare} This snapshot does not prove these sources are present on every request.`);
 
-    const snapshot = room + mix + balance + changeable, relation = history + advice;
+    const prior = previousContext?.available === true && valid(previousContext.totalTokens) ? previousContext : null;
+    const signed = delta => delta === 0 ? 'No change' : `${delta > 0 ? '+' : '−'}${number(Math.abs(delta))}`;
+    let diff = '';
+    if (prior) {
+      const priorTotal = prior.totalTokens, deltaTotal = total - priorTotal;
+      const pctDelta = priorTotal > 0 && deltaTotal !== 0 ? `${deltaTotal > 0 ? '+' : '−'}${percent(Math.abs(deltaTotal) / priorTotal * 100)}` : '';
+      const priorCategory = key => valid(prior.categories?.[key]) && prior.categories[key] <= priorTotal ? prior.categories[key] : null;
+      const catRows = [], catUnavailable = [];
+      for (const part of parts) {
+        const before = priorCategory(part.key);
+        if (before == null || part.value == null) catUnavailable.push(part.label);
+        else catRows.push([part.label, number(before), number(part.value), signed(part.value - before)]);
+      }
+      const prevEntries = new Map((prior.entries || []).filter(e => valid(e.tokens)).map(e => [e.id, e]));
+      const currEntries = new Map((context.entries || []).filter(e => valid(e.tokens)).map(e => [e.id, e]));
+      const sourceIds = new Set([...prevEntries.keys(), ...currEntries.keys()]);
+      const sourceChanges = [];
+      for (const entryId of sourceIds) {
+        const before = prevEntries.get(entryId), after = currEntries.get(entryId);
+        const beforeTokens = before?.tokens ?? null, afterTokens = after?.tokens ?? null;
+        const delta = (afterTokens ?? 0) - (beforeTokens ?? 0);
+        if (before && after && delta === 0) continue;
+        sourceChanges.push({ id: entryId, label: after?.label || before?.label || entryId || 'Unnamed source',
+          before: beforeTokens == null ? 'Added' : number(beforeTokens),
+          after: afterTokens == null ? 'Removed' : number(afterTokens),
+          change: signed(delta), abs: Math.abs(delta) });
+      }
+      sourceChanges.sort((a, b) => b.abs - a.abs || String(a.id).localeCompare(String(b.id)));
+      const modelChanged = prior.modelId && context.modelId && prior.modelId !== context.modelId;
+      diff = section('Changes since previous snapshot',
+        `<p><strong>${esc(`${number(priorTotal)} → ${number(total)} tokens (${signed(deltaTotal)}${pctDelta ? `, ${pctDelta}` : ''})`)}</strong></p>`
+        + note(`Estimates from two snapshots in this session${prior.checkedAt ? ` (previous: ${prior.checkedAt})` : ''}.${modelChanged ? ` Model changed from ${prior.modelId} to ${context.modelId}; limits and tokenization can differ.` : ''}`)
+        + (catRows.length ? table(['Category', 'Previous', 'Current', 'Change'], catRows) : '')
+        + (catUnavailable.length ? note(`Categories unavailable in one or both snapshots: ${catUnavailable.join(', ')}.`) : '')
+        + (sourceChanges.length
+          ? `<p class="compaction-caption">Largest source changes</p>`
+            + table(['Source', 'Previous', 'Current', 'Change'], sourceChanges.slice(0, 5).map(r => [r.label, r.before, r.after, r.change]))
+            + note(`Showing ${number(Math.min(sourceChanges.length, 5))} of ${number(sourceChanges.length)} changed sources.${context.omitted || prior.omitted ? ' One or both snapshots omitted entries.' : ''} Parent and child sources can overlap; do not add rows.`)
+          : note('No individual source changes were recorded between these two snapshots.')));
+    }
+
+    const snapshot = room + diff + mix + balance + changeable, relation = history + advice;
     return contextPart === 'snapshot' ? snapshot : contextPart === 'history' ? relation : snapshot + relation;
   }
   if (id === 'tools') {

@@ -336,3 +336,51 @@ test('the panel draws the snapshot once, keeps the source table, and lets histor
   assert.equal(get('efficiency-context-history').innerHTML, '');
   assert.match(get('token-topic-body').innerHTML, /not been measured/);
 });
+
+test('re-inspecting compares the new snapshot with the previous snapshot in memory', async () => {
+  const first = snapshot({ checkedAt: '2026-11-14T12:00:00Z', totalTokens: 1000, modelId: 'model-a',
+    categories: { systemPrompt: 100, customInstructions: 50, systemTools: 80, mcpTools: 200, messages: 570 },
+    entries: [{ kind: 'mcpServer', id: 'mcp:old', label: 'old-server', tokens: 200 }, { kind: 'skill', id: 'skill:keep', label: 'keep', tokens: 50 }] });
+  const second = snapshot({ checkedAt: '2026-11-14T12:05:00Z', totalTokens: 820, modelId: 'model-b',
+    categories: { systemPrompt: 100, customInstructions: 50, systemTools: 80, mcpTools: 20, messages: 570 },
+    entries: [{ kind: 'skill', id: 'skill:keep', label: 'keep', tokens: 50 }, { kind: 'mcpServer', id: 'mcp:new', label: '<new>', tokens: 20 }] });
+  // Direct render: single snapshot has no diff; with previousContext shows deltas and escapes names.
+  assert.doesNotMatch(render(first), /Changes since previous snapshot/);
+  const diffHtml = render(second, history, { previousContext: first }), shown = text(diffHtml);
+  assert.match(shown, /Changes since previous snapshot/);
+  assert.match(shown, /1000 → 820 tokens \(−180, −18%\)/);
+  assert.match(shown, /Model changed from model-a to model-b/);
+  assert.match(shown, /MCP tool definitions 200 20 −180/);
+  assert.match(shown, /old-server 200 Removed −200/);
+  assert.match(shown, /&lt;new&gt; Added 20 \+20/);
+  assert.doesNotMatch(diffHtml, /<new>|NaN|undefined|Infinity/);
+  // Missing category in one snapshot is listed cleanly.
+  const partialDiff = text(render(snapshot({ categories: { ...first.categories, mcpTools: null } }), history, { previousContext: first }));
+  assert.match(partialDiff, /Categories unavailable in one or both snapshots: MCP tool definitions/);
+  // Unchanged snapshot and zero previous total produce no broken ratios.
+  const sameDiff = text(render(first, history, { previousContext: first }));
+  assert.match(sameDiff, /1000 → 1000 tokens \(No change\)/);
+  assert.match(sameDiff, /No individual source changes were recorded/);
+
+  // Panel integration: first inspect has no diff, second inspect shows diff, filter refresh preserves it, failed inspect clears it.
+  const report = { ...buildReport([], {}), sources: [], coverage: {} };
+  const { get, server } = await mountPanel(report);
+  get('view').onclick({ target: { dataset: { view: 'efficiency' } } });
+  server.contextSnapshot = first;
+  await get('efficiency-context-read').onclick();
+  assert.doesNotMatch(get('efficiency-context-result').innerHTML, /Changes since previous snapshot/);
+  server.contextSnapshot = second;
+  await get('efficiency-context-read').onclick();
+  const afterSecond = get('efficiency-context-result').innerHTML;
+  assert.match(afterSecond, /Changes since previous snapshot/);
+  assert.match(afterSecond, /1K → 820 tokens \(−180, −18%\)/);
+  await get('refresh').onclick();
+  assert.equal(get('efficiency-context-result').innerHTML, afterSecond);
+  server.transportError = true;
+  await get('efficiency-context-read').onclick();
+  server.transportError = false;
+  assert.doesNotMatch(get('efficiency-context-result').innerHTML, /Changes since previous snapshot/);
+  server.contextSnapshot = first;
+  await get('efficiency-context-read').onclick();
+  assert.doesNotMatch(get('efficiency-context-result').innerHTML, /Changes since previous snapshot/);
+});

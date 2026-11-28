@@ -755,7 +755,7 @@ function renderEfficiencyFlow(s) {
     : `<strong>${markedValue(s.cacheHitRate, s.cacheRequests < s.requests, value => number(value) + '%')} of measured input was reused from cache</strong><p class="muted">${markedValue(s.cacheRead, s.cacheRequests < s.requests)} of ${markedValue(s.cacheInput, s.cacheRequests < s.requests)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
 }
 
-let efficiencyContextSnapshot;
+let efficiencyContextSnapshot, previousContextSnapshot;
 $('efficiency-context-read').onclick = async () => {
   const button = $('efficiency-context-read');
   if (button.disabled) return;
@@ -764,10 +764,13 @@ $('efficiency-context-read').onclick = async () => {
   $('efficiency-context-history').innerHTML = '';
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
   try {
-    efficiencyContextSnapshot = await request('efficiency.context', {}, false, controller.signal);
+    const next = await request('efficiency.context', {}, false, controller.signal);
+    previousContextSnapshot = next?.available && efficiencyContextSnapshot?.available ? efficiencyContextSnapshot : undefined;
+    efficiencyContextSnapshot = next;
     renderEfficiencyContext();
   } catch (error) {
     efficiencyContextSnapshot = undefined;
+    previousContextSnapshot = undefined;
     clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
     $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical sections are still available.</p>';
   } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); renderSelectedTokenTopic(); }
@@ -788,7 +791,7 @@ function renderEfficiencyContext() {
   renderEfficiencyContextHistory();
 }
 function renderEfficiencyContextPart(contextPart) {
-  return renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot, contextPart });
+  return renderTokenTopic('context', state.report || {}, { number, showCoverage: !$('coverage').hidden, credits: creditNumber, context: efficiencyContextSnapshot, previousContext: previousContextSnapshot, contextPart });
 }
 // The comparison with the selected history sits outside the snapshot's live region, so it can
 // follow the filters without redrawing the snapshot or closing its source table.
