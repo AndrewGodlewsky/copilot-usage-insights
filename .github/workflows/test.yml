@@ -17,12 +17,31 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+      - name: Validate security and benchmarks
+        shell: bash
+        run: |
+          npm run validate:security
+          npm run validate:benchmarks
       - name: Build panel
         shell: bash
         run: node scripts/build.mjs
       - name: Check committed panel is current
         shell: bash
         run: git diff --exit-code panel/index.html
+      - name: Require version bump for shipped plugin changes on PRs to main
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          changed=$(git diff --name-only origin/main...HEAD -- src/ panel/ assets/ data/ com.github.copilot/)
+          if [ -n "$changed" ]; then
+            base_ver=$(git show origin/main:package.json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.version)")
+            head_ver=$(node -e "const d=JSON.parse(require('fs').readFileSync('package.json','utf8'));console.log(d.version)")
+            if [ "$base_ver" = "$head_ver" ]; then
+              echo "Shipped plugin files changed without bumping version ($head_ver). See AGENTS.md."
+              exit 1
+            fi
+          fi
       - name: Test
         shell: bash
         run: node --test tests/*.test.mjs

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { Script } from 'node:vm';
 import { execFileSync } from 'node:child_process';
+import { validateRelease } from '../scripts/validate-release.mjs';
 
 test('marketplace package has a runnable desktop entry and self-contained dashboard', async () => {
   const root = new URL('../', import.meta.url);
@@ -51,4 +52,21 @@ test('release history is complete, ordered, and bundled with the current build',
   }
   const html = await read('panel/index.html');
   assert.ok(html.includes(`const RELEASE_NOTES = ${JSON.stringify(notes).replaceAll('<', '\\u003c')};`));
+});
+
+test('validateRelease enforces synchronized manifests, bounded summaries, and README version', () => {
+  const validFiles = {
+    'package.json': JSON.stringify({ version: '2.3.0' }),
+    'plugin.json': JSON.stringify({ name: 'copilot-usage-insights', version: '2.3.0' }),
+    '.github/plugin/marketplace.json': JSON.stringify({ plugins: [{ name: 'copilot-usage-insights', version: '2.3.0' }] }),
+    'com.github.copilot/extensions/usage-insights/package.json': JSON.stringify({ version: '2.3.0' }),
+    'release-notes.json': JSON.stringify([{ version: '2.3.0', summary: 'Clear user-facing release summary.' }]),
+    'README.md': 'Version **2.3.0** ships updates.',
+  };
+  const withOverride = overrides => file => ({ ...validFiles, ...overrides })[file];
+  assert.equal(validateRelease(withOverride({})).version, '2.3.0');
+  assert.throws(() => validateRelease(withOverride({ 'plugin.json': JSON.stringify({ name: 'copilot-usage-insights', version: '2.2.0' }) })), /Version mismatch/);
+  assert.throws(() => validateRelease(withOverride({ 'release-notes.json': JSON.stringify([{ version: '2.3.0', summary: 'a'.repeat(401) }]) })), /exceeds 400/);
+  assert.throws(() => validateRelease(withOverride({ 'release-notes.json': JSON.stringify([{ version: '2.3.0', summary: 'Line 1\nLine 2' }]) })), /single paragraph/);
+  assert.throws(() => validateRelease(withOverride({ 'README.md': 'Version **2.2.0** old.' })), /README\.md/);
 });
