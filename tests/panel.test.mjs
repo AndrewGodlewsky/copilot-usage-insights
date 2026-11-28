@@ -88,7 +88,7 @@ test('Skills shows unverified-provider activity visibly in the selected month wi
   const { get } = await mountPanel(report);
   get('view').onclick({ target: { dataset: { view: 'breakdown' } } });
   assert.equal(get('content').hidden, false);
-  assert.match(get('skills-summary').textContent, /1 use.*Rolling 30.*1 included with provider unverified/);
+  assert.match(get('skills-summary').textContent, /1 use.*This month.*1 included with provider unverified/);
   assert.match(get('skills').innerHTML, /saved-skill.*provider unverified/);
   assert.match(get('skills-coverage').textContent, /No charges are inferred/);
   assert.match(get('session').innerHTML, /activity-only/);
@@ -422,14 +422,14 @@ test('offline runtime files are sanitized, bounded, and copyable without a serve
   assert.match(get('logs-output').value, /"processId":304/);
 });
 
-test('Rolling 30 is selected by default and remains selectable alongside Last 30 days', async () => {
+test('This month is selected by default and remains selectable alongside Last 30 days', async () => {
   const report = { ...buildReport([], {}), sources: [], coverage: {} };
   const { get, requests, server } = await mountPanel(report);
   assert.equal(get('range').value, 'mtd');
   assert.equal(requests[0].input.range, 'mtd');
-  assert.match(get('tiles').innerHTML, /Rolling 30/);
+  assert.match(get('tiles').innerHTML, /This month/);
   server.report = input => ({ ...buildReport([], input), sources: [], coverage: {} });
-  for (const [range, label] of [['30d', 'Last 30 days'], ['mtd', 'Rolling 30']]) {
+  for (const [range, label] of [['30d', 'Last 30 days'], ['mtd', 'This month']]) {
     get('range').value = range;
     get('range').onchange();
     await new Promise(setImmediate);

@@ -1,6 +1,6 @@
 import { esc, coverageValue } from './charts.mjs';
-import { barList, trendRow, openSessionButton } from './token-insights.mjs';
-import { toolOutcomeSummary } from './efficiency.mjs';
+import { barList, trendRow, openSessionButton, rawHtmlCell, isRawHtmlCell, readRawHtmlCell } from './token-insights.mjs';
+import { toolOutcomeSummary } from '../core/integrations.mjs';
 
 const MCP_STATUS_LABELS = { connected: 'Connected', pending: 'Connecting', 'needs-auth': 'Needs sign-in', failed: 'Failed', disabled: 'Disabled', stopped: 'Stopped', not_configured: 'Not started', 'not-in-session': 'Not in this session', unavailable: 'Unavailable' };
 
@@ -30,8 +30,8 @@ export function renderRecovery(report, { number, showCoverage = true } = {}) {
   // A cell is text, [text, hover detail], { html }, or { text, badge, tone, title }.
   const table = (kind, headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table recovery-${kind}"><thead><tr>${headers.map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => {
     if (cell && typeof cell === 'object' && !Array.isArray(cell)) {
-      if ('html' in cell) return `<td${index === 0 || cell.textCell ? ' class="text-cell"' : ''}>${cell.html}</td>`;
-      const badge = cell.badge ? ` <span class="connection-status ${cell.tone || 'neutral'}"${cell.badgeTitle ? ` title="${esc(cell.badgeTitle)}"` : ''}>${esc(cell.badge)}</span>` : '';
+      if (isRawHtmlCell(cell)) return `<td${index === 0 || cell.textCell ? ' class="text-cell"' : ''}>${readRawHtmlCell(cell)}</td>`;
+      const badge = cell.badge ? ` <span class="connection-status ${esc(cell.tone || 'neutral')}"${cell.badgeTitle ? ` title="${esc(cell.badgeTitle)}"` : ''}>${esc(cell.badge)}</span>` : '';
       return `<td${index === 0 ? ' class="text-cell"' : ''}${cell.title ? ` title="${esc(cell.title)}"` : ''}><span class="cell-text">${esc(cell.text)}</span>${badge}</td>`;
     }
     const [text, title] = Array.isArray(cell) ? cell : [cell];
@@ -127,7 +127,7 @@ export function renderRecovery(report, { number, showCoverage = true } = {}) {
       + note(`An operation needs at least ${number(minimumKnown)} known outcomes to be ranked by rate. With fewer, one more call changes the rate a lot. Showing ${number(ranked.length)} of ${number(measured.operations.ranked)} that qualify and have a recorded failure. Each bar is drawn against 100%.`));
     const listed = runs.top || [];
     const hasLiveRunStatus = listed.some(run => run.server && mcpLive.has(run.server));
-    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operationCell(run), { html: openSessionButton(run.session, run.sessionId, run.project), textCell: true }, number(run.length), then[run.then] || 'Unavailable', run.day]))
+    html += section('Failures in a row', (listed.length ? table('runs', ['Operation', 'Conversation', 'Failures in a row', 'What came next', 'First failure'], listed.map(run => [operationCell(run), rawHtmlCell(openSessionButton(run.session, run.sessionId, run.project), { textCell: true }), number(run.length), then[run.then] || 'Unavailable', run.day]))
       : '<p class="muted token-insight-note">No operation failed twice in a row in one conversation in this range.</p>')
       + note(`${things(runs.repeated, 'run')} of ${number(runLength)} or more failures in a row, covering ${number(runs.repeatedFailures)} of ${things(measured.failures, 'failed call')}.${listed.length ? ` Showing the ${number(listed.length)} longest of ${things(runs.total, 'run')} of two or more.` : ''} A run is calls of one operation in one conversation that failed one after another, in order of start time. A success or a call with no recorded outcome ends a run.`)
       + (hasLiveRunStatus && !hasLiveOpStatus ? note('MCP server status badges reflect the current hosting session, separate from the selected historical dates. A failed tool call does not by itself prove a server outage.') : ''));

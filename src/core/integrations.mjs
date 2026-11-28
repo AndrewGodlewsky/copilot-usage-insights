@@ -14,6 +14,16 @@ export function mcpHistory(tools) {
   return { rows, calls: rows.reduce((n, row) => n + row.calls, 0), omitted: tools.mcpOmitted || 0, available: false };
 }
 
+export function toolOutcomeSummary(tools) {
+  return [false, true].map(mcp => {
+    const rows = (tools?.rows || []).filter(row => Boolean(row.server) === mcp);
+    const sum = key => rows.reduce((total, row) => total + (Number.isFinite(row[key]) && row[key] >= 0 ? row[key] : 0), 0);
+    const successes = sum('successes'), failures = sum('failures');
+    return { name: mcp ? 'MCP tools' : 'Other tools', calls: sum('calls'), successes, failures, unknown: sum('unknown'),
+      successRate: successes + failures ? successes / (successes + failures) * 100 : null };
+  });
+}
+
 export function mergeMcpInventory(history, inventory) {
   const rows = new Map(history.rows.map(row => [row.name, { ...row, status: inventory.available ? 'not-in-session' : 'unavailable' }]));
   for (const server of inventory.rows || []) rows.set(server.name, { ...(rows.get(server.name) || emptyServer(server.name)), ...server });

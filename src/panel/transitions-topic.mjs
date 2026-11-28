@@ -95,6 +95,20 @@ export function renderTransitionsTopic(detail, efforts, { number, credits = numb
       + note('These are two separate records and are not linked: the first says how a setting was changed, the second flags a call on which Copilot chose the model itself. A call picked by Copilot may not appear as a change above.'));
   }
 
+  if (c.routing?.driftCalls > 0) {
+    const r = c.routing;
+    html += section('Requested vs. resolved backend model',
+      metrics(
+        metric('Calls with response model', n(r.resolvedCalls), 'Calls that recorded a backend response model'),
+        metric('Different backend model', n(r.driftCalls), `${percent(r.resolvedCalls ? r.driftCalls / r.resolvedCalls * 100 : null)} of calls with a response model`))
+      + (r.driftPairs?.length
+        ? `<p class="compaction-caption">Most frequent requested → resolved pairs</p>`
+          + barList(r.driftPairs.map(pair => ({ label: `${pair.from} → ${pair.to}`, value: pair.count })), { format: number })
+          + (r.driftPairsTotal > r.driftPairs.length ? note(`Showing ${n(r.driftPairs.length)} of ${n(r.driftPairsTotal)} requested-to-resolved pairs, most frequent first.`) : '')
+        : '')
+      + note('Providers may alias or route a requested model ID to a versioned backend snapshot. A difference here shows what the response reported, not a manual model change.'));
+  }
+
   const rows = c.conversations || [];
   if (rows.length) html += section('Conversations with the most changes',
     `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr><th scope="col">Conversation</th><th scope="col">Model changes</th><th scope="col">Effort changes</th></tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${openSessionButton(r.name, r.id, r.project)}</td><td><span class="cell-text">${esc(n(r.modelChanges))}</span></td><td><span class="cell-text">${esc(n(r.effortChanges))}</span></td></tr>`).join('')}</tbody></table></div>`

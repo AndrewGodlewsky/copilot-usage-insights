@@ -22,25 +22,28 @@ export function parseWslDistributions(output) {
 export function createWslDiscovery(options = {}) {
   if (options.run || options.io) return createDirectWslDiscovery(options);
   const { platform = process.platform, timeoutMs = 3000, diagnostics, launch = execute } = options;
-  return async ({ disabled = [] } = {}) => {
+  return async ({ disabled = [], signal } = {}) => {
+    signal?.throwIfAborted();
     if (platform !== 'win32') return { homes: [], sources: [] };
     const fields = {};
     const discover = async () => {
       try {
         const entry = fileURLToPath(new URL('./wsl-discovery-process.mjs', import.meta.url));
         const embedded = /^(copilot|copilot-runtime)(\.exe)?$/i.test(path.basename(process.execPath));
-        const bootstrap = process.argv.find(arg => path.basename(arg) === 'extension_bootstrap.mjs') || 'extension_bootstrap.mjs';
+        const bootstrap = process.argv.find(arg => path.isAbsolute(arg) && path.basename(arg) === 'extension_bootstrap.mjs');
+        if (embedded && !bootstrap) throw new Error('Missing absolute extension bootstrap path');
         const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|USERPROFILE|HOME|LOCALAPPDATA|APPDATA|COPILOT_SDK_PATH)$/i.test(key)));
         Object.assign(env, { EXTENSION_PATH: entry, COPILOT_EXTENSION_PARENT_PID: String(process.pid), COPILOT_EXTENSION_SANDBOXED: '0', WSL_DISCOVERY_INPUT: JSON.stringify({ disabled, timeoutMs }) });
         const { stdout } = await launch(process.execPath, [embedded ? bootstrap : entry], {
           env, shell: false, windowsHide: true, timeout: timeoutMs * (1 + Math.ceil(MAX_DISTROS / 4)) + 2000,
-          killSignal: 'SIGKILL', maxBuffer: 1024 * 1024, encoding: 'utf8',
+          killSignal: 'SIGKILL', maxBuffer: 1024 * 1024, encoding: 'utf8', ...(signal ? { signal } : {}),
         });
         const { result, counts } = JSON.parse(stdout);
         if (!Array.isArray(result?.homes) || !Array.isArray(result?.sources)) throw new Error('Invalid discovery response');
         for (const key of ['distributions', 'running', 'homes', 'vscodeHomes', 'unavailable']) if (Number.isFinite(counts?.[key])) fields[key] = counts[key];
         return result;
       } catch (error) {
+        signal?.throwIfAborted();
         fields.unavailable = 1;
         return { homes: [], sources: [{ path: 'WSL discovery', state: 'warning', message: 'Could not complete WSL discovery. Check WSL and refresh, or disable WSL discovery in Settings.',
           diagnostic: { ...diagnosticError(error), ...(error.killed ? { errorCode: 'ETIMEDOUT' } : {}) } }] };

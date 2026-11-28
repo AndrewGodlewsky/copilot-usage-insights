@@ -30,12 +30,12 @@ test('each measured main call lands in one situation by what came just before it
   const result = measure(records);
   assert.deepEqual(result.situations.map(s => s.id), ['under5', 'mid', 'over60', 'first', 'modelChange']);
   // One minute, then one minute, then one millisecond short of five minutes.
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 4000, cacheRead: 2600, cacheWrite: 0, share: 65 });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 4000, cacheRead: 2600, cacheWrite: 0, creditCalls: 3, share: 65, credits: 3, averageCredits: 1, writeChurn: 0 });
   // Exactly five minutes and exactly sixty minutes both belong to the middle row.
-  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 900, cacheWrite: 0, share: 45 });
-  assert.deepEqual(row(result, 'over60'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, share: 10 });
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, share: 0 });
-  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 2000, cacheRead: 200, cacheWrite: 0, share: 10 });
+  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 900, cacheWrite: 0, creditCalls: 2, share: 45, credits: 2, averageCredits: 1, writeChurn: 0 });
+  assert.deepEqual(row(result, 'over60'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, creditCalls: 1, share: 10, credits: 1, averageCredits: 1, writeChurn: 0 });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, creditCalls: 1, share: 0, credits: 1, averageCredits: 1, writeChurn: null });
+  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 2000, cacheRead: 200, cacheWrite: 0, creditCalls: 1, share: 10, credits: 1, averageCredits: 1, writeChurn: 0 });
   assert.equal(result.mainCalls, 8);
   assert.equal(result.measuredCalls, 8);
   assert.equal(result.situations.reduce((sum, s) => sum + s.calls, 0), result.measuredCalls);
@@ -69,11 +69,11 @@ test('subagent and unlabelled calls are left out, and unmeasured main calls stil
   ]);
   assert.equal(result.mainCalls, 9);
   assert.equal(result.measuredCalls, 5);
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, share: 0 });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 1000, cacheRead: 0, cacheWrite: 0, creditCalls: 1, share: 0, credits: 1, averageCredits: 1, writeChurn: null });
   // Three minutes after the first call, two minutes after an unmeasured call, and one minute after
   // the other conversation's unmeasured first call.
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1600, cacheWrite: 0, share: 1600 / 3000 * 100 });
-  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, share: 10 });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1600, cacheWrite: 0, creditCalls: 3, share: 1600 / 3000 * 100, credits: 3, averageCredits: 1, writeChurn: 0 });
+  assert.deepEqual(row(result, 'modelChange'), { calls: 1, input: 1000, cacheRead: 100, cacheWrite: 0, creditCalls: 1, share: 10, credits: 1, averageCredits: 1, writeChurn: 0 });
   assert.equal(row(result, 'mid').calls, 0);
   assert.equal(row(result, 'over60').calls, 0);
 });
@@ -86,20 +86,20 @@ test('calls at the same instant keep their recorded order and separate conversat
     // Recorded out of order: the later call arrives first, then two calls at the same instant.
     call(base + 5 * MINUTE, { sessionId: 'c', cacheRead: 100 }), call(base, { sessionId: 'c' }), call(base, { sessionId: 'c', cacheRead: 400 }),
   ]);
-  assert.deepEqual(row(result, 'first'), { calls: 3, input: 3000, cacheRead: 0, cacheWrite: 0, share: 0 });
-  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1700, cacheWrite: 0, share: 1700 / 3000 * 100 });
-  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 350, cacheWrite: 0, share: 17.5 });
+  assert.deepEqual(row(result, 'first'), { calls: 3, input: 3000, cacheRead: 0, cacheWrite: 0, creditCalls: 3, share: 0, credits: 3, averageCredits: 1, writeChurn: null });
+  assert.deepEqual(row(result, 'under5'), { calls: 3, input: 3000, cacheRead: 1700, cacheWrite: 0, creditCalls: 3, share: 1700 / 3000 * 100, credits: 3, averageCredits: 1, writeChurn: 0 });
+  assert.deepEqual(row(result, 'mid'), { calls: 2, input: 2000, cacheRead: 350, cacheWrite: 0, creditCalls: 2, share: 17.5, credits: 2, averageCredits: 1, writeChurn: 0 });
 });
 
 test('an empty or unplaceable history reports unknown shares, never zero', () => {
-  const none = { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, share: null };
+  const none = { calls: 0, input: 0, cacheRead: 0, cacheWrite: 0, creditCalls: 0, share: null, credits: null, averageCredits: null, writeChurn: null };
   assert.deepEqual(createCacheTiming().finish(), { mainCalls: 0, measuredCalls: 0, modelFiltered: false, minimumSessionCalls: 5, listedSessions: 0,
     situations: ['under5', 'mid', 'over60', 'first', 'modelChange'].map(id => ({ id, ...none })), sessions: [] });
   const result = measure([call(NaN), call(base, { sessionId: '' }), call(base, { sessionId: undefined }), call(base, { inputTotal: 0 })]);
   assert.equal(result.mainCalls, 4);
   assert.equal(result.measuredCalls, 1);
   // A call with no input tokens is counted, but a share of nothing is not 0%.
-  assert.deepEqual(row(result, 'first'), { calls: 1, input: 0, cacheRead: 0, cacheWrite: 0, share: null });
+  assert.deepEqual(row(result, 'first'), { calls: 1, input: 0, cacheRead: 0, cacheWrite: 0, creditCalls: 1, share: null, credits: 1, averageCredits: 1, writeChurn: null });
 });
 
 test('the conversation list keeps five rows, needs five measured calls and uses session labels', () => {
@@ -142,7 +142,7 @@ test('the report measures inside the selected range and flags a model filter', (
   // The same call is "first" once the earlier day is outside the range: not the true start.
   const day = buildReport(records, { range: 'custom', startDate: '2026-06-09', endDate: '2026-06-09' }, now).efficiency.cacheTiming;
   assert.deepEqual(day.situations.map(s => s.calls), [0, 0, 0, 1, 2]);
-  assert.deepEqual(day.situations.find(s => s.id === 'first'), { id: 'first', calls: 1, input: 1000, cacheRead: 500, cacheWrite: 0, share: 50 });
+  assert.deepEqual(day.situations.find(s => s.id === 'first'), { id: 'first', calls: 1, input: 1000, cacheRead: 500, cacheWrite: 0, creditCalls: 1, share: 50, credits: 1, averageCredits: 1, writeChurn: 0 });
   // With a model filter the call on the other model is not seen at all.
   const filtered = buildReport(records, { range: 'all', models: ['A'] }, now).efficiency.cacheTiming;
   assert.equal(filtered.modelFiltered, true);
@@ -169,9 +169,9 @@ test('the view shows when input is reused, with shares, calls, tokens, a trend a
   const html = render(pausedReport()), shown = text(html);
   assert.match(html, /<h3>When is input reused\?<\/h3>/);
   assert.match(shown, /Compares calls in the main conversation: 45 of 45 have a complete cache split\. Subagent calls/);
-  assert.match(html, /token-bar-label">Under 5 minutes<\/span>.*?token-bar-value">80%<\/span><span class="token-bar-detail">30 calls · 24000 of 30000 input tokens read from cache</);
-  assert.match(html, /token-bar-label">Over 60 minutes<\/span>.*?width:10\.0%.*?token-bar-value">10%<\/span><span class="token-bar-detail">10 calls · 1000 of 10000 input tokens read from cache</);
-  assert.match(html, /token-bar-label">First call of a conversation in the selected range<\/span>.*?token-bar-value">0%<\/span><span class="token-bar-detail">5 calls · 0 of 5000 input tokens read from cache</);
+  assert.match(html, /token-bar-label">Under 5 minutes<\/span>.*?token-bar-value">80%<\/span><span class="token-bar-detail">30 calls · 24000 of 30000 input tokens read from cache · 1 \/ call · 0% cache-write churn</);
+  assert.match(html, /token-bar-label">Over 60 minutes<\/span>.*?width:10\.0%.*?token-bar-value">10%<\/span><span class="token-bar-detail">10 calls · 1000 of 10000 input tokens read from cache · 1 \/ call · 0% cache-write churn</);
+  assert.match(html, /token-bar-label">First call of a conversation in the selected range<\/span>.*?token-bar-value">0%<\/span><span class="token-bar-detail">5 calls · 0 of 5000 input tokens read from cache · 1 \/ call</);
   // Rows with nothing measured are named, not drawn as zero.
   assert.doesNotMatch(html, /token-bar-label">5 to 60 minutes|token-bar-label">First call after a model change/);
   assert.match(shown, /Nothing measured in this selection for: 5 to 60 minutes since the previous call; first call after a model change\. That is not zero reuse\./);

@@ -6,20 +6,27 @@ import { parseWslDistributions } from './wsl-sources.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const runProcess = (file, args, options, input = '') => new Promise((resolve, reject) => {
-  const child = execFile(file, args, options, (error, stdout) => error ? reject(error) : resolve(stdout));
-  child.stdin.on('error', reject);
+  let settled = false;
+  const child = execFile(file, args, options, (error, stdout) => {
+    if (settled) return;
+    settled = true;
+    if (error) reject(error); else resolve(stdout);
+  });
+  child.stdin.on('error', error => { if (!settled && error?.code !== 'EPIPE') { settled = true; reject(error); } });
   child.stdin.end(input);
 });
 
 // Read a SQLite transaction in its owning environment. Never copy live DB/WAL/SHM files.
-export const WSL_USAGE_EXPORT = `
+export function wslUsageExport(timeoutSeconds = 4) {
+  const budget = Math.max(1, Math.min(30, Math.floor(timeoutSeconds)));
+  return `
 import json, pathlib, re, signal, sqlite3, sys, time
 # Killing wsl.exe alone need not terminate its Linux child. SIGALRM also bounds
 # blocked filesystem/SQLite work; keep its default action, not a Python handler.
 if hasattr(signal, 'alarm'):
     signal.signal(signal.SIGALRM, signal.SIG_DFL)
-    signal.alarm(4)
-deadline = time.monotonic() + 4
+    signal.alarm(${budget})
+deadline = time.monotonic() + ${budget}
 db = None
 try:
     excluded = set(json.loads(sys.stdin.read(2 * 1024 * 1024 + 1)))
@@ -64,6 +71,8 @@ finally:
         db.close()
 sys.stdout.write(json.dumps(result, ensure_ascii=True, allow_nan=False))
 `;
+}
+export const WSL_USAGE_EXPORT = wslUsageExport(4);
 
 export function wslDatabaseLocation(file) {
   if (typeof file !== 'string' || file.length > 4096 || /[\x00-\x1f\x7f]/.test(file)) return null;
@@ -101,7 +110,8 @@ export function createUsageDatabaseReader({ platform = process.platform, readLoc
         if (!running.some(name => name.toLowerCase() === location.distribution.toLowerCase())) throw unavailable();
         const input = JSON.stringify([...receiptSessions]);
         if (Buffer.byteLength(input) > 2 * 1024 * 1024) throw unavailable();
-        const output = await run(executable, ['--distribution', location.distribution, '--cd', '/', '--exec', '/usr/bin/python3', '-I', '-S', '-B', '-c', WSL_USAGE_EXPORT, location.file], options, input);
+        const budgetSeconds = Math.max(1, Math.min(30, Math.floor(Math.max(1000, timeoutMs - 1000) / 1000)));
+        const output = await run(executable, ['--distribution', location.distribution, '--cd', '/', '--exec', '/usr/bin/python3', '-I', '-S', '-B', '-c', wslUsageExport(budgetSeconds), location.file], options, input);
         const payload = JSON.parse(output);
         if (payload?.error) {
           const failure = unavailable();

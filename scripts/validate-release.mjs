@@ -1,9 +1,15 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const MAX_SUMMARY_LENGTH = 400;
 
-export function validateRelease(read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8')) {
+function compareSemver(a, b) {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+
+export function validateRelease(read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8'), { checkAssets = read.length === 0 } = {}) {
   const pkg = JSON.parse(read('package.json'));
   const version = pkg?.version;
   if (typeof version !== 'string' || !SEMVER.test(version)) {
@@ -14,6 +20,13 @@ export function validateRelease(read = file => readFileSync(new URL('../' + file
   const marketplace = JSON.parse(read('.github/plugin/marketplace.json'));
   const extensionPkg = JSON.parse(read('com.github.copilot/extensions/usage-insights/package.json'));
   const marketEntry = marketplace?.plugins?.find(p => p.name === plugin.name);
+
+  if (pkg?.name && plugin?.name && pkg.name !== plugin.name) {
+    throw new Error(`Name mismatch: plugin.json has ${plugin.name}, expected ${pkg.name}`);
+  }
+  if (pkg?.name && extensionPkg?.name && pkg.name !== extensionPkg.name) {
+    throw new Error(`Name mismatch: com.github.copilot/extensions/usage-insights/package.json has ${extensionPkg.name}, expected ${pkg.name}`);
+  }
 
   const manifests = [
     ['plugin.json', plugin?.version],
@@ -31,11 +44,16 @@ export function validateRelease(read = file => readFileSync(new URL('../' + file
     throw new Error(`Add release notes for ${version} at the top of release-notes.json`);
   }
   const seen = new Set();
+  let previousVersion = null;
   for (const entry of releaseNotes) {
     if (!entry || typeof entry.version !== 'string' || !SEMVER.test(entry.version)) {
       throw new Error(`Invalid release-notes.json version: ${entry?.version}`);
     }
     if (seen.has(entry.version)) throw new Error(`Duplicate version in release-notes.json: ${entry.version}`);
+    if (previousVersion && compareSemver(entry.version, previousVersion) >= 0) {
+      throw new Error(`release-notes.json must be ordered newest-first (${entry.version} after ${previousVersion})`);
+    }
+    previousVersion = entry.version;
     seen.add(entry.version);
     if (typeof entry.summary !== 'string' || !entry.summary.trim()) {
       throw new Error(`Missing summary in release-notes.json for ${entry.version}`);
@@ -51,6 +69,10 @@ export function validateRelease(read = file => readFileSync(new URL('../' + file
   const readme = read('README.md');
   if (!readme.includes(`Version **${version}**`)) {
     throw new Error(`README.md update paragraph must mention Version **${version}**`);
+  }
+
+  if (checkAssets && !existsSync(new URL('../assets/usage-insights.svg', import.meta.url))) {
+    throw new Error('Missing plugin logo asset: assets/usage-insights.svg');
   }
 
   return { version, releaseNotes };

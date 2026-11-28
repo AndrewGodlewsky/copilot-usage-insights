@@ -13,6 +13,7 @@ const { createCanvas, joinSession } = await diagnostics.measure('extension.sdk',
 const extension = await registerCanvas({ createCanvas, joinSession, diagnostics });
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, async () => {
   diagnostics.record('info', 'extension.signal', { signal });
-  await extension.dispose();
-  process.exit(0);
+  try { await extension.dispose(); }
+  catch (error) { diagnostics.record('error', 'extension.crash', diagnosticError(error)); }
+  finally { process.exit(0); }
 });

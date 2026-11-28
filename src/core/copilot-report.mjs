@@ -51,12 +51,6 @@ function finish(b) {
     averageCredits: b.completeCreditRequests ? nanoTotal(b, 'completeCreditNano') / 1e9 / b.completeCreditRequests : null,
     creditsPerMillionTokens: creditTokens > 0 ? nanoTotal(b, 'creditTokenNano') / 1e9 / creditTokens * 1e6 : null };
 }
-// Sessions with Copilot usage on or before `now`: the only ones activity can be attributed to.
-function copilotSessionsAt(records, nowMs) {
-  const sessions = new Set();
-  for (const r of records) if (r.ms <= nowMs) sessions.add(r.sessionId);
-  return sessions;
-}
 const skillIdentity = skill => JSON.stringify([skill.name, skill.plugin, skill.version, skill.path || '']);
 
 function skillReport(copilotSessions, activity, input, start, end, now) {
@@ -119,8 +113,9 @@ function skillReport(copilotSessions, activity, input, start, end, now) {
     failures++;
   }
   const ranked = (a, b) => b.invocations - a.invocations || b.lastUsed.localeCompare(a.lastUsed) || a.name.localeCompare(b.name);
-  const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size,
-    projectRows: [...row.projects.values()].map(project => ({ ...project, sessions: project.sessions.size })).sort(ranked) })).sort(ranked);
+  const failRate = item => item.invocations + item.failures > 0 ? item.failures / (item.invocations + item.failures) * 100 : null;
+  const rows = [...groups.values()].map(row => ({ ...row, sessions: row.sessions.size, projects: row.projects.size, failureRate: failRate(row),
+    projectRows: [...row.projects.values()].map(project => ({ ...project, sessions: project.sessions.size, failureRate: failRate(project) })).sort(ranked) })).sort(ranked);
   return { rows, invocations, failures, sessions: sessions.size, omitted, omittedFailures, unattributedUses, unattributedFailures,
     projectOptions: [...projectOptions], sessionOptions: [...sessionOptions] };
 }
@@ -371,7 +366,7 @@ export function buildReport(records, input = {}, now = new Date(), activity = {}
       return { ...s, project, id, name: sessionLabels.get(id), ...promptCountFields(sessionCounts.get(s.name)) };
     }),
     skills, tools, mcp: mcpHistory(tools), promptCredits: promptSummary,
-    efficiency: withFindings({ ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now), conversations, contextGrowth, habits, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) }, promptSummary),
+    efficiency: withFindings({ ...efficiency.finish(sessionLabels), ...topics.finish(), switches: summarizeModelChanges(records, activity, input, activityStart, end, now, copilotSessions), conversations, contextGrowth, habits, interactions: summarizeInteractions(records, activity, { ...input, models: q.models }, activityStart, end, now, copilotSessions) }, promptSummary),
     options: { environments, models: [...modelOptions].sort(), projects: [...projectOptionSet].sort(), sessions: [...sessionLabels].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)) },
   };
 }

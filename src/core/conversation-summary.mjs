@@ -6,7 +6,7 @@ export function conversationComparison(conversations, topic, loading = false) {
   const metric = row => {
     if (topic === 'work') return { value: row.promptWork?.medianCalls, samples: row.promptWork?.prompts || 0,
       total: (row.promptWork?.totalPrompts || 0) + (row.delivery?.unconfirmedPrompts || 0), minimum: 10, unit: 'calls / prompt' };
-    if (topic === 'guidance') return { value: row.delivery?.prompts ? row.delivery.steering / row.delivery.prompts * 100 : null,
+    if (topic === 'guidance') return { value: row.delivery?.known ? row.delivery.steering / row.delivery.known * 100 : null,
       samples: row.delivery?.known || 0, total: (row.delivery?.prompts || 0) + (row.delivery?.unconfirmedPrompts || 0), minimum: 10, unit: '% steering' };
     return { value: topic === 'returning' ? row.countedSessions ? row.multiDaySessions / row.countedSessions * 100 : null : row.medianPrompts,
       samples: row.countedSessions || 0, total: row.sessions || 0, minimum: 5, unit: topic === 'returning' ? '% multi-day' : 'prompts / conversation' };

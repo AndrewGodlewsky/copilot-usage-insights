@@ -18,12 +18,16 @@ export function modelChange(e, sessionId, project) {
     source: ['model_picker', 'sdk', 'agent', 'startup'].includes(d.source) ? d.source : 'unknown' };
 }
 
-export function summarizeModelChanges(records, activity, query, start, end, now) {
-  const eligible = new Set(), excluded = new Set(activity.skillExcludedSessions || []), selectedIds = new Set();
+export function summarizeModelChanges(records, activity, query, start, end, now, copilotSessions) {
+  const excluded = new Set(activity.skillExcludedSessions || []), selectedIds = new Set();
   const models = query.models && new Set(query.models);
-  for (const r of records) if (r.ms <= now.getTime()) {
-    eligible.add(r.sessionId);
-    if (models?.has(r.model)) selectedIds.add(r.modelId);
+  let eligible = copilotSessions;
+  if (!eligible || models) {
+    eligible ??= new Set();
+    for (const r of records) if (r.ms <= now.getTime()) {
+      if (!copilotSessions) eligible.add(r.sessionId);
+      if (models?.has(r.model)) selectedIds.add(r.modelId);
+    }
   }
   const wanted = model => models?.has(model) || selectedIds.has(model);
   const result = { events: 0, sessions: 0, modelChanges: 0, effortChanges: 0, manual: 0, automatic: 0, unknownSource: 0, omitted: 0, transitions: [] };
@@ -42,5 +46,5 @@ export function summarizeModelChanges(records, activity, query, start, end, now)
     if (!transitions.has(key)) transitions.set(key, { fromModel: e.fromModel, toModel: e.toModel, fromEffort: e.fromEffort, toEffort: e.toEffort, source: e.source, count: 0 });
     transitions.get(key).count++;
   }
-  return { ...result, sessions: sessions.size, transitions: [...transitions.values()].sort((a, b) => b.count - a.count) };
+  return { ...result, sessions: sessions.size, transitions: [...transitions.values()].sort((a, b) => b.count - a.count || a.fromModel.localeCompare(b.fromModel) || a.toModel.localeCompare(b.toModel) || a.fromEffort.localeCompare(b.fromEffort) || a.toEffort.localeCompare(b.toEffort) || a.source.localeCompare(b.source)) };
 }

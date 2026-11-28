@@ -1,6 +1,6 @@
 # Security, privacy, and stopping the plugin
 
-Usage Insights runs local Node.js code with the permissions of the Copilot process. It is not a sandbox. Install it only from a maintainer/source you trust. The [dated security and performance review](docs/security-performance-review-2026-11-17.md) describes the reviewed boundaries, tests, and remaining limitations.
+Usage Insights runs local Node.js code with the permissions of the Copilot process. It is not a sandbox. Install it only from a maintainer/source you trust. The [dated security and performance review](docs/archive/audits/security-performance-review-2026-11-17.md) describes the reviewed boundaries, tests, and remaining limitations.
 
 ## What is installed
 

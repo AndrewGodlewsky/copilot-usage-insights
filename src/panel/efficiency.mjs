@@ -1,18 +1,10 @@
 import { buildModelReference, verifiedHistoricalModelId, modelReferenceInstructions, serializeReviewEvidence } from '../core/model-reference.mjs';
 import { benchmarkHistory } from '../core/benchmark-reference.mjs';
+import { toolOutcomeSummary } from '../core/integrations.mjs';
+export { toolOutcomeSummary };
 const reviewMetricKeys = ['requests', 'inputRequests', 'inputTokens', 'outputRequests', 'outputTokens', 'cacheRequests', 'cacheInput', 'cacheRead', 'creditRequests', 'credits', 'averageInput', 'averageOutput', 'cacheHitRate', 'averageCredits', 'pairedRequests', 'pairedInput', 'pairedOutput', 'toolRequests', 'toolTokens', 'toolInput', 'averageToolTokens', 'toolShare', 'reasoningRequests', 'reasoningTokens'];
 const reviewNumbers = (row, keys) => Object.fromEntries(keys.map(key => [key, Number.isFinite(row?.[key]) && row[key] >= 0 ? row[key] : null]));
 const reviewDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z)?$/.test(value) ? value : null;
-
-export function toolOutcomeSummary(tools) {
-  return [false, true].map(mcp => {
-    const rows = (tools?.rows || []).filter(row => Boolean(row.server) === mcp);
-    const sum = key => rows.reduce((total, row) => total + (Number.isFinite(row[key]) && row[key] >= 0 ? row[key] : 0), 0);
-    const successes = sum('successes'), failures = sum('failures');
-    return { name: mcp ? 'MCP tools' : 'Other tools', calls: sum('calls'), successes, failures, unknown: sum('unknown'),
-      successRate: successes + failures ? successes / (successes + failures) * 100 : null };
-  });
-}
 
 export function buildEfficiencyReview(report, context, scope = {}, modelReference = {}) {
   const e = report.efficiency, models = e.models.slice(0, 20);

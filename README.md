@@ -69,7 +69,7 @@ Use **Refresh** to reread usage and **Settings** to configure sources. See the [
 
 ### Update an existing installation
 
-In **Customize → Installed**, use **Update** in the Plugins section. Version **2.3.0** overhauls expanded **AI review** cards with a top-right **Close** button, a clearer two-column **What this means** and **Try this** layout, compact metric chips, and a collapsible **Confidence & measurement notes** drawer so insights and next steps are immediately readable. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
+In **Customize → Installed**, use **Update** in the Plugins section. Version **2.4.0** renames the default **Rolling 30** filter to **This month**, adds pause-timing credits, cache-write churn, subagent credits, backend model routing, and an effort-credit finding across Efficiency, feeds newer Efficiency signals into **AI review** with fail-fast model validation, trims the standalone dashboard bundle, and includes security, accessibility, dark/light theme, and reliability fixes. Close and reopen Usage Insights after updating. If Copilot has not picked up the updated extension, fully quit and restart it. See [dashboard recovery](docs/dashboard-recovery.md) for the diagnosis, behavior, and limits.
 
 ## What the numbers mean
 

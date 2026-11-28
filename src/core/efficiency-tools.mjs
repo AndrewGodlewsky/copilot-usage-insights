@@ -3,6 +3,8 @@
 // count or unknown definition size is never zero. Memory is one entry per distinct tool count and
 // one per project; the report keeps three groups and five projects.
 
+import { medianFromCounts } from './stats.mjs';
+
 // A project is listed only with this many calls that record their definition tokens, and at most
 // this many projects are listed.
 export const TOOL_PROJECT_MIN_CALLS = 20, TOOL_PROJECT_ROWS = 5;
@@ -40,12 +42,8 @@ export function createToolFootprint() {
     },
     finish() {
       const values = [...counts.keys()].sort((a, b) => a - b);
-      // The middle call by available tool count: half of the calls that record it had this many or fewer.
-      let medianAvailable = null;
-      for (let at = 0, seen = 0; at < values.length && medianAvailable === null; at++) {
-        seen += counts.get(values[at]).calls;
-        if (seen * 2 >= countCalls) medianAvailable = values[at];
-      }
+      // The middle call by available tool count: exact median across calls that record it.
+      const medianAvailable = medianFromCounts(values.map(v => [v, counts.get(v).calls]), countCalls);
       // Up to three groups of neighbouring tool counts, each holding about a third of the calls that
       // record a count. A group never splits one count, so a history with one count has no groups.
       const groups = [];

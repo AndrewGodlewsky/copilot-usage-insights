@@ -1,46 +1,60 @@
 import { dayOfMs } from './query.mjs';
 import { middle, firstAfter } from './efficiency-compaction.mjs';
+import { isCompleteCacheSplit, isCompleteCharge, createNanoTotal } from './stats.mjs';
 
 const known = value => Number.isFinite(value) && value >= 0;
 const SOURCES = ['model_picker', 'sdk', 'agent', 'startup', 'unknown'];
-const top = (map, build) => [...map.values()].sort((a, b) => b.count - a.count || (a.from + a.to < b.from + b.to ? -1 : 1)).slice(0, 5).map(build);
+const top = (map, build) => [...map.values()].sort((a, b) => b.count - a.count || String(a.from).localeCompare(String(b.from)) || String(a.to).localeCompare(String(b.to))).slice(0, 5).map(build);
 
 // What changes in the recorded model and effort settings: which pairs, how each change was
 // made, how many conversations used more than one model, which conversations changed most, and
 // the main-conversation call just before and just after each model change.
 // Calls are kept (as four numbers each) only for conversations that have a model change.
-export function createTransitionsTopic({ query = {}, start = -Infinity, end = Infinity, now = new Date(), sessionLabels = new Map(), activity = {}, records = [] } = {}) {
-  const nowMs = now.getTime(), NONE = Symbol('none'), modelFiltered = !!query.models;
+export function createTransitionsTopic({ query = {}, start = -Infinity, end = Infinity, now = new Date(), sessionLabels = new Map(), activity = {}, records = [], copilotSessions } = {}) {
+  const nowMs = now.getTime(), from = query.range === 'all' ? -Infinity : start, NONE = Symbol('none'), modelFiltered = !!query.models;
   const bySession = new Map(), seen = new Set();
   for (const e of activity.modelChanges || []) {
     if (seen.has(e.key) || !(e.ms <= nowMs)) continue;
     seen.add(e.key);
     const day = dayOfMs(e.ms);
-    if (day < start || day > end || query.project && query.project !== e.project || query.session && query.session !== e.sessionId) continue;
+    if (day < from || day > end || query.project && query.project !== e.project || query.session && query.session !== e.sessionId) continue;
     let session = bySession.get(e.sessionId);
     if (!session) bySession.set(e.sessionId, session = { events: [], times: [], input: [], cacheRead: [], model: [], nano: [], used: false });
     session.events.push(e);
   }
   const chooser = { calls: 0, automatic: 0, selected: 0, unrecorded: 0 };
   const autoModels = new Map();
+  const routing = { resolvedCalls: 0, driftCalls: 0 }, driftPairs = new Map(), autoResolved = new Map();
   const flags = new Map(), names = new Map(), seenModels = new Set();
   let multi = 0, mainSessions = 0, lastSession = NONE, current, flag;
+  const countPair = (map, fromModel, toModel) => {
+    const key = JSON.stringify([fromModel, toModel]);
+    let pair = map.get(key);
+    if (!pair) map.set(key, pair = { from: fromModel, to: toModel, count: 0 });
+    pair.count++;
+  };
   return {
     add(r) {
       chooser.calls++;
-      const completeCharge = Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete';
+      const completeCharge = isCompleteCharge(r);
       if (r.isAuto === true) {
         chooser.automatic++;
         const label = r.model || r.modelId || 'Unknown model';
         let am = autoModels.get(label);
-        if (!am) autoModels.set(label, am = { name: label, calls: 0, creditCalls: 0, nano: 0, wide: 0n });
+        if (!am) autoModels.set(label, am = { name: label, calls: 0, creditCalls: 0, nano: createNanoTotal() });
         am.calls++;
-        if (completeCharge) {
-          am.creditCalls++;
-          if (am.nano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { am.wide += BigInt(am.nano); am.nano = 0; }
-          am.nano += r.nanoAiu;
-        }
+        if (completeCharge) { am.creditCalls++; am.nano.add(r.nanoAiu); }
       } else if (r.isAuto === false) chooser.selected++; else chooser.unrecorded++;
+      const requested = typeof r.modelId === 'string' ? r.modelId.trim() : '';
+      const resolved = typeof r.responseModel === 'string' ? r.responseModel.trim() : '';
+      if (resolved) {
+        routing.resolvedCalls++;
+        if (requested && requested !== resolved) {
+          routing.driftCalls++;
+          countPair(driftPairs, requested, resolved);
+          if (r.isAuto === true) countPair(autoResolved, requested, resolved);
+        }
+      }
       const model = r.modelId || r.model || '';
       if (model) { seenModels.add(model); if (r.model) seenModels.add(r.model); }
       if (r.sessionId !== lastSession) { lastSession = r.sessionId; current = bySession.get(lastSession); flag = flags.get(lastSession); }
@@ -55,7 +69,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
       if (code === undefined) names.set(model, code = names.size);
       current.times.push(r.ms); current.model.push(code);
       current.input.push(known(r.inputTotal) ? r.inputTotal : -1);
-      current.cacheRead.push(r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal ? r.cacheRead : -1);
+      current.cacheRead.push(isCompleteCacheSplit(r) ? r.cacheRead : -1);
       current.nano.push(completeCharge ? r.nanoAiu : -1);
     },
     finish() {
@@ -136,7 +150,7 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
         .sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name))
         .slice(0, 5)
         .map(m => {
-          const totalCredits = m.creditCalls ? (m.wide ? Number(m.wide + BigInt(m.nano)) : m.nano) / 1e9 : null;
+          const totalCredits = m.creditCalls ? m.nano.credits() : null;
           return { name: m.name, calls: m.calls, share: chooser.automatic ? m.calls / chooser.automatic * 100 : null,
             creditCalls: m.creditCalls, averageCredits: m.creditCalls ? totalCredits / m.creditCalls : null };
         });
@@ -147,6 +161,12 @@ export function createTransitionsTopic({ query = {}, start = -Infinity, end = In
         efforts: top(effortPairs, ({ from, to, count }) => ({ from, to, count })),
         usage: { sessions: modelFiltered ? null : mainSessions, severalModels: modelFiltered ? null : multi },
         chooser: { ...chooser, autoModelCount: autoModels.size, autoModels: autoList },
+        routing: {
+          ...routing,
+          driftPairsTotal: driftPairs.size,
+          driftPairs: top(driftPairs, ({ from, to, count }) => ({ from, to, count })),
+          autoResolved: top(autoResolved, ({ from, to, count }) => ({ from, to, count })),
+        },
         next: { paired, sameModel, inputBefore: middle(inputBefore), inputAfter: middle(inputAfter), change: middle(inputChange),
           cachePairs: cacheBefore.length, cacheBefore: middle(cacheBefore), cacheAfter: middle(cacheAfter), lower,
           creditPairs: creditsBefore.length, creditsBefore: middle(creditsBefore), creditsAfter: middle(creditsAfter) },

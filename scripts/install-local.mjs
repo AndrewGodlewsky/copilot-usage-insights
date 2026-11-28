@@ -14,7 +14,9 @@ async function exists(file) {
 export async function installLocal({ destination = path.join(copilotHome(), 'extensions', 'usage-insights') } = {}) {
   destination = path.resolve(destination);
   const parent = path.dirname(destination), name = path.basename(destination);
-  if (parent === destination || destination === path.resolve(root) || path.resolve(root).startsWith(destination + path.sep)) throw new Error('Refusing an unsafe installation destination');
+  const norm = p => process.platform === 'win32' ? p.toLowerCase() : p;
+  const normDest = norm(destination), normRoot = norm(path.resolve(root));
+  if (norm(parent) === normDest || normDest === normRoot || normRoot.startsWith(normDest + path.sep)) throw new Error('Refusing an unsafe installation destination');
   const previous = await exists(destination);
   if (previous) {
     let owned = false;
@@ -42,7 +44,10 @@ export async function installLocal({ destination = path.join(copilotHome(), 'ext
     if (previous) { await fs.rename(destination, backup); backedUp = true; }
     try { await fs.rename(stage, destination); }
     catch (e) { if (backedUp) { await fs.rename(backup, destination); backedUp = false; } throw e; }
-    if (backedUp) await fs.rm(backup, { recursive: true, force: true });
+    if (backedUp) {
+      try { await fs.rm(backup, { recursive: true, force: true }); }
+      catch (err) { console.warn(`Installed successfully, but could not remove temporary backup ${path.basename(backup)}: ${err?.code || 'cleanup error'}`); }
+    }
   } finally { await fs.rm(stage, { recursive: true, force: true }); }
   return destination;
 }

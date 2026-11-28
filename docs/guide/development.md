@@ -6,11 +6,11 @@ Build and release workflow, followed by possible future capabilities. Start with
 
 ## On this page
 
-- [Development and distribution](#development-and-distribution)
+- [Build and release workflow](#build-and-release-workflow)
 - [Test scope and performance](#test-scope-and-performance)
 - [Possible next additions](#possible-next-additions)
 
-## Development and distribution
+## Build and release workflow
 
 ```sh
 npm run build  # regenerate the committed panel/index.html
@@ -44,12 +44,11 @@ This benchmark measures cold scans, unchanged scans, appends, report building, a
 
 ## Possible next additions
 
-These are supported by Copilot event metadata but are **not implemented in this release**:
+Tool call elapsed durations, subagent model/duration/credit breakdowns, and request call durations have already shipped in the Efficiency explorer. These remaining event details are **not implemented in this release**:
 
 | Capability | What could be shown |
 | --- | --- |
-| Tool timing | Elapsed time when start and completion events can be paired |
-| Subagents | Agent names, selected models, durations, and reported tool counts |
-| Response performance | Recorded request duration and time to first token where available |
+| Subagent metadata | Individual subagent names and per-subagent reported tool counts |
+| Streaming latency | Time to first token where recorded separately from total call duration |
 
 GitHub documents [skill, tool, and subagent events](https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/streaming-events). Historical coverage depends on which events the app persisted. A configured MCP server is not evidence it was used. Session token totals cannot reliably be assigned to an individual skill or MCP call without explicit accounting links. Any further activity view should retain names and counts, without retaining tool arguments or output.

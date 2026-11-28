@@ -29,9 +29,8 @@ test('pause persists and blocks history, prompts, host inventory/context and eve
     reviewService: { review: fail, reconnect: fail, catalog: fail, cancel() {}, async close() {} } });
   assert.equal((await request('settings.set', { paused: true })).status, 200);
   assert.equal((await createSettings(directory).get()).paused, true);
-  for (const method of ['usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels', 'efficiency.context', 'usage.inventory', 'review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze']) {
-    const input = method === 'review.run' ? { prompt: 'fixture', expectedModel: 'claude-sonnet-5.5' }
-      : method === 'review.prepare' ? { filters: {} } : method === 'review.analyze' ? { snapshotId: 'fixture', expectedReasoning: 'high', allowSamples: true } : {};
+  for (const method of ['usage.report', 'usage.refresh', 'usage.requests', 'usage.sessions', 'usage.modelProjects', 'usage.sessionModels', 'efficiency.context', 'usage.inventory', 'review.catalog', 'review.reconnect', 'review.prepare', 'review.analyze']) {
+    const input = method === 'review.prepare' ? { filters: {} } : method === 'review.analyze' ? { snapshotId: 'fixture', expectedReasoning: 'high', allowSamples: true } : {};
     await paused(await request(method, input));
   }
   assert.equal(calls, 0);
@@ -79,10 +78,13 @@ test('pause discards uncancellable context results even after immediate resume',
 test('pause cancels an active review and cannot return a late review result', { timeout: 5000 }, async t => {
   const entered = deferred(), late = deferred(); let signal, cancelled = 0;
   const { request } = await fixture(t, { reviewService: {
+    async catalog() { return { models: [{ id: 'claude-sonnet-5.5', label: 'Claude Sonnet 5.5', reasoningEfforts: ['medium', 'high'] }], reference: null, token: 'tok' }; },
     async review(_input, value) { signal = value; entered.resolve(); return late.promise; },
     cancel() { cancelled++; }, async close() {},
   } });
-  const running = request('review.run', { prompt: 'fixture', expectedModel: 'claude-sonnet-5.5' }); await entered.promise;
+  assert.equal((await request('usage.report', { range: '7d' })).status, 200);
+  const prepared = await (await request('review.prepare', { filters: { range: '7d' } })).json();
+  const running = request('review.analyze', { snapshotId: prepared.id, expectedModel: 'claude-sonnet-5.5', expectedReasoning: 'high', allowSamples: true }); await entered.promise;
   await request('settings.set', { paused: true });
   assert.equal(signal.aborted, true); assert.equal(cancelled, 1);
   await paused(await running);

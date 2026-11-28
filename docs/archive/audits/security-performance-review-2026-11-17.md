@@ -2,7 +2,7 @@
 
 This review starts at `93117a6` (v0.1.110, fetched `origin/main`). The working tree was clean. Changes are on `audit/security-performance`; no prior edits were overwritten. This audit does not publish, install into a user's Copilot setup, or change the version.
 
-Release follow-up: the maintainer subsequently authorized v0.1.111 on `main`. It includes the audit changes and the [journal-integrity decision](journal-integrity.md) from issue #7. Release checks passed 629 tests with one POSIX-only skip, plus all six 100,000-record scan tests. The other functionality decisions remain open in the [follow-up index](audit-followups.md).
+Release follow-up: the maintainer subsequently authorized v0.1.111 on `main`. It includes the audit changes and the [journal-integrity decision](../../journal-integrity.md) from issue #7. Release checks passed 629 tests with one POSIX-only skip, plus all six 100,000-record scan tests. The other functionality decisions remain open in the [follow-up index](../../audit-followups.md).
 
 The aim is to preserve accounting and functionality while reducing attack surface, unnecessary work, and load-time stalls. Measurements use generated records and temporary directories, never personal histories or paid inference. Browser/desktop automation was not authorized: UI measurements below cover JavaScript and DOM operations in a VM fixture, **not browser paint or a live Copilot canvas**.
 
@@ -29,7 +29,7 @@ The aim is to preserve accounting and functionality while reducing attack surfac
 | Benchmark facts and reviewer guides | Bundled reviewed repository data | Local reads only; source URLs are provenance, not automatic fetches |
 | Build/test actions | GitHub Actions, pinned commits | CI only, contents read permission; weekly Dependabot update proposals |
 
-`package.json` has no npm dependencies or development dependencies. That reduces installation surface but **does not** make `npm audit` a complete security check: the vendored parser and host runtime/SDK sit outside a lockfile. [security-dependencies.json](../security-dependencies.json) records the inventory. During this review the vendored parser was byte-compared to the official npm tarball, its tarball integrity verified, and its SHA-256 recorded. Builds verify those bytes offline; they do not discover new advisories.
+`package.json` has no npm dependencies or development dependencies. That reduces installation surface but **does not** make `npm audit` a complete security check: the vendored parser and host runtime/SDK sit outside a lockfile. [security-dependencies.json](../../../security-dependencies.json) records the inventory. During this review the vendored parser was byte-compared to the official npm tarball, its tarball integrity verified, and its SHA-256 recorded. Builds verify those bytes offline; they do not discover new advisories.
 
 Local installation omits `src/panel` (already compiled into `panel/index.html`) and non-runtime guide examples/README. Runtime guide files, generated benchmark facts, licenses, backend imports, and security guidance remain installed and are tested from an isolated temporary installation. Marketplace delivery can include the full Git checkout; this change does not promise that the host downloads a reduced archive. An old browser-debug snapshot was removed and its directory ignored.
 
@@ -162,7 +162,7 @@ Desktop-title reads also use the disposable child, with no spawn when `data.db` 
 
 No such reduction was applied in this audit.
 
-The maintainer requested detailed GitHub handoffs for these decisions. [Follow-up issues and implementation criteria](audit-followups.md) cover every option below, including storage architecture and large-list navigation. They are not approval to change defaults or discard data.
+The maintainer requested detailed GitHub handoffs for these decisions. [Follow-up issues and implementation criteria](../../audit-followups.md) cover every option below, including storage architecture and large-list navigation. They are not approval to change defaults or discard data.
 
 | Option | Measured reason to consider it | What would be lost / decision |
 | --- | --- | --- |
@@ -187,4 +187,4 @@ Final local checks on Windows/Node v24.22.1:
 
 The review followed entrypoints through `src/extension.mjs`, all `src/node` modules, all core accounting/aggregation/reference modules, panel renderers/controllers/styles, reviewer guides, benchmark data/validation, build/local-install scripts, manifests, licenses and CI. Existing tests were read and extended around demonstrated faults and boundaries. Generated panel code was regenerated from reviewed sources. Vendored parser provenance/integrity and its configured parsing surface were checked; this is not a claim to have independently re-proved every line of the upstream parser, Node, SQLite, SDK, CLI, OS or browser engine.
 
-Manual follow-up must check the real Copilot host's runtime compatibility, including the embedded-runtime database child bootstrap, CSP-loaded canvas, pause/resume during real work, visual layout/focus/theme, and remote/WSL performance. No desktop/browser, paid inference, real GitHub account validation or private-history test was performed. Windows cannot execute the POSIX-only alarm regression; CI's Linux/macOS jobs are configured to exercise that path, but were not run here. See [SECURITY.md](../SECURITY.md) for user actions and the recurring maintainer checklist.
+Manual follow-up must check the real Copilot host's runtime compatibility, including the embedded-runtime database child bootstrap, CSP-loaded canvas, pause/resume during real work, visual layout/focus/theme, and remote/WSL performance. No desktop/browser, paid inference, real GitHub account validation or private-history test was performed. Windows cannot execute the POSIX-only alarm regression; CI's Linux/macOS jobs are configured to exercise that path, but were not run here. See [SECURITY.md](../../../SECURITY.md) for user actions and the recurring maintainer checklist.

@@ -228,7 +228,7 @@ export function donut(segments, { size = 132, thickness = 16, centerLabel = 'tok
     for (const s of live) {
       const len = (s.value / total) * circ
       const tip = esc(JSON.stringify({ title: s.label, rows: [['Tokens', s.value], ['Share', `${((s.value / total) * 100).toFixed(1)}%`]] }))
-      body += `<circle class="mark" data-tip="${tip}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${thickness}" stroke-dasharray="${Math.max(0.5, len - gap)} ${circ}" stroke-dashoffset="${-acc}" transform="rotate(-90 ${c} ${c})"/>`
+      body += `<circle class="mark" data-tip="${tip}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${esc(s.color)}" stroke-width="${thickness}" stroke-dasharray="${Math.max(0.5, len - gap)} ${circ}" stroke-dashoffset="${-acc}" transform="rotate(-90 ${c} ${c})"/>`
       acc += len
     }
   }

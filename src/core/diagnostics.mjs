@@ -5,7 +5,9 @@ export const RUNTIME_EVENTS = new Set(['extension.started', 'extension.joined', 
   'wsl.discovery', 'history.scan', 'history.source', 'history.discovery', 'history.copilot', 'history.journals', 'history.vscode', 'history.merge', 'history.database', 'history.names', 'history.finalize', 'report.build', 'report.serialize', 'skills.versions']);
 const errorCodes = new Set(['EFBIG', 'ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'ENOSPC', 'EBUSY', 'EISDIR', 'EINVAL', 'EADDRINUSE', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ABORT_ERR', 'ERR_INVALID_ARG_TYPE', 'ERR_INVALID_ARG_VALUE', 'ERR_SQLITE_ERROR', 'SQLITE_BUSY', 'SQLITE_CORRUPT']);
 for (const code of ['RUNTIME', 'SDK', 'ACCOUNT', 'CATALOG', 'MODEL', 'EFFORT', 'SNAPSHOT', 'ISOLATION', 'TIMEOUT', 'CANCELLED', 'USAGE', 'CLEANUP', 'RESPONSE', 'FAILED', 'BUSY']) errorCodes.add(`REVIEW_${code}`);
-const sourceFiles = 'canvas-server|canvas-endpoint|copilot-source|copilot-db-process-reader|copilot-db-process|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources';
+const sourceFiles = 'extension|canvas-server|canvas-endpoint|canvas-usage|canvas-review|copilot-source|copilot-db-process-reader|copilot-db-process|copilot-db|copilot-report|copilot|query|settings|request-prompts|skill-version|skill-folder|integrations|efficiency|efficiency-cache|efficiency-compaction|efficiency-delegation|efficiency-findings|efficiency-growth|efficiency-habits|efficiency-models|efficiency-output|efficiency-overview|efficiency-recovery|efficiency-repetition|efficiency-results|efficiency-tools|efficiency-topics|efficiency-transitions|diagnostics|runtime-diagnostics|canvas|context|wsl-db|wsl-sources|wsl-discovery-process|source-paths|vscode|vscode-sources|ai-review|review-evidence|review-insights|review-usage|prompt-credits|coverage|report-wire|conversations|conversation-summary|context-growth|model-reference|benchmark-reference|benchmark-schema|environments|model-settings|read-queue|call-fingerprint|security-status|stats|format|public-models';
+const stackFileRe = new RegExp(`[/\\\\](${sourceFiles})\\.mjs:(\\d+):(\\d+)`, 'g');
+const locationRe = new RegExp(`^(?:(?:${sourceFiles})\\.mjs|panel/index\\.html):\\d+:\\d+$`);
 const numericFields = new Set(['durationMs', 'httpStatus', 'records', 'files', 'rows', 'sources', 'sourceIndex', 'invalid', 'invalidSkills', 'invalidTools', 'unclassified', 'unavailable', 'line', 'column', 'lastResponseAgeMs', 'processId', 'exitCode', 'activeCanvases']);
 const booleanFields = new Set(['force', 'cacheHit', 'detail', 'refresh', 'mcpAvailable', 'pluginsAvailable', 'online', 'hidden', 'secureContext', 'reused']);
 for (const field of ['filesRead', 'filesReused', 'filesAppended', 'bytesRead', 'bytesHashed', 'prefixChecks', 'prefixMismatches', 'prefixCheckMs', 'folders', 'responseBytes', 'promptEvents', 'tools', 'skills', 'filesDeferred', 'databasesDeferred', 'scanId']) numericFields.add(field);
@@ -35,7 +37,7 @@ const enumFields = {
   arch: new Set(['x64', 'arm64', 'ia32', 'arm']),
   directive: new Set(['connect-src', 'default-src']),
 };
-for (const method of ['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
+for (const method of ['review.catalog', 'review.reconnect', 'review.prepare', 'review.analyze', 'review.cancel', 'diagnostics.get']) enumFields.method.add(method);
 
 // Error messages and arbitrary stack text can contain prompts, paths, or credentials.
 export function diagnosticError(error) {
@@ -43,7 +45,7 @@ export function diagnosticError(error) {
   if (errorCodes.has(error?.code)) result.errorCode = error.code;
   if (error?.code === 'ERR_SQLITE_ERROR' && Number.isInteger(error.errcode) && error.errcode >= 0 && error.errcode <= 65535) result.sqliteCode = error.errcode;
   const stack = typeof error?.stack === 'string' ? error.stack.slice(0, 16000) : '';
-  const locations = [...stack.matchAll(new RegExp(`[/\\\\](${sourceFiles})\\.mjs:(\\d+):(\\d+)`, 'g'))]
+  const locations = [...stack.matchAll(stackFileRe)]
     .map(([, file, line, column]) => `${file}.mjs:${line}:${column}`);
   for (const [, line, column] of stack.matchAll(/https?:\/\/(?:localhost|127\.0\.0\.1):\d+\/[a-f0-9]{64}\/?:(\d+):(\d+)/g)) locations.push(`panel/index.html:${line}:${column}`);
   if (locations.length) result.locations = [...new Set(locations)].slice(0, 5);
@@ -62,7 +64,7 @@ export function createDiagnostics({ limit = 300, clock = () => new Date(), tick 
       else if (Object.hasOwn(enumFields, key) && enumFields[key].has(value)) entry[key] = value;
       else if (key === 'errorType' && errorTypes.has(value) || key === 'errorCode' && errorCodes.has(value)) entry[key] = value;
       else if (['pluginVersion', 'nodeVersion', 'guidanceVersion'].includes(key) && typeof value === 'string' && /^v?\d{1,4}\.\d{1,4}\.\d{1,4}$/.test(value)) entry[key] = value;
-      else if (key === 'locations' && Array.isArray(value)) entry.locations = value.filter(v => typeof v === 'string' && new RegExp(`^(?:(?:${sourceFiles})\\.mjs|panel/index\\.html):\\d+:\\d+$`).test(v)).slice(0, 5);
+      else if (key === 'locations' && Array.isArray(value)) entry.locations = value.filter(v => typeof v === 'string' && locationRe.test(v)).slice(0, 5);
     }
     entries.push(entry);
     if (entries.length > limit) { entries.shift(); dropped++; }

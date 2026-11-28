@@ -33,7 +33,9 @@ test('one distinct count gives no groups, and nothing measured stays null', () =
   assert.deepEqual([none.requests, none.countCalls, none.pairedCalls, none.medianAvailable, none.buckets, none.projects], [2, 0, 0, null, [], []]);
   const zero = run([call({ availableToolCount: 0, toolTokenCount: 0 }), call({ availableToolCount: 5, toolTokenCount: 0 })]);
   assert.equal(zero.buckets[0].averageTokens, 0);
-  assert.equal(zero.medianAvailable, 0);
+  assert.equal(zero.medianAvailable, 2.5);
+  const even = run([...repeat(10, { availableToolCount: 10 }), ...repeat(10, { availableToolCount: 30 })]);
+  assert.equal(even.medianAvailable, 20);
 });
 
 test('projects need the stated minimum and are ranked by definition tokens per call', () => {

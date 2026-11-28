@@ -16,11 +16,14 @@ export const FINDING_RULES = {
   switch: { minimumPairs: 5, gap: 20 },          // model changes with a complete cache split; points lower on the first call after
   repetition: { minimumMeasured: 20, minimumRepeated: 5, share: 15 }, // compared reading/searching calls; repeats; percent repeated
   habits: { minimumConversations: 5, share: 70 }, // paired conversations; percent where later prompts averaged more credits than first
+  reasoning: { minimumCalls: 10, ratio: 1.5 }, // calls with complete charges per effort tier on one model; higher/lower credits ratio
 };
-export const FINDING_KINDS = ['pause', 'prompts', 'failures', 'compaction', 'late', 'switch', 'repetition', 'habits'];
+export const FINDING_KINDS = ['pause', 'prompts', 'failures', 'compaction', 'late', 'switch', 'repetition', 'habits', 'reasoning'];
 const LABELS = { pause: 'Cache reuse after pauses', prompts: 'Credits held by the heaviest prompts', failures: 'Failed tool calls in a row',
   compaction: 'Conversations compacted more than once', late: 'Input after conversations doubled', switch: 'Cache reuse after a model change',
-  repetition: 'Repeated reading and searching', habits: 'Later prompts costing more than the first' };
+  repetition: 'Repeated reading and searching', habits: 'Later prompts costing more than the first',
+  reasoning: 'Credits across effort levels on one model' };
+const EFFORT_RANKS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const num = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 const found = (kind, strength, view, data) => ({ kind, status: 'found', strength, view, ...data });
@@ -64,6 +67,7 @@ function checkCompaction(e) {
 }
 function checkLate(e) {
   const rule = FINDING_RULES.late, g = e.growthSummary, l = g?.later;
+  if (g?.modelFiltered) return missing('late', 'unavailable with a model filter');
   if (!g || !l || !num(l.input) || !num(l.totalInput) || l.totalInput <= 0 || g.measuredCalls < rule.minimumCalls || g.measuredConversations < rule.minimumConversations)
     return missing('late', `needs ${rule.minimumCalls} calls with known input in ${rule.minimumConversations} conversations`);
   const share = l.input / l.totalInput * 100;
@@ -101,10 +105,47 @@ function checkHabits(e) {
   return found('habits', share / rule.share, { section: 'patterns', topic: 'habits' },
     { laterHigher: p.laterHigher, conversations: p.conversations, share });
 }
+function checkReasoning(e) {
+  const rule = FINDING_RULES.reasoning, byModel = new Map();
+  for (const r of e.efforts || []) {
+    const rank = EFFORT_RANKS.indexOf(r.effort);
+    if (rank < 0 || !num(r.creditRequests) || r.creditRequests < rule.minimumCalls || !num(r.averageCredits) || r.averageCredits <= 0) continue;
+    let list = byModel.get(r.name);
+    if (!list) byModel.set(r.name, list = []);
+    list.push({ rank, row: r });
+  }
+  let comparable = false, best = null;
+  for (const [model, list] of byModel) {
+    if (list.length < 2) continue;
+    comparable = true;
+    list.sort((a, b) => a.rank - b.rank);
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const lower = list[i].row, higher = list[j].row;
+        const ratio = higher.averageCredits / lower.averageCredits;
+        if (!best || ratio > best.ratio || ratio === best.ratio && String(model).localeCompare(String(best.model)) < 0) {
+          best = { model, lower, higher, ratio };
+        }
+      }
+    }
+  }
+  if (!comparable) return missing('reasoning', `needs at least 2 effort levels with ${rule.minimumCalls}+ complete-charge calls on the same model`);
+  if (!best || best.ratio < rule.ratio) return clear('reasoning');
+  return found('reasoning', best.ratio / rule.ratio, { section: 'tokens', topic: 'output' }, {
+    model: best.model,
+    lowerEffort: best.lower.effort,
+    higherEffort: best.higher.effort,
+    lowerCredits: best.lower.averageCredits,
+    higherCredits: best.higher.averageCredits,
+    lowerCalls: best.lower.creditRequests,
+    higherCalls: best.higher.creditRequests,
+    ratio: best.ratio,
+  });
+}
 
 // Builds the checks from the finished sections. `e` is report.efficiency, `p` is report.promptCredits.
 export function buildFindings(e = {}, p = null) {
-  const results = [checkPause(e), checkPrompts(p), checkFailures(e), checkCompaction(e), checkLate(e), checkSwitch(e), checkRepetition(e), checkHabits(e)];
+  const results = [checkPause(e), checkPrompts(p), checkFailures(e), checkCompaction(e), checkLate(e), checkSwitch(e), checkRepetition(e), checkHabits(e), checkReasoning(e)];
   // Strongest first: how many times past its own threshold the measure is. Ties keep the order above.
   const qualified = results.filter(r => r.status === 'found').sort((a, b) => b.strength - a.strength || FINDING_KINDS.indexOf(a.kind) - FINDING_KINDS.indexOf(b.kind));
   return {

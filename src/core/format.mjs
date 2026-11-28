@@ -3,6 +3,7 @@
 const numberFormats = new Map();
 export function compact(n) {
   if (!Number.isFinite(n)) return 'Unavailable';
+  if (Object.is(n, -0)) n = 0;
   const v = Math.abs(n), sign = n < 0 ? '-' : '';
   const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
   for (let i = 0; i < units.length; i++) {
@@ -22,6 +23,7 @@ function trim(x) {
 
 export function formatNumber(value, { simplify = true, ...options } = {}) {
   if (!Number.isFinite(value)) return 'Unavailable';
+  if (Object.is(value, -0)) value = 0;
   if (simplify && Math.abs(value) >= 1000) return compact(value);
   // Small nonzero charges must not round down to a misleading zero.
   const precision = value !== 0 && Math.abs(value) < .001 ? { maximumSignificantDigits: 3 } : { maximumFractionDigits: 3 };

@@ -1,5 +1,9 @@
 [
   {
+    "version": "2.4.0",
+    "summary": "Renames the default date range from Rolling 30 to This month, deepens Efficiency views with pause-timing credits, cache-write churn, subagent credits, backend model routing, and an effort-credit finding, feeds new Efficiency metrics into AI review with fail-fast model checks, trims the bundled panel, and fixes accessibility, theme, and reliability bugs."
+  },
+  {
     "version": "2.3.0",
     "summary": "Expanded AI review cards now put the Close button cleanly in the top-right corner, lead with a plain-language What this means summary beside an accented Try this and How to tell if it helped action box, display numbers as compact scannable chips, and tuck detailed caveats into a collapsible notes drawer."
   },

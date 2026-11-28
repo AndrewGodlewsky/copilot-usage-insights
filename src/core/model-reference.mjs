@@ -35,6 +35,7 @@ export function normalizeTokenPricing(billing, unit) {
     tiers.push({ kind, maxPromptTokens: budget ?? null, rates });
   }
   if (tiers.length === 2 && (!tiers[0].maxPromptTokens || !tiers[1].maxPromptTokens || tiers[1].maxPromptTokens <= tiers[0].maxPromptTokens)) return empty('malformed', 'invalid-tier-order');
+  if (!tiers.some(t => Object.values(t.rates).some(v => v !== null))) return empty('missing', 'no-token-prices');
   return { status: tiers.every(t => Object.values(t.rates).every(v => v !== null)) ? 'available' : 'partial', reason: null,
     unit: 'AI credits', sourceUnit: unit, batchSize: p.batchSize, tiers, cacheWriteSemantics: 'unverified', tierSelection: 'unverified' };
 }
@@ -119,7 +120,8 @@ export function verifiedHistoricalModelId(row, reference) {
   return publicModelId(row?.modelId) && (reference?.catalog?.models.some(m => m.id === row.modelId) || reference?.benchmarks?.entries.some(e => e.model.copilotId === row.modelId)) ? row.modelId : null;
 }
 
-export function serializeReviewEvidence(data, maxBytes, spacing = 2) {
+export function serializeReviewEvidence(input, maxBytes, spacing = 2) {
+  const data = structuredClone(input);
   const encoder = new TextEncoder();
   let json = JSON.stringify(data, null, spacing);
   while (encoder.encode(json).byteLength > maxBytes) {
@@ -142,6 +144,11 @@ export function serializeReviewEvidence(data, maxBytes, spacing = 2) {
       for (const entry of b.entries) if (entry.availability === 'available' && !ref.catalog?.models.some(m => m.id === entry.model.copilotId && m.availability === 'available')) entry.availability = 'unknown';
     }
     json = JSON.stringify(data, null, spacing);
+  }
+  if (input && typeof input === 'object') {
+    if (data.modelReference !== undefined) input.modelReference = data.modelReference;
+    if (data.history !== undefined) input.history = data.history;
+    if (data.models !== undefined) input.models = data.models;
   }
   return json;
 }

@@ -1,5 +1,6 @@
 import { dayOfMs, dayKey } from './query.mjs';
 import { recordedEffort } from './model-settings.mjs';
+import { isCompleteCacheSplit, isCompleteCharge } from './stats.mjs';
 
 export function summarizeInteractions(records, activity, query, start, end, now, copilotSessions) {
   const result = { prompts: 0, promptSamples: 0, promptSessions: 0, averagePromptChars: null, averagePromptsPerSession: null,
@@ -50,10 +51,10 @@ function addMeasurement(b, r) {
     // Output speed needs both counts from the same call.
     if (r.duration > 0 && known(r.output)) { b.paceRequests++; b.paceOutput += r.output; b.paceDuration += r.duration; }
   }
-  if (r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal) {
+  if (isCompleteCacheSplit(r)) {
     b.cacheRequests++; b.cacheInput += r.inputTotal; b.cacheRead += r.cacheRead; b.cacheWrite += r.cacheWrite;
   }
-  if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') {
+  if (isCompleteCharge(r)) {
     b.creditRequests++;
     // An exact integer total: a BigInt is involved only if the sum would leave the safe range.
     if (b.creditNano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { b.creditWide += BigInt(b.creditNano); b.creditNano = 0; }
@@ -132,13 +133,13 @@ function finishTrend(days) {
     mergeMeasurement(total, b);
   }
   flush();
-  return { unit: weekly ? 'week' : 'day', points };
+  return { unit: weekly ? 'week' : 'day', points: points.slice(-TREND_POINTS) };
 }
 
 export function createEfficiencyAccumulator() {
   const total = measurement(), models = new Map(), groups = [], bySession = new Map(), NONE = Symbol('none');
   const efforts = new Map(), days = new Map();
-  let model = NONE, modelTotal, project = NONE, session = NONE, sessionGroups, trendDay = NONE, dayTotal;
+  let model = NONE, modelTotal, effortModel = NONE, effortVal = NONE, effortBucket, project = NONE, session = NONE, sessionGroups, trendDay = NONE, dayTotal;
   const initiators = new Map(['user', 'agent', 'sub-agent', 'unknown'].map(id => [id, measurement()])), delegatedModels = new Map();
   return {
     add(r, day = dayOfMs(r.ms)) {
@@ -154,9 +155,14 @@ export function createEfficiencyAccumulator() {
       const rawModelId = typeof r.modelId === 'string' && r.modelId.length <= 128 && r.modelId ? r.modelId : null;
       if (modelTotal.requests === 1) modelTotal.modelId = rawModelId;
       else if (modelTotal.modelId !== rawModelId) modelTotal.modelId = null;
-      const effort = recordedEffort(r.effort), effortKey = JSON.stringify([r.model, effort]);
-      if (!efforts.has(effortKey)) efforts.set(effortKey, { name: r.model, effort, ...measurement() });
-      addMeasurement(efforts.get(effortKey), r);
+      const effort = recordedEffort(r.effort);
+      if (r.model !== effortModel || effort !== effortVal) {
+        effortModel = r.model; effortVal = effort;
+        const effortKey = JSON.stringify([r.model, effort]);
+        effortBucket = efforts.get(effortKey);
+        if (!effortBucket) efforts.set(effortKey, effortBucket = { name: r.model, effort, ...measurement() });
+      }
+      addMeasurement(effortBucket, r);
       addMeasurement(initiators.get(initiators.has(r.initiator) ? r.initiator : 'unknown'), r);
       if (r.initiator === 'sub-agent') {
         if (!delegatedModels.has(r.model)) delegatedModels.set(r.model, measurement());

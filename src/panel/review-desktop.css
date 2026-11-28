@@ -4,7 +4,7 @@
 #review-animation-toggle{font-size:calc(10px * var(--text-scale));color:var(--muted-fg);background:transparent;border:0;padding:4px 8px}
 #review-animation-toggle:hover{color:var(--fg);text-decoration:underline;text-underline-offset:3px}
 .review-desktop{--rd-paper:#27313d;--rd-paper-back:#202a36;--rd-bezel:#353b43;--rd-bezel-edge:#4c5663;--rd-screen:#111a26;--rd-ink:#7c8b9e;--rd-faint:#424f60;--rd-blue:#74b5ed;--rd-loop:9s;display:block;width:min(100%,310px);height:auto;overflow:visible}
-.light .review-desktop{--rd-paper:#f7fafc;--rd-paper-back:#e8edf2;--rd-bezel:#c1cbd5;--rd-bezel-edge:#8193a3;--rd-screen:#e4ecf2;--rd-ink:#657987;--rd-faint:#b6c4cf;--rd-blue:#00686b}
+html.light .review-desktop{--rd-paper:#f7fafc;--rd-paper-back:#e8edf2;--rd-bezel:#c1cbd5;--rd-bezel-edge:#8193a3;--rd-screen:#e4ecf2;--rd-ink:#657987;--rd-faint:#b6c4cf;--rd-blue:#00686b}
 .review-desktop .rd-ink{fill:var(--rd-ink)}.review-desktop .rd-faint{fill:var(--rd-faint)}.review-desktop .rd-blue{fill:var(--rd-blue)}.review-desktop .rd-crisp{shape-rendering:crispEdges}
 .review-desktop .rd-folder-base{fill:var(--rd-paper);stroke:var(--rd-ink);stroke-width:1.5}
 .review-desktop .rd-folder-front{fill:var(--rd-faint);stroke:var(--rd-ink);stroke-width:1.5;transform-origin:108px 112px;animation:review-desktop-folder var(--rd-loop) ease-in-out infinite}

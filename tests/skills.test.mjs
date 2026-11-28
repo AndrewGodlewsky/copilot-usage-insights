@@ -335,8 +335,8 @@ test('skill project rows reconcile uses, triggers and failures with distinct ses
   assert.equal(row.sessions, 2, 'one session visiting two projects still counts once in the parent');
   assert.equal(row.projects, 2);
   assert.deepEqual(row.projectRows, [
-    { name: 'project-one', invocations: 3, failures: 1, triggers: { manual: 2, agent: 1, preloaded: 0, unknown: 0 }, sessions: 2, lastUsed: timestamp },
-    { name: 'project-two', invocations: 2, failures: 0, triggers: { manual: 0, agent: 0, preloaded: 1, unknown: 1 }, sessions: 1, lastUsed: timestamp },
+    { name: 'project-one', invocations: 3, failures: 1, failureRate: 25, triggers: { manual: 2, agent: 1, preloaded: 0, unknown: 0 }, sessions: 2, lastUsed: timestamp },
+    { name: 'project-two', invocations: 2, failures: 0, failureRate: 0, triggers: { manual: 0, agent: 0, preloaded: 1, unknown: 1 }, sessions: 1, lastUsed: timestamp },
   ]);
   for (const parent of result.skills.rows) {
     for (const key of ['invocations', 'failures']) assert.equal(parent.projectRows.reduce((n, p) => n + p[key], 0), parent[key]);

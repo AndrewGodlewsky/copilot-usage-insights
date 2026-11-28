@@ -3,19 +3,15 @@
 // conversations grow a lot, and how much of all input came after a conversation had doubled its
 // starting input. Subagent calls cannot be ordered within a conversation and stay out. It measures
 // size only: the logs do not record why a conversation needed its history.
+import { isCompleteCacheSplit, isCompleteCharge, medianOf, createNanoTotal } from './stats.mjs';
+
 const GROWTH_POSITIONS = [1, 5, 10, 20];
 // A position needs this many conversations before a typical value is reported.
 const GROWTH_MINIMUM = 3;
 const GROWTH_STRIDE = 5;
 const growthCount = value => Number.isFinite(value) && value >= 0;
-function growthMiddle(values) {
-  if (!values.length) return null;
-  values.sort((a, b) => a - b);
-  const half = values.length >> 1;
-  return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2;
-}
 
-export function createGrowthSummary() {
+export function createGrowthSummary(context = {}) {
   // Five numbers per call in one flat list per conversation: time, input (-1 unknown), credits in
   // nano units (-1 unless the charge is complete), cache read (-1 unless the split is complete),
   // and 1 when the user started a prompt with the call. Calls usually arrive in order.
@@ -30,9 +26,9 @@ export function createGrowthSummary() {
         sessionId = r.sessionId; session = sessions.get(sessionId);
         if (!session) sessions.set(sessionId, session = { calls: [], ordered: true, latest: -Infinity });
       }
-      const split = r.cacheDetailsReported !== false && growthCount(r.inputTotal) && growthCount(r.cacheRead) && growthCount(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal;
+      const split = isCompleteCacheSplit(r);
       session.calls.push(r.ms, growthCount(r.inputTotal) ? r.inputTotal : -1,
-        Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete' ? r.nanoAiu : -1,
+        isCompleteCharge(r) ? r.nanoAiu : -1,
         split ? r.cacheRead : -1, r.initiator === 'user' ? 1 : 0);
       if (r.ms < session.latest) session.ordered = false; else session.latest = r.ms;
     },
@@ -40,7 +36,8 @@ export function createGrowthSummary() {
       const at = GROWTH_POSITIONS.map(() => ({ inputs: [], ratios: [] }));
       let conversations = 0, measuredConversations = 0, grew2 = 0, grew5 = 0;
       let measuredInput = 0, lateInput = 0, lateCalls = 0, measuredCalls = 0, lateConversations = 0;
-      let chargeCalls = 0, lateChargeCalls = 0, nano = 0, lateNano = 0, wideAll = 0n, wideLate = 0n;
+      let chargeCalls = 0, lateChargeCalls = 0;
+      const allNano = createNanoTotal(), lateNano = createNanoTotal();
       let lateSplitCalls = 0, lateSplitInput = 0, lateSplitRead = 0;
       for (const { calls: list, ordered } of sessions.values()) {
         const count = list.length / GROWTH_STRIDE;
@@ -74,13 +71,8 @@ export function createGrowthSummary() {
           }
           if (charge >= 0) {
             chargeCalls++;
-            if (nano > Number.MAX_SAFE_INTEGER - charge) { wideAll += BigInt(nano); nano = 0; }
-            nano += charge;
-            if (doubled) {
-              lateChargeCalls++;
-              if (lateNano > Number.MAX_SAFE_INTEGER - charge) { wideLate += BigInt(lateNano); lateNano = 0; }
-              lateNano += charge;
-            }
+            allNano.add(charge);
+            if (doubled) { lateChargeCalls++; lateNano.add(charge); }
           }
         }
         if (lateHere) lateConversations++;
@@ -90,17 +82,17 @@ export function createGrowthSummary() {
           if (peak >= start * 5) grew5++;
         }
       }
-      const allCredits = (wideAll ? Number(wideAll + BigInt(nano)) : nano) / 1e9, lateCredits = (wideLate ? Number(wideLate + BigInt(lateNano)) : lateNano) / 1e9;
       return {
+        modelFiltered: !!context.query?.models,
         mainCalls, conversations, measuredCalls, measuredConversations, grew2, grew5, minimumConversations: GROWTH_MINIMUM,
         positions: GROWTH_POSITIONS.map((prompt, i) => {
           const { inputs, ratios } = at[i];
-          return { prompt, conversations: inputs.length, input: inputs.length >= GROWTH_MINIMUM ? growthMiddle(inputs) : null,
-            multiple: prompt === 1 ? (inputs.length >= GROWTH_MINIMUM ? 1 : null) : ratios.length >= GROWTH_MINIMUM ? growthMiddle(ratios) : null,
+          return { prompt, conversations: inputs.length, input: inputs.length >= GROWTH_MINIMUM ? medianOf(inputs) : null,
+            multiple: prompt === 1 ? (inputs.length >= GROWTH_MINIMUM ? 1 : null) : ratios.length >= GROWTH_MINIMUM ? medianOf(ratios) : null,
             multipleConversations: prompt === 1 ? inputs.length : ratios.length };
         }),
         later: { calls: lateCalls, conversations: lateConversations, input: measuredCalls ? lateInput : null, totalInput: measuredCalls ? measuredInput : null,
-          chargeCalls, lateChargeCalls, credits: chargeCalls ? lateCredits : null, totalCredits: chargeCalls ? allCredits : null,
+          chargeCalls, lateChargeCalls, credits: chargeCalls ? lateNano.credits() : null, totalCredits: chargeCalls ? allNano.credits() : null,
           splitCalls: lateSplitCalls, splitShare: lateSplitInput > 0 ? lateSplitRead / lateSplitInput * 100 : null },
       };
     },

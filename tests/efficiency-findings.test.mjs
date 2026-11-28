@@ -16,6 +16,10 @@ const growth = (input, total = 1000, calls = 20, conversations = 3) => ({ growth
 const change = (before, after, pairs = 5, modelFiltered = false) => ({ changeDetail: { modelFiltered, next: { cachePairs: pairs, cacheBefore: before, cacheAfter: after, lower: 4 } } });
 const repetition = (repeated, measured = 40, afterReading = 0) => ({ repetition: { reading: { measured, repeated, share: measured ? repeated / measured * 100 : null, top: repeated ? [{ name: 'view', server: '', mcpTool: '', repeated }] : [] }, compaction: { afterReading } } });
 const habits = (laterHigher, conversations = 10, reason) => ({ habits: reason ? { reason } : { paired: { conversations, laterHigher } } });
+const reasoning = (highCredits, lowCredits = 1, calls = 10, model = 'Alpha') => ({ efforts: [
+  { name: model, effort: 'low', requests: calls, creditRequests: calls, averageCredits: lowCredits },
+  { name: model, effort: 'high', requests: calls, creditRequests: calls, averageCredits: highCredits },
+] });
 
 test('each finding kind appears at its threshold and not just below it', () => {
   const cases = [
@@ -27,6 +31,7 @@ test('each finding kind appears at its threshold and not just below it', () => {
     ['switch', (a, b) => [change(a, b), null], [70, 50], [70, 50.1], [90, 10]],
     ['repetition', v => [repetition(v, 40), null], [6], [5], [16]],
     ['habits', v => [habits(v, 10), null], [7], [6], [10]],
+    ['reasoning', v => [reasoning(v), null], [1.5], [1.49], [3.0]],
   ];
   for (const [kind, make, at, below, above] of cases) {
     const [e, p] = make(...at);
@@ -53,12 +58,13 @@ test('minimum samples decide between clear and missing, and missing says why', (
   assert.equal(status(buildFindings(repetition(10, 19)), 'repetition'), 'missing');
   assert.equal(status(buildFindings(repetition(4, 20)), 'repetition'), 'clear');
   assert.equal(status(buildFindings(habits(4, 4)), 'habits'), 'missing');
+  assert.equal(status(buildFindings(reasoning(3, 1, 9)), 'reasoning'), 'missing');
   assert.match(buildFindings(habits(0, 0, 'model-filter')).missing.find(m => m.kind === 'habits').reason, /model filter/);
   const filtered = buildFindings(change(90, 10, 9, true));
   assert.match(filtered.missing.find(m => m.kind === 'switch').reason, /model filter/);
   // An empty report is all missing, never all clear and never an error.
   const none = buildFindings({}, null);
-  assert.equal(none.qualified, 0); assert.equal(none.clear.length, 0); assert.equal(none.missing.length, 8);
+  assert.equal(none.qualified, 0); assert.equal(none.clear.length, 0); assert.equal(none.missing.length, 9);
   assert.ok(none.missing.every(m => m.reason && m.label));
   // A null measure is not zero: a missing share must not read as a gap.
   assert.equal(status(buildFindings({ cacheTiming: { situations: [{ id: 'under5', calls: 20, share: 80 }, { id: 'over60', calls: 20, share: null }] } }), 'pause'), 'missing');
@@ -116,7 +122,7 @@ test('the panel shows qualifying findings with evidence, a caveat, an experiment
   assert.match(html, /Less input is reused from cache after long pauses/);
   assert.match(html, /data-finding-section="tokens" data-finding-topic="cache"/);
   assert.match(html, /data-finding-section="patterns" data-finding-topic="recovery"/);
-  assert.match(html, /TRY THIS/);
+  assert.match(html, /Try this/);
   assert.match(html, /What to compare afterward/);
   assert.match(html, /Showing 5 of 6 that qualified; 1 more qualified/);
   assert.match(html, /not targets/);

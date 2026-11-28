@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { reviewUsageHome } from './settings.mjs';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { normalizeUsage } from '../core/copilot.mjs';
@@ -110,7 +110,7 @@ export async function reconcileUsageJournal(path, recorder) {
         } catch  {
             throw new Error('Unable to read usage accounting journal.');
         }
-        if (['session.usage_record', 'assistant.message'].includes(object(event)?.type)) recorder.record(event);
+        if (['session.usage_record', 'assistant.usage', 'assistant.message'].includes(object(event)?.type)) recorder.record(event);
     };
     try {
         for await (const chunk of createReadStream(path, {
@@ -134,11 +134,16 @@ export async function reconcileUsageJournal(path, recorder) {
 }
 async function replace(file, content) {
     const temporary = `${file}.${randomUUID()}.tmp`;
-    await writeFile(temporary, content, {
-        encoding: 'utf8',
-        mode: 0o600
-    });
-    await rename(temporary, file);
+    try {
+        await writeFile(temporary, content, {
+            encoding: 'utf8',
+            mode: 0o600,
+            flag: 'wx'
+        });
+        await rename(temporary, file);
+    } finally {
+        await rm(temporary, { force: true }).catch(() => {});
+    }
 }
 export const usageHome = reviewUsageHome;
 export async function createUsageRecorder(sessionId, root = usageHome()) {

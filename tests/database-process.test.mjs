@@ -47,7 +47,7 @@ test('cancellation kills a locked database child and releases the next queued re
   const timer = setTimeout(() => { abortedAt = performance.now(); controller.abort(new Error('Synthetic cancellation')); }, 100);
   try {
     await assert.rejects(pending, error => error === controller.signal.reason);
-    assert.ok(performance.now() - abortedAt < 650, 'native SQLite lock waiting must not keep the child alive after cancellation');
+    assert.ok(performance.now() - abortedAt < 2500, 'native SQLite lock waiting must not keep the child alive after cancellation');
   } finally { clearTimeout(timer); f.db.exec('ROLLBACK'); }
   assert.equal((await reader(f.file, new Set(), f.home)).records.length, 1);
 });

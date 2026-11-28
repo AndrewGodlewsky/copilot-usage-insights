@@ -11,7 +11,7 @@ export async function registerCanvas({ createCanvas, joinSession, startServer = 
   const readIntegrations = createIntegrationReader(() => session);
   const readContext = createContextReader(() => session);
   const enqueue = fn => { const next = queue.then(fn); queue = next.catch(() => {}); return next; };
-  const dispose = () => enqueue(async () => { diagnostics.record('info', 'canvas.dispose', { activeCanvases: instances.size }); const servers = [...instances.values()]; instances.clear(); await Promise.all(servers.map(server => server.close())); });
+  const dispose = () => enqueue(async () => { diagnostics.record('info', 'canvas.dispose', { activeCanvases: instances.size }); const servers = [...instances.values()]; instances.clear(); await Promise.allSettled(servers.map(server => server.close())); });
   session = await diagnostics.measure('extension.join', {}, () => joinSession({
     tools: [{
       name: 'open_usage_insights',

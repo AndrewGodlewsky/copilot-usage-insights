@@ -143,6 +143,7 @@ test('review project alias leaves working repositories and other helper projects
 test('completed reviews invalidate a previously cached report and opaque call IDs count once', async t => {
   let home;
   const service = {
+    async catalog() { return { models: [{ id: 'fixture-model', label: 'Fixture', reasoningEfforts: [] }], reference: null, token: 'tok' }; },
     async review() {
       const writer = await createUsageRecorder(firstId, home);
       const usage = receipt(firstId, 'live', { accounting: { sourceSessionId: firstId,
@@ -150,14 +151,15 @@ test('completed reviews invalidate a previously cached report and opaque call ID
       writer.record({ ...usage, type: 'assistant.usage', data: usage.data.usage });
       writer.record({ ...usage, id: 'durable' });
       await writer.flush();
-      return { text: 'Fixture review', model: 'fixture-model' };
+      return { cards: [], emptyReason: 'Fixture review', model: 'fixture-model', passes: 1, samples: 0, guidanceVersion: '1.0.0' };
     },
     async close() {},
   };
   const f = await fixture(t, 'override', service); home = f.home;
-  await f.settings.set({ reviewModel: 'fixture-model' });
+  await f.settings.set({ reviewModel: 'fixture-model', reviewReasoning: 'default', reviewAllowSamples: false });
   assert.equal((await f.request()).totals.requests, 0);
-  await f.request('review.run', { prompt: 'Synthetic statistics', expectedModel: 'fixture-model' });
+  const prepared = await f.request('review.prepare', { filters: { range: 'all' } });
+  await f.request('review.analyze', { snapshotId: prepared.id, expectedModel: 'fixture-model', expectedReasoning: 'default', allowSamples: false });
   for (const refresh of [false, true]) {
     const report = await f.request('usage.report', { range: 'all' }, refresh);
     assert.equal(report.totals.requests, 1);
@@ -174,6 +176,7 @@ for (const outcome of ['failed', 'cancelled']) test(`${outcome} reviews expose a
   let home, ready;
   const started = new Promise(resolve => { ready = resolve; });
   const service = {
+    async catalog() { return { models: [{ id: 'fixture-model', label: 'Fixture', reasoningEfforts: [] }], reference: null, token: 'tok' }; },
     async review(input, signal) {
       const writer = await createUsageRecorder(firstId, home);
       writer.record(receipt(firstId, 'billed-call')); await writer.flush();
@@ -186,9 +189,10 @@ for (const outcome of ['failed', 'cancelled']) test(`${outcome} reviews expose a
     cancel() {}, async close() {},
   };
   const f = await fixture(t, 'override', service); home = f.home;
-  await f.settings.set({ reviewModel: 'fixture-model' });
+  await f.settings.set({ reviewModel: 'fixture-model', reviewReasoning: 'default', reviewAllowSamples: false });
   assert.equal((await f.request()).totals.requests, 0);
-  const run = f.request('review.run', { prompt: 'Synthetic statistics', expectedModel: 'fixture-model' }, false, 500);
+  const prepared = await f.request('review.prepare', { filters: { range: 'all' } });
+  const run = f.request('review.analyze', { snapshotId: prepared.id, expectedModel: 'fixture-model', expectedReasoning: 'default', allowSamples: false }, false, 500);
   if (outcome === 'cancelled') { await started; await f.request('review.cancel', {}); }
   assert.match((await run).error, outcome === 'cancelled' ? /cancelled/i : /could not complete/i);
   assert.equal((await f.request()).totals.credits, 0.25);

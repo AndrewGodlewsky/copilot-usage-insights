@@ -34,19 +34,26 @@ function readDatabaseInProcess(file, receiptSessions, source, { waitForLock = tr
   return new Promise((resolve, reject) => {
     const entry = fileURLToPath(new URL('./copilot-db-process.mjs', import.meta.url));
     const embedded = /^(copilot|copilot-runtime)(\.exe)?$/i.test(path.basename(process.execPath));
-    const bootstrap = process.argv.find(arg => path.basename(arg) === 'extension_bootstrap.mjs') || 'extension_bootstrap.mjs';
+    const bootstrap = process.argv.find(arg => path.isAbsolute(arg) && path.basename(arg) === 'extension_bootstrap.mjs');
+    if (embedded && !bootstrap) { reject(failure()); return; }
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => /^(PATH|PATHEXT|SYSTEMROOT|WINDIR|TEMP|TMP|USERPROFILE|HOME|LOCALAPPDATA|APPDATA|COPILOT_SDK_PATH)$/i.test(key)));
     Object.assign(env, { EXTENSION_PATH: entry, COPILOT_EXTENSION_PARENT_PID: String(process.pid), COPILOT_EXTENSION_SANDBOXED: '0' });
     const child = spawn(process.execPath, embedded ? [bootstrap] : ['--max-old-space-size=1024', entry], { env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     const result = { records: [], coverageEntries: [], skillExcludedSessions: [], sessionNames: [] };
-    let pending = '', bytes = 0, error, complete = false, summary = false;
-    const stop = reason => { error ||= reason; child.kill('SIGKILL'); };
+    let pending = '', bytes = 0, error, complete = false, summary = false, settled = false;
+    const finish = (err, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer); signal?.removeEventListener('abort', abort);
+      if (err) reject(err); else resolve(val);
+    };
+    const stop = reason => { error ||= reason; try { child.kill('SIGKILL'); } catch {} };
     const abort = () => stop(signal.reason);
     const timer = setTimeout(() => stop(failure('Usage database read timed out. Journals remain included; refresh to retry.', 'ETIMEDOUT')), timeoutMs);
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
-    child.once('error', reason => { error ||= reason; });
-    child.stdin.on('error', reason => stop(reason));
+    child.once('error', reason => { error ||= reason; if (!child.pid) finish(error); });
+    child.stdin.on('error', reason => { if (reason?.code !== 'EPIPE') stop(reason); });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => {
       if (error) return;
@@ -65,7 +72,10 @@ function readDatabaseInProcess(file, receiptSessions, source, { waitForLock = tr
             stop(failed); return;
           }
           if (complete) throw failure();
-          if (message.summary && !summary) { Object.assign(result, message.summary); summary = true; }
+          if (message.summary && typeof message.summary === 'object' && !Array.isArray(message.summary) && !summary) {
+            for (const key of ['unclassified', 'invalid', 'warning']) if (Object.hasOwn(message.summary, key)) result[key] = message.summary[key];
+            summary = true;
+          }
           else if (summary && fields.has(message.field) && Array.isArray(message.items) && message.items.length <= 1000) result[message.field].push(...message.items);
           else if (summary && message.done === true) complete = true;
           else throw failure();
@@ -74,10 +84,9 @@ function readDatabaseInProcess(file, receiptSessions, source, { waitForLock = tr
       if (Buffer.byteLength(pending) > MAX_LINE) stop(failure('A usage database result exceeded the reader limit. Journals remain included.', 'EFBIG'));
     });
     child.once('close', code => {
-      clearTimeout(timer); signal?.removeEventListener('abort', abort);
-      if (error) reject(error);
-      else if (code !== 0 || !complete || pending.length) reject(failure());
-      else resolve(result);
+      if (error) finish(error);
+      else if (code !== 0 || !complete || pending.length) finish(failure());
+      else finish(null, result);
     });
     child.stdin.end(input);
   });

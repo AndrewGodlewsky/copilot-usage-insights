@@ -16,6 +16,9 @@
   --q2:#256abf;
   --q3:#3987e5;
   --q4:#86b6ef;
+  --accent:#74b5ed;
+  --link:#7ab7f5;
+  --link-visited:#b794f6;
   color-scheme:dark;
 }
 
@@ -30,6 +33,9 @@ html.light {
   --q2:#6da7ec;
   --q3:#2a78d6;
   --q4:#184f95;
+  --accent:#00686b;
+  --link:#0b5cad;
+  --link-visited:#5e35b1;
   color-scheme:light;
 }
 
@@ -88,8 +94,31 @@ button:hover {
   background:var(--muted);
 }
 
+a {
+  color:var(--link);
+  text-underline-offset:3px;
+}
+
+a:visited {
+  color:var(--link-visited);
+}
+
+a:hover {
+  text-decoration:underline;
+}
+
+a:focus-visible {
+  outline:2px solid var(--s1);
+  outline-offset:2px;
+  border-radius:3px;
+}
+
 button:disabled {
   opacity:.55;
+  cursor:default;
+}
+
+button[aria-busy=true] {
   cursor:wait;
 }
 
@@ -387,10 +416,6 @@ label select {
 
 .q4 {
   fill:var(--q4);
-}
-
-.ring-bg {
-  stroke:var(--muted);
 }
 
 .legend {
@@ -1074,25 +1099,6 @@ td:first-child .cell-text {
   margin:16px 0 8px;
 }
 
-.request-metrics {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:14px 20px;
-  margin:0;
-}
-
-.request-metrics dt {
-  font-size:calc(11px * var(--text-scale));
-  color:var(--muted-fg);
-}
-
-.request-metrics dd {
-  margin:4px 0 0;
-  white-space:normal;
-  overflow-wrap:anywhere;
-  font-variant-numeric:tabular-nums;
-}
-
 .request-prompt {
   font:inherit;
   white-space:pre-wrap;
@@ -1151,8 +1157,8 @@ td:first-child .cell-text {
 .efficiency-kicker {
   display:block;
   color:var(--muted-fg);
-  font-size:calc(10px * var(--text-scale));
-  letter-spacing:.08em;
+  font-size:calc(11px * var(--text-scale));
+  letter-spacing:.02em;
   font-weight:600;
   margin-bottom:7px;
 }
@@ -1315,25 +1321,6 @@ td:first-child .cell-text {
   margin:10px 0 0;
   color:var(--muted-fg);
   font-size:calc(12px * var(--text-scale));
-}
-
-.efficiency-comparison {
-  padding:16px;
-  background:var(--card);
-}
-
-.efficiency-comparison>summary {
-  color:var(--fg);
-  font-size:calc(13px * var(--text-scale));
-  font-weight:600;
-}
-
-.efficiency-comparison>summary span {
-  font-weight:400;
-}
-
-.efficiency-comparison .table-wrap {
-  margin-top:15px;
 }
 
 .efficiency-context>p {
@@ -1522,10 +1509,6 @@ html.light .support-footer button,html.light .support-footer a {
 
 .efficiency-review li {
   margin-block:10px;
-}
-
-#efficiency-inspect-instructions {
-  margin-top:12px;
 }
 
 #efficiency-reliability li {
@@ -2187,7 +2170,7 @@ html.light .token-topic-stops button[aria-current=true] {
   font-size:calc(12px * var(--text-scale));
 }
 
-.light .efficiency-development {
+html.light .efficiency-development {
   border-color:#ac3441;
   background:#ac344108;
 }
@@ -2207,16 +2190,20 @@ html.light .token-topic-stops button[aria-current=true] {
 }
 
 .efficiency-review {
-  --review-accent:#74b5ed;
+  --review-accent:var(--accent);
 }
 
-.light .efficiency-review {
-  --review-accent:#00686b;
+html.light .efficiency-review {
+  --review-accent:var(--accent);
 }
 
 .efficiency-review>header {
   flex-wrap:nowrap;
   align-items:flex-start;
+}
+
+.efficiency-review>header>div {
+  min-width:0;
 }
 
 .review-settings-gear {
@@ -2234,10 +2221,6 @@ html.light .token-topic-stops button[aria-current=true] {
   stroke:currentColor;
   stroke-width:1.6;
   stroke-linejoin:round;
-}
-
-.review-intro {
-  margin-bottom:16px;
 }
 
 .review-actions {
@@ -2329,7 +2312,7 @@ html.light .token-topic-stops button[aria-current=true] {
   align-items:stretch;
 }
 
-.light .review-card-grid {
+html.light .review-card-grid {
   --review-accent:#00686b;
   --review-positive:#137953;
   --review-opportunity:#9a5f00;
@@ -3346,8 +3329,12 @@ html.light #refresh[data-refresh-state=busy],html.light #refresh[data-refresh-st
   max-width:none;
 }
 
-.activity-card,.activity-card button {
+.activity-card {
   cursor:default;
+}
+
+.activity-card .chart-expand {
+  cursor:pointer;
 }
 
 .activity-card:hover h2 {
@@ -3489,7 +3476,7 @@ html.light #refresh[data-refresh-state=busy],html.light #refresh[data-refresh-st
   container-type:inline-size;
 }
 
-.light #pattern-habits-panel {
+html.light #pattern-habits-panel {
   --conversation-accent:#00686b;
   --conversation-purple:#7351a8;
   --conversation-amber:#946116;
@@ -4932,4 +4919,13 @@ html.light #pattern-growth-panel {
 
 .repetition-caption+.token-bar-list {
   margin-top:8px;
+}
+
+@media (max-width:720px) {
+  .table-wrap th:first-child,.table-wrap td:first-child {
+    position:sticky;
+    left:0;
+    background:var(--card);
+    z-index:1;
+  }
 }

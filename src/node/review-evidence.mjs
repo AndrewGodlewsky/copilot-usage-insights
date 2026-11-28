@@ -26,7 +26,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const ownRoot = sourceKey(reviewUsageHome());
   const excluded = new Set(scan.records.filter(r => r.reviewOrigin || r.source && sourceKey(r.source) === ownRoot).map(r => r.sessionId));
   const activity = { ...scan, cache: {} };
-  for (const key of ['skills', 'tools', 'interactions', 'promptEvents']) activity[key] = (scan[key] || []).filter(e => !excluded.has(e.sessionId));
+  for (const key of ['skills', 'tools', 'interactions', 'promptEvents', 'modelChanges', 'compactionEvents']) activity[key] = (scan[key] || []).filter(e => !excluded.has(e.sessionId));
   let records = scan.records.filter(r => !excluded.has(r.sessionId));
   const selected = selectEnvironment(records, activity, filters.environment);
   records = selected.records;
@@ -102,7 +102,7 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   }
   if (conversations?.delivery) {
     const d = conversations.delivery;
-    add('conversation-user-stops', 'prompts-sessions', 'Recorded user stops', d.userStops, 'stop events', d.userStops, d.userStops,
+    add('conversation-user-stops', 'prompts-sessions', 'Recorded user stops', d.userStops, 'stop events', d.userStops, Math.max(d.userStops, d.prompts || d.userStops),
       'Explicit local-user abort events, counted on their own dates. Not necessarily caused by another prompt; not failed prompts or wasted tokens. Other abort reasons excluded. Sources without stop metadata may omit them.');
   }
   for (const row of e.byInitiator || []) if (row.id === 'sub-agent') add('delegated', 'delegation', 'Delegated model turns', row.requests, 'turns', row.requests, s.requests, 'Explicit sub-agent initiator only. Unknown initiators remain unknown.');
@@ -114,12 +114,50 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
     add(`model-cache-${n + 1}`, 'context-cache', `Model ${n + 1}: cache reuse`, row.cacheHitRate, '%', row.cacheRequests, row.requests, '', `${row.name}: cache reuse`);
   }
   for (const [n, row] of report.skills.rows.slice(0, 6).entries()) {
+    const totalEvents = row.invocations + row.failures;
+    const verifiedEvents = Math.max(0, totalEvents - (row.unattributedUses || 0) - (row.unattributedFailures || 0));
     const note = 'Recorded successful loads and explicit failed loads only, not skill task outcomes or per-skill tokens. Ignores model filter.' + ` Provider unverified for ${row.unattributedUses || 0} uses and ${row.unattributedFailures || 0} failures; these activity counts are not attributed charges.`;
-    add(`skill-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: uses`, row.invocations, 'loads', row.invocations + row.failures, row.invocations + row.failures, note, `${row.name}: uses`);
-    add(`skill-fail-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: failed loads`, row.failures, 'failures', row.invocations + row.failures, row.invocations + row.failures, note, `${row.name}: failed loads`);
+    // When provider attribution is incomplete, reflect verified count in samples without dropping the evidence row.
+    const skillSamples = verifiedEvents > 0 ? verifiedEvents : Math.min(totalEvents, 1);
+    add(`skill-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: uses`, row.invocations, 'loads', skillSamples, totalEvents, note, `${row.name}: uses`);
+    add(`skill-fail-${n + 1}`, 'skills-instructions', `Skill ${n + 1}: failed loads`, row.failures, 'failures', skillSamples, totalEvents, note, `${row.name}: failed loads`);
   }
   for (const [n, row] of report.mcp.rows.slice(0, 6).entries()) {
     add(`mcp-${n + 1}`, 'tools-mcp', `Server ${n + 1}: known failure rate`, row.successes + row.failures ? row.failures / (row.successes + row.failures) * 100 : null, '%', row.successes + row.failures, row.calls, 'Unknown outcomes excluded; tool failure does not diagnose connectivity.', `${row.name}: known failure rate`);
+  }
+  const cacheTiming = e.cacheTiming;
+  if (cacheTiming?.measuredCalls > 0) {
+    const timingLabels = { under5: 'Under 5 min', mid: '5–60 min', over60: 'Over 60 min', modelChange: 'After model change' };
+    const values = ['under5', 'mid', 'over60', 'modelChange']
+      .map(id => cacheTiming.situations?.find(r => r.id === id))
+      .filter(r => r && r.calls > 0 && measured(r.share))
+      .map(r => ({ label: timingLabels[r.id], value: r.share }));
+    if (values.length >= 2) {
+      evidence.push({ id: 'cache-by-timing', topic: 'context-cache', label: 'Cache reuse by pause or switch', template: 'comparison', unit: '%', values,
+        samples: cacheTiming.measuredCalls, total: cacheTiming.mainCalls,
+        limitation: 'Main-conversation calls with a complete cache split. Timing and switches do not prove why input was or was not read from cache.' });
+    }
+  }
+  const compaction = e.compaction;
+  if (compaction?.compactions > 0) {
+    add('compaction-events', 'context-cache', 'Recorded context compactions', compaction.compactions, 'compactions', compaction.sessions, Math.max(compaction.sessions, report.totals.sessions || compaction.sessions),
+      `Across ${compaction.sessions} conversations (${compaction.repeatSessions || 0} compacted more than once). Compaction is a normal way long tasks continue, not proof of waste.`);
+    if (compaction.next?.cachePairs > 0 && measured(compaction.next.cacheBefore) && measured(compaction.next.cacheAfter)) {
+      evidence.push({ id: 'compaction-cache-drop', topic: 'context-cache', label: 'Cache reuse around compaction', template: 'comparison', unit: '%',
+        values: [{ label: 'Last call before', value: compaction.next.cacheBefore }, { label: 'First call after', value: compaction.next.cacheAfter }],
+        samples: compaction.next.cachePairs, total: compaction.compactions,
+        limitation: 'Median cache-read share on main-conversation calls immediately before and after compaction with complete cache splits on both sides.' });
+    }
+  }
+  const repetition = e.repetition?.reading;
+  if (repetition?.measured > 0 && measured(repetition.share)) {
+    add('tool-repetition', 'tools-mcp', 'Repeated reading and searching', repetition.share, '%', repetition.measured, repetition.measured,
+      'Exact tool-name and argument repeats within the same conversation. Repeats can be needed after edits or compaction.');
+  }
+  const recovery = e.recovery;
+  if (recovery?.runs?.repeated > 0 && recovery.known > 0) {
+    add('tool-failure-runs', 'tools-mcp', 'Consecutive tool failure stretches', recovery.runs.repeated, 'stretches', recovery.known, Math.max(recovery.known, recovery.calls || recovery.known),
+      `Stretches of 2+ consecutive failed calls for the same operation (longest: ${recovery.runs.longest}). Unknown completions are never counted as failures.`);
   }
   const growth = e.contextGrowth;
   if (growth?.sessions) {
@@ -153,8 +191,12 @@ export async function prepareInsightReview(scan, filters, now = new Date(), cont
   const chosen = candidates.length <= 24 ? candidates : Array.from({ length: 24 }, (_, n) => candidates[Math.floor(n * (candidates.length - 1) / 23)]);
   chosen.forEach((c, n) => { c.id = `prompt-${n + 1}`; c.record = { ...c.record }; });
   const scope = { range: report.query.range, startDate: report.daily[0].day, endDate: report.daily.at(-1).day, modelFiltered: !!filters.models?.length, projectFiltered: !!filters.project, sessionFiltered: !!filters.session, environmentFiltered: !!filters.environment, ownReviewSessionsExcluded: excluded.size };
+  const topModelNames = e.models.slice(0, 6).map(m => m.name);
   const payload = { schema: 'usage-insights-evidence-v1', capturedAt: now.toISOString(), scope, evidence,
-    candidates: chosen.map(c => ({ id: c.id, characters: c.chars, delivery: c.delivery, model: `Model ${Math.max(0, e.models.findIndex(m => m.name === c.record.model)) + 1}` })),
+    candidates: chosen.map(c => {
+      const idx = topModelNames.indexOf(c.record.model);
+      return { id: c.id, characters: c.chars, delivery: c.delivery, model: idx >= 0 ? `Model ${idx + 1}` : 'Other model' };
+    }),
     limits: scopeLimits, omitted: { models: Math.max(0, e.models.length - 6), skills: Math.max(0, report.skills.rows.length - 6), mcp: Math.max(0, report.mcp.rows.length - 6), promptCandidates: candidates.length - chosen.length } };
   payload.modelReference = buildModelReference(modelReference, benchmarkHistory(e.models.slice(0, 6), e.efforts));
   payload.models = e.models.slice(0, 6).map((row, i) => ({ name: `Model ${i + 1}`, modelId: verifiedHistoricalModelId(row, payload.modelReference) }));

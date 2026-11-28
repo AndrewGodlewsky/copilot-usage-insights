@@ -44,7 +44,7 @@ export function createVSCodeParser({ source, logFile, project = 'VS Code', cwd =
       revision++;
     },
     revision: () => revision,
-    snapshot: () => ({ records: [...records.values()], sessions, receiptSessions: new Set([...sessions, ...[...sessions].map(id => id.slice(7))]), skillExcludedSessions: new Set(),
+    snapshot: () => ({ records: [...records.values()], sessions: [...sessions], receiptSessions: new Set([...sessions, ...[...sessions].map(id => id.slice(7))]), skillExcludedSessions: new Set(),
       coverageEntries: coverage.snapshot(),
       skills: [], interactions: [], promptEvents: [], tools: [], toolOutcomes: [], invalid, unclassified, excluded, invalidSkills: 0, invalidTools: 0, aggregateOnly: false }),
   };

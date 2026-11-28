@@ -31,16 +31,10 @@ const groupOf = count => count === 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : 3;
 const STRIDE = 3, TOOL_STRIDE = 2, LIST = 5, NAME_LIMIT = 200;
 const STEP_FAMILIES = [...FAMILIES.map(({ id, label }) => ({ id, label })), { id: 'mixed', label: 'Multiple tool kinds' }];
 const NONE = Symbol('none');
+import { medianOf as middleOf } from './stats.mjs';
+
 const known = value => Number.isFinite(value) && value >= 0;
 const share = (part, whole) => whole > 0 ? part / whole * 100 : null;
-
-// The middle value: half of the samples are at or above it and half at or below. Sorts in place.
-function middleOf(values) {
-  if (!values.length) return null;
-  values.sort((a, b) => a - b);
-  const half = values.length >> 1;
-  return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2;
-}
 
 export function createToolMaterial({ query = {}, now = new Date() } = {}) {
   const nowMs = now.getTime();

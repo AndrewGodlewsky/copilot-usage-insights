@@ -62,12 +62,12 @@ export function createSettings(dir = configDir()) {
   async function get() {
     let saved;
     try { saved = defaults(validate(JSON.parse(await fs.readFile(file, 'utf8')))); }
-    catch (e) { if (e.code === 'ENOENT') saved = defaults(); else throw new Error(`Cannot read settings at ${file}: ${e.message}`); }
+    catch (e) { if (e.code === 'ENOENT') saved = defaults(); else throw new Error('Cannot read saved settings file; check settings.json for valid JSON.'); }
     try {
       const paused = JSON.parse(await fs.readFile(pauseFile, 'utf8'));
       if (typeof paused !== 'boolean') throw new TypeError('Pause state must be a boolean');
       return { ...saved, paused };
-    } catch (e) { if (e.code === 'ENOENT') return saved; throw new Error(`Cannot read pause state at ${pauseFile}: ${e.message}`); }
+    } catch (e) { if (e.code === 'ENOENT') return saved; throw new Error('Cannot read saved pause state; check pause.json for a valid boolean.'); }
   }
   async function write(target, value) {
     const temp = `${target}.${randomUUID()}.tmp`;
@@ -79,7 +79,7 @@ export function createSettings(dir = configDir()) {
     set(input) {
       const next = queue.then(async () => {
         const update = validate(input), value = { ...await get(), ...update };
-        await fs.mkdir(dir, { recursive: true });
+        await fs.mkdir(dir, { recursive: true, mode: 0o700 });
         const changesPause = Object.hasOwn(update, 'paused');
         if (!changesPause || Object.keys(update).length > 1) await write(file, value);
         // A separate atomic value prevents another canvas/process's older general

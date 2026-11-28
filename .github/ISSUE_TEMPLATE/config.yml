@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/AndrewGodlewsky/copilot-usage-insights/blob/main/SECURITY.md#reporting-a-vulnerability
+    about: Please do not report suspected security vulnerabilities or paste private logs/tokens in public issues. Follow SECURITY.md instead.

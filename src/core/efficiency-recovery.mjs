@@ -1,4 +1,5 @@
 import { dayOfMs, dayKey } from './query.mjs';
+import { bucketTrend } from './stats.mjs';
 
 // What followed each failed tool call, and failures that came one after another.
 //
@@ -116,16 +117,17 @@ export function createRecoveryTopic(context = {}) {
         if (!sequence.failures) continue;
         if (!sequence.ordered) { sequence.calls = inOrder(sequence.calls); sequence.ordered = true; }
         const calls = sequence.calls, count = calls.length / STRIDE, op = sequence.op;
-        let run = 0, runStart = 0;
+        let run = 0, runStart = 0, runEnd = -Infinity;
         for (let i = 0; i < count; i++) {
-          const code = calls[i * STRIDE + 1];
+          const start = calls[i * STRIDE], code = calls[i * STRIDE + 1], finished = calls[i * STRIDE + 2];
           if (code !== FAILED) {
             if (run) endRun(sequence, run, runStart, AFTER[code]);
-            run = 0;
+            run = 0; runEnd = -Infinity;
             continue;
           }
-          if (!run++) runStart = calls[i * STRIDE];
-          const finished = calls[i * STRIDE + 2];
+          if (!run) { run = 1; runStart = start; runEnd = finished; }
+          else if (start >= runEnd) { run++; runEnd = finished; }
+          else if (finished > runEnd) runEnd = finished;
           let next = i + 1;
           if (next < count && calls[next * STRIDE] < finished) next = startedFrom(calls, next + 1, count, finished);
           const then = next < count ? AFTER[calls[next * STRIDE + 1]] : 'none';
@@ -145,23 +147,13 @@ export function createRecoveryTopic(context = {}) {
       const failedCalls = total('failedCalls'), knownCalls = total('knownCalls'), failedMs = total('failedMs'), knownMs = total('knownMs');
       const failing = operations.filter(op => op.failures > 0).map(row);
       const ranked = failing.filter(op => op.known >= MINIMUM_KNOWN);
-      const orderedDays = [...days].sort((a, b) => a[0] - b[0]);
-      let trend = { unit: 'day', points: [] };
-      if (orderedDays.length) {
-        const first = orderedDays[0][0], weekly = orderedDays.at(-1)[0] - first >= TREND_POINTS, span = weekly ? 7 : 1, points = [];
-        let startBucket = null, cur = null;
-        const flush = () => {
-          if (!cur) return;
-          points.push({ day: dayKey(startBucket), known: cur.known, failures: cur.failures, failureRate: cur.known > 0 ? Math.round(cur.failures / cur.known * 10000) / 100 : null });
-        };
-        for (const [day, d] of orderedDays) {
-          const bucket = first + Math.floor((day - first) / span) * span;
-          if (bucket !== startBucket) { flush(); startBucket = bucket; cur = { known: 0, failures: 0 }; }
-          cur.known += d.known; cur.failures += d.failures;
-        }
-        flush();
-        trend = { unit: weekly ? 'week' : 'day', points: points.slice(-TREND_POINTS) };
-      }
+      const { unit, points } = bucketTrend(days, {
+        maxPoints: TREND_POINTS,
+        create: () => ({ known: 0, failures: 0 }),
+        merge: (cur, d) => { cur.known += d.known; cur.failures += d.failures; },
+        finish: (day, cur) => ({ day, known: cur.known, failures: cur.failures, failureRate: cur.known > 0 ? Math.round(cur.failures / cur.known * 10000) / 100 : null }),
+      });
+      const trend = { unit, points };
       return {
         minimumKnown: MINIMUM_KNOWN, runLength: RUN_LENGTH,
         calls, successes, failures, unknown: total('unknown'), known, failureRate: share(failures, known),

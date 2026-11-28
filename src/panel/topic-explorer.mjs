@@ -21,14 +21,18 @@ export function createTopicExplorer(prefix, rangeId, topics, initial, onSelect, 
     getElement(`${prefix}-topic-prev`).disabled = index === 0;
     getElement(`${prefix}-topic-next`).disabled = index === topics.length - 1;
   }
+  let releaseMinHeight;
   function select(id, announce = false) {
     const topic = topics.find(topic => topic.id === id);
     if (!topic || selected === id) return;
     selected = id;
     sync();
-    // Keep short panels from shrinking the document past the current viewport during navigation.
+    // Keep short panels from shrinking the document past the current viewport during navigation,
+    // then release once settled so short topics do not leave a permanent blank void above the footer.
     const content = getElement(`${prefix}-topic-content`);
+    clearTimeout(releaseMinHeight);
     content.style.minHeight = `${Math.max(0, (document.documentElement.clientHeight || innerHeight) - Math.max(0, content.getBoundingClientRect().top))}px`;
+    releaseMinHeight = setTimeout(() => { content.style.minHeight = ''; }, 450);
     onSelect(id);
     if (announce) getElement(`${prefix}-topic-announcement`).textContent = `Showing ${topic.label}`;
   }

@@ -53,7 +53,7 @@ Click a **daily bar** to show that day's token total, input/output/cache counts,
 
 **Copilot credits** beneath the header subtitle shows recorded credits for the active date, model, project, and session filters on all three tabs. It uses the same total as the AI credits card, including fractional credits, an asterisk for incomplete coverage while the coverage notice is visible, and Unavailable when charges are missing. Selecting an individual daily bar changes the token detail only; the header keeps the overall filtered credit total. This is usage, not an account balance, and uses the loaded report without another lookup.
 
-**Rolling 30** is the default date filter. It means the first day of the current calendar month through today, inclusive, in your local time zone. It resets on the first of each month and can contain 1–31 days; **Last 30 days** remains a separate trailing-day option. The selected range applies throughout Usage, Breakdown, and Efficiency using the existing metric-specific filtering rules. If the dashboard stays open into a new month, the next refresh uses the new month.
+**This month** (`mtd`) is the default date filter. It means the first day of the current calendar month through today, inclusive, in your local time zone. It resets on the first of each month and can contain 1–31 days; **Last 30 days** remains a separate trailing-day option. The selected range applies throughout Usage, Breakdown, and Efficiency using the existing metric-specific filtering rules. If the dashboard stays open into a new month, the next refresh uses the new month.
 
 ## Coverage and missing records
 
@@ -72,7 +72,7 @@ The decorative header has four buildings with fixed sizes and positions for the 
 | --- | --- |
 | Today | One, around 26% across the banner |
 | Last 7 days | One, around 43% across |
-| Rolling 30 / Last 30 days | One, around 60% across; both share the same light pattern |
+| This month / Last 30 days | One, around 60% across; both share the same light pattern |
 | Last 90 days | One, around 93% across |
 | All history | All four in their fixed positions, even with limited recorded history |
 | Custom dates | None |

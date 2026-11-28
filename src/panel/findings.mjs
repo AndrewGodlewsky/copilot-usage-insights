@@ -4,7 +4,7 @@ import { esc } from './charts.mjs';
 // built by src/core/efficiency-findings.mjs. Each one pairs evidence with the obvious alternative
 // explanation, one experiment, a comparison for afterward, and a button that opens the view
 // holding the detail. The numbers are already checked; this only words them.
-const FINDING_VIEWS = { pause: 'Cache reuse', prompts: 'Work behind each prompt', failures: 'Calls and recovery', compaction: 'Context reduction', late: 'Context growth', switch: 'Model and effort changes', repetition: 'Repeated exploration', habits: 'Conversation habits' };
+const FINDING_VIEWS = { pause: 'Cache reuse', prompts: 'Work behind each prompt', failures: 'Calls and recovery', compaction: 'Context reduction', late: 'Context growth', switch: 'Model and effort changes', repetition: 'Repeated exploration', habits: 'Conversation habits', reasoning: 'Reasoning and generated output' };
 const FINDING_THEN = { succeeded: 'The next call to that operation succeeded.', unknown: 'The next call to that operation has no recorded outcome.', none: 'No later call to that operation was recorded in that conversation.', failed: 'The next call to that operation also failed.' };
 
 function findingCopy(f, { number, credits }) {
@@ -59,6 +59,13 @@ function findingCopy(f, { number, credits }) {
     action: 'On your next multi-step task, start a fresh conversation with a short handoff at a natural phase change instead of continuing in the same thread.',
     compare: 'Compare credits and calls per prompt on similar work before and after the handoff, and verify key context was kept.',
   };
+  if (f.kind === 'reasoning') return {
+    title: 'Higher effort averaged noticeably more credits on the same model',
+    evidence: `On ${f.model}, calls at ${f.higherEffort} effort averaged ${credits(f.higherCredits)} credits (${number(f.higherCalls)} calls) against ${credits(f.lowerCredits)} credits at ${f.lowerEffort} effort (${number(f.lowerCalls)} calls), ${number(f.ratio, { maximumFractionDigits: 1 })}× higher.`,
+    caveat: 'Higher effort is often chosen for harder tasks, so a higher average per call does not prove the effort was unnecessary.',
+    action: `Run one routine task you know well on ${f.model} at ${f.lowerEffort} effort with the same acceptance checks, and note whether it needs rework.`,
+    compare: 'Compare total credits including any follow-up fixes, call duration, and whether the output met the same bar.',
+  };
   return {
     title: 'Cache reuse dropped on the first call after a model change',
     evidence: `The typical cache share was ${pct(f.before)} on the last call before a model change and ${pct(f.after)} on the first call after it, ${points(f.gap)} lower. It was lower after the change in ${number(f.lower)} of ${number(f.pairs)} changes with a complete cache split.`,
@@ -72,7 +79,7 @@ export function renderFindings(data, formats) {
   if (!data || !Array.isArray(data.shown)) return '';
   const cards = data.shown.map(f => {
     const copy = findingCopy(f, formats), view = FINDING_VIEWS[f.kind];
-    return `<section class="efficiency-insight efficiency-finding" data-finding-kind="${esc(f.kind)}"><div class="efficiency-observation"><span class="efficiency-kicker">FROM THE OTHER VIEWS</span><h3>${esc(copy.title)}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${esc(copy.caveat)}</p><button data-finding-section="${esc(f.view.section)}" data-finding-topic="${esc(f.view.topic)}">Open ${esc(view)}<span class="sr-only">: ${esc(copy.title)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${esc(copy.action)}</p><details><summary>What to compare afterward</summary><p>${esc(copy.compare)}</p></details></div></section>`;
+    return `<section class="efficiency-insight efficiency-finding" data-finding-kind="${esc(f.kind)}"><div class="efficiency-observation"><span class="efficiency-kicker">From the other views</span><h3>${esc(copy.title)}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${esc(copy.caveat)}</p><button data-finding-section="${esc(f.view.section)}" data-finding-topic="${esc(f.view.topic)}">Open ${esc(view)}<span class="sr-only">: ${esc(copy.title)}</span></button></div><div class="efficiency-experiment"><span class="efficiency-kicker">Try this</span><p>${esc(copy.action)}</p><details><summary>What to compare afterward</summary><p>${esc(copy.compare)}</p></details></div></section>`;
   }).join('');
   const names = list => list.map(item => item.label).join(', ');
   const lines = [];

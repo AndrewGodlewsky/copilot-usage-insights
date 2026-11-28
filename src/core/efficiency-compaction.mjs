@@ -1,4 +1,5 @@
 import { dayOfMs } from './query.mjs';
+import { isCompleteCacheSplit, isCompleteCharge, medianOf } from './stats.mjs';
 
 // What Copilot records as the reason a compaction started. Anything else is kept as 'unknown'.
 const triggers = new Set(['threshold', 'context_limit_retry', 'manual', 'memory_pressure', 'model_switch']);
@@ -20,13 +21,8 @@ export function compactionEvent(e, id, sessionId, project) {
     messagesRemoved: whole(d.messagesRemoved), preCompactionMessagesLength: whole(d.preCompactionMessagesLength), tokenLimit: whole(d.tokenLimit) };
 }
 
-// The middle value: half of the samples are at or above it and half at or below. Sorts in place.
-export function middle(values) {
-  if (!values.length) return null;
-  values.sort((a, b) => a - b);
-  const half = values.length >> 1;
-  return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2;
-}
+// The middle value: half of the samples are at or above it and half at or below.
+export const middle = medianOf;
 // Position of the first call, in time order, recorded after `ms`.
 export function firstAfter(order, times, ms) {
   let low = 0, high = order.length;
@@ -63,7 +59,7 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
         if (known(r.inputTotal)) { cost.inputCalls++; cost.inputTokens += r.inputTotal; }
         if (known(r.output)) { cost.outputCalls++; cost.outputTokens += r.output; }
         if (known(r.duration)) { cost.durationCalls++; duration += r.duration; }
-        if (Number.isSafeInteger(r.nanoAiu) && r.nanoAiu >= 0 && r.creditStatus === 'complete') {
+        if (isCompleteCharge(r)) {
           cost.creditCalls++;
           if (nano > Number.MAX_SAFE_INTEGER - r.nanoAiu) { wide += BigInt(nano); nano = 0; }
           nano += r.nanoAiu;
@@ -74,7 +70,7 @@ export function createCompactionTopic({ query = {}, start = -Infinity, end = Inf
       if (!current || r.initiator !== 'user' && r.initiator !== 'agent' || !Number.isFinite(r.ms)) return;
       current.times.push(r.ms);
       current.input.push(known(r.inputTotal) ? r.inputTotal : -1);
-      current.cacheRead.push(r.cacheDetailsReported !== false && known(r.inputTotal) && known(r.cacheRead) && known(r.cacheWrite) && r.cacheRead + r.cacheWrite <= r.inputTotal ? r.cacheRead : -1);
+      current.cacheRead.push(isCompleteCacheSplit(r) ? r.cacheRead : -1);
     },
     finish() {
       // A compaction is attributed like other activity: its session needs Copilot usage and no

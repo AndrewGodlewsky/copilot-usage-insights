@@ -1,8 +1,7 @@
 import { stackedBars, calendarHeatmap, punchCard, segmentBar, hBars, esc, usageValue, coverageValue, TOKEN_KEYS, TOKEN_LABELS, TOKEN_COLORS } from './charts.mjs';
 import { pixelBanner, nextBuildingPatterns, skyFor } from './art.mjs';
 import { dayKey, localDay } from '../core/query.mjs';
-import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics, loadTimingSummary } from '../core/diagnostics.mjs';
-import { buildEfficiencyReview } from './efficiency.mjs';
+import { createDiagnostics, diagnosticError, parseRuntimeDiagnostics } from '../core/diagnostics.mjs';
 import { renderRecovery } from './recovery.mjs';
 import { renderModelMix } from './model-mix.mjs';
 import { renderGrowthSummary } from './growth-summary.mjs';
@@ -11,7 +10,7 @@ import { renderFindings } from './findings.mjs';
 import { renderReviewCards, reviewResultCaption } from './review-cards.mjs';
 import { renderConversations, CONVERSATION_TOPICS } from './conversations.mjs';
 import { renderContextGrowth, contextGrowthChart, contextGrowthPrompt, CONTEXT_SHAPES } from './context-growth.mjs';
-import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic, tokenTopicIcon } from './token-topics.mjs';
+import { TOKEN_TOPICS, PATTERN_TOPICS, renderTokenTopic } from './token-topics.mjs';
 import { createTopicExplorer } from './topic-explorer.mjs';
 import { formatDiagnosticText, bindReleaseNotesDialog } from './panel-dialogs.mjs';
 import { formatNumber, formatCredits } from '../core/format.mjs';
@@ -34,7 +33,7 @@ const number = (value, options = {}) => formatNumber(value, { simplify: state.si
 const creditNumber = value => formatCredits(value, { simplify: state.simplifyNumbers });
 const TEXT_SCALES = { small: 1, medium: 1.15, large: 1.3 };
 const AUTO_REFRESH_MS = 15 * 60 * 1000;
-const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'Rolling 30', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
+const RANGE_LABELS = { '1d': 'Today', '7d': 'Last 7 days', mtd: 'This month', '30d': 'Last 30 days', '90d': 'Last 90 days', all: 'All history', custom: 'Custom dates' };
 const skillDate = new Intl.DateTimeFormat('en-US', { month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', hour12: true });
 const state = { range: 'mtd', metric: 'tokens', metricEmphasis: false, view: 'usage', report: null, creditsUnavailable: false, version: 0, pending: false, force: false, rescan: false, selectedDay: null, filterKey: '', skillActionPending: false, skillView: null, textSize: 'small', simplifyNumbers: true, bannerRange: null, buildingPatterns: {}, requestView: null, modelView: null, projectView: null };
 const recordedValue = (row, key, format = number) => usageValue(row, key, format, !$('coverage').hidden);
@@ -67,7 +66,9 @@ function renderCoverageReview() {
   $('coverage-next').disabled = (coveragePage + 1) * 25 >= rows.length;
   $('coverage-unreadable').innerHTML = details.unreadable.length ? `<h3>Source availability</h3><p class="footnote">Source-wide warnings cannot always be assigned dates. See Local data sources for read errors and other limitations.</p>${details.unreadable.map(s => `<code>${esc(s.file)}</code>`).join('')}` : '';
 }
+let coverageTrigger;
 function openCoverageReview() {
+  coverageTrigger = document.activeElement;
   coveragePage = 0;
   const rows = state.report?.coverageDetails?.rows || [];
   $('coverage-scope').value = rows.some(row => row.scope === 'current') ? 'current' : rows.some(row => row.scope === 'unknown') ? 'unknown' : 'outside';
@@ -75,6 +76,7 @@ function openCoverageReview() {
 }
 $('coverage-review').onclick = $('coverage-open').onclick = openCoverageReview;
 $('coverage-close').onclick = () => $('coverage-dialog').close();
+$('coverage-dialog').onclose = () => { if (coverageTrigger && !coverageTrigger.hidden && coverageTrigger.isConnected !== false) coverageTrigger.focus?.({ preventScroll: true }); coverageTrigger = null; };
 $('coverage-scope').onchange = () => { coveragePage = 0; renderCoverageReview(); };
 $('coverage-prev').onclick = () => { coveragePage--; renderCoverageReview(); };
 $('coverage-next').onclick = () => { coveragePage++; renderCoverageReview(); };
@@ -145,9 +147,9 @@ function diagnosticText(server = cachedServerDiagnostics, cached = true) {
   return formatDiagnosticText({ buildVersion: BUILD_VERSION, clientDiagnostics, server, cached, importedRuntimeLogs });
 }
 bindReleaseNotesDialog({ getElement: $, releaseNotes: RELEASE_NOTES, buildVersion: BUILD_VERSION });
-let logsLoading = false;
+let logsLoading = false, logsTrigger;
 async function showLogs() {
-  if (!$('logs-dialog').open) $('logs-dialog').showModal();
+  if (!$('logs-dialog').open) { logsTrigger = document.activeElement; $('logs-dialog').showModal(); }
   if (logsLoading) return;
   logsLoading = true;
   $('logs-reload').disabled = true;
@@ -168,6 +170,7 @@ async function showLogs() {
 }
 $('logs-open').onclick = $('logs-reload').onclick = showLogs;
 $('logs-close').onclick = () => $('logs-dialog').close();
+$('logs-dialog').onclose = () => { if (logsTrigger && !logsTrigger.hidden && logsTrigger.isConnected !== false) logsTrigger.focus?.({ preventScroll: true }); logsTrigger = null; };
 $('logs-import').onclick = () => $('logs-files').click();
 $('logs-files').onchange = async () => {
   const files = [...($('logs-files').files || [])];
@@ -203,7 +206,7 @@ function query() {
     ...($('model').value ? { models: [$('model').value] } : {}), project: $('project').value, session: $('session').value,
     ...(state.range === 'custom' ? { startDate: state.startDate, endDate: state.endDate } : {}) };
 }
-let inventorySnapshot, inventoryPending = false, inventoryQueued = false, historyMcp;
+let inventorySnapshot, inventoryPending = false, inventoryQueued = false, inventoryController = null, historyMcp;
 function applyInventory() {
   if (!state.report) return;
   state.report.mcp = inventorySnapshot ? mergeMcpInventory(historyMcp, inventorySnapshot.mcp) : historyMcp;
@@ -214,22 +217,29 @@ async function loadInventory(refresh = false) {
   if (inventoryPending) { inventoryQueued ||= refresh; return; }
   inventoryPending = true;
   renderIntegrations(state.report);
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
-  try { inventorySnapshot = await request('usage.inventory', {}, false, controller.signal); }
-  catch (error) {
-    inventorySnapshot = { mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } };
-    clientDiagnostics.record('warn', 'inventory.read', diagnosticError(error));
+  const controller = inventoryController = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    const next = await request('usage.inventory', {}, false, controller.signal);
+    if (!state.paused) inventorySnapshot = next;
+  } catch (error) {
+    if (!state.paused) {
+      inventorySnapshot = { mcp: { available: false, rows: [] }, plugins: { available: false, rows: [] } };
+      clientDiagnostics.record('warn', 'inventory.read', diagnosticError(error));
+    }
   } finally {
     clearTimeout(timer);
+    if (inventoryController === controller) inventoryController = null;
     inventoryPending = false;
-    applyInventory();
-    renderIntegrations(state.report);
-    if (state.report) {
-      renderEfficiencyReliability();
-      if (['tools', 'skills'].includes(tokenTopic)) renderSelectedTokenTopic();
-      if (!$('efficiency-context-read').disabled) renderEfficiencyContextHistory();
-    }
-    if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
+    if (!state.paused) {
+      applyInventory();
+      renderIntegrations(state.report);
+      if (state.report) {
+        renderEfficiencyReliability();
+        if (['tools', 'skills'].includes(tokenTopic)) renderSelectedTokenTopic();
+        if (!$('efficiency-context-read').disabled) renderEfficiencyContextHistory();
+      }
+      if (inventoryQueued) { inventoryQueued = false; void loadInventory(); }
+    } else inventoryQueued = false;
   }
 }
 let refreshFeedbackTimer;
@@ -596,7 +606,9 @@ function skillHeader(label) {
   return `<tr><th scope="col">${label}</th><th scope="col" title="Recorded successful skill loads, including preloaded and unknown triggers. Hover over a count for its breakdown.">Uses</th><th scope="col" title="Uses explicitly requested by the user.">By user</th><th scope="col" title="Uses requested by the agent.">By agent</th><th scope="col">Sessions</th><th scope="col" title="Recorded failed attempts to load this skill.">Failures</th><th scope="col" title="Version declared in the current SKILL.md file; may differ from the version used when the skill ran.">Skill version (installed)</th><th scope="col" title="Most recent recorded use or failed load.">Last used</th></tr>`;
 }
 function skillStats(row, skill = row) {
-  return `<td title="${esc(skillTriggerSummary(row))}">${number(row.invocations)}</td><td>${number(row.triggers?.manual ?? 0)}</td><td>${number(row.triggers?.agent ?? 0)}</td><td>${number(row.sessions)}</td><td>${number(row.failures ?? 0)}</td>${textCell(skill.installedVersion?.value ?? (skill.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td title="${esc(new Date(row.lastUsed).toLocaleString())}">${esc(skillDate.format(new Date(row.lastUsed)))}</td>`;
+  const usedDate = row.lastUsed ? new Date(row.lastUsed) : null;
+  const validDate = usedDate && Number.isFinite(usedDate.getTime());
+  return `<td title="${esc(skillTriggerSummary(row))}">${number(row.invocations)}</td><td>${number(row.triggers?.manual ?? 0)}</td><td>${number(row.triggers?.agent ?? 0)}</td><td>${number(row.sessions)}</td><td>${number(row.failures ?? 0)}</td>${textCell(skill.installedVersion?.value ?? (skill.installedVersion?.status === 'not-declared' ? 'Not declared' : 'Unavailable'))}<td${validDate ? ` title="${esc(usedDate.toLocaleString())}"` : ''}>${validDate ? esc(skillDate.format(usedDate)) : '—'}</td>`;
 }
 function skillTable(skills) {
   return `<table><thead>${skillHeader('Skill')}</thead>${sortActivity(skills, $('skills-sort').value).map(skill => {
@@ -712,25 +724,35 @@ function renderEfficiencyFlow(s) {
     : `<strong>${markedValue(s.cacheHitRate, s.cacheRequests < s.requests, value => number(value) + '%')} of measured input was reused from cache</strong><p class="muted">${markedValue(s.cacheRead, s.cacheRequests < s.requests)} of ${markedValue(s.cacheInput, s.cacheRequests < s.requests)} input tokens, across ${number(s.cacheRequests)} of ${number(s.requests)} requests. Cached context still counts as input, but can reduce processing and credit cost. Reuse is not a measure of answer quality.</p>`;
 }
 
-let efficiencyContextSnapshot, previousContextSnapshot;
+let efficiencyContextSnapshot, previousContextSnapshot, contextController = null;
 $('efficiency-context-read').onclick = async () => {
   const button = $('efficiency-context-read');
-  if (button.disabled) return;
+  if (button.disabled || state.paused) return;
   button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Inspecting current context…</p>';
-  $('efficiency-context-history').innerHTML = '';
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
+  const controller = contextController = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
   try {
     const next = await request('efficiency.context', {}, false, controller.signal);
+    if (state.paused) return;
     previousContextSnapshot = next?.available && efficiencyContextSnapshot?.available ? efficiencyContextSnapshot : undefined;
     efficiencyContextSnapshot = next;
     renderEfficiencyContext();
   } catch (error) {
-    efficiencyContextSnapshot = undefined;
+    if (state.paused) return;
+    efficiencyContextSnapshot = null;
     previousContextSnapshot = undefined;
     clientDiagnostics.record('warn', 'context.read', diagnosticError(error));
     $('efficiency-context-result').innerHTML = '<p class="footnote integration-note">Context inspection is unavailable. Try again, or use /context in Copilot. Historical sections are still available.</p>';
-  } finally { clearTimeout(timer); button.disabled = false; button.textContent = 'Inspect again'; renderEfficiencyHabits(); renderSelectedTokenTopic(); }
+    renderEfficiencyContextHistory();
+  } finally {
+    clearTimeout(timer);
+    if (contextController === controller) contextController = null;
+    button.disabled = !!state.paused;
+    button.setAttribute('aria-busy', 'false');
+    button.textContent = 'Inspect again';
+    if (!state.paused) { renderEfficiencyHabits(); renderSelectedTokenTopic(); }
+  }
 };
 function renderEfficiencyContext() {
   const c = efficiencyContextSnapshot;
@@ -883,7 +905,8 @@ $('efficiency-review-open').onclick = async () => {
     const restoreAnimationFocus = $('review-progress').contains(document.activeElement);
     reviewProgress(null);
     reviewRun = null; reviewRunning = false;
-    $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = $('efficiency-review-open').disabled = false;
+    $('review-samples').disabled = $('review-settings').disabled = $('efficiency-review-copy').disabled = false;
+    $('efficiency-review-open').disabled = !!state.paused || !!historyLoading || reviewConnectionPending;
     $('review-cancel').hidden = true;
     if (restoreAnimationFocus) $('efficiency-review-open').focus({ preventScroll: true });
     if (run.analysisStarted) await load(false, true);
@@ -1028,9 +1051,10 @@ function showEfficiencySection(section) {
   selectButton('efficiency-sections', 'efficiencySection', section);
   $('efficiency-method').hidden = section === 'review';
   for (const name of ['tokens', 'patterns', 'review']) $(`efficiency-${name}-panel`).hidden = name !== section;
+  if (section === 'patterns' && patternTopic === 'growth' && state.report) renderEfficiencyGrowth();
   syncReviewScope();
 }
-$('efficiency-sections').onclick = event => showEfficiencySection(event.target.dataset.efficiencySection);
+$('efficiency-sections').onclick = event => showEfficiencySection((event.target?.closest?.('[data-efficiency-section]') || event.target)?.dataset?.efficiencySection);
 let tokenTopic = 'overview';
 const tokenPanelNames = ['overview', 'context', 'cache', 'detail'];
 const showTokenTopic = createTopicExplorer('token', 'efficiency-topic', TOKEN_TOPICS, tokenTopic, id => {
@@ -1193,17 +1217,17 @@ function renderEfficiency() {
   $('efficiency-summary').innerHTML = efficiencyMeasures.filter(metric => metric.key !== 'cacheHitRate').map(metric => `<div><span class="label">${metric.label}</span><strong class="value" title="${esc(efficiencyHint(summary, metric))}">${esc(efficiencyValue(summary, metric))}</strong><span class="sub">${number(summary[metric.count] ?? 0)} of ${number(summary.requests)} requests</span></div>`).join('');
   $('efficiency-insights').innerHTML = visibleInsights.length ? visibleInsights.map(({ insight, index }, shownIndex) => {
     const copy = efficiencyDirection(insight), view = insightViews[insight.kind];
-    const openView = view ? ` <button data-finding-section="${view[0]}" data-finding-topic="${view[1]}">Open ${esc(view[2])}<span class="sr-only">: ${esc(copy.title)}</span></button>` : '';
-    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">PATTERN ${shownIndex + 1}</span><h3>${copy.title}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${copy.caveat}</p><div class="token-insight-actions"><button data-efficiency-insight="${index}" data-efficiency-kind="${insight.kind}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button>${openView}</div></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>${copy.action}</p><details><summary>What to compare afterward</summary><p>${copy.compare}</p></details></div></section>`;
+    const openView = view ? ` <button data-finding-section="${esc(view[0])}" data-finding-topic="${esc(view[1])}">Open ${esc(view[2])}<span class="sr-only">: ${esc(copy.title)}</span></button>` : '';
+    return `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">Pattern ${shownIndex + 1}</span><h3>${esc(copy.title)}</h3><p>${esc(copy.evidence)}</p><p class="footnote">${esc(copy.caveat)}</p><div class="token-insight-actions"><button data-efficiency-insight="${index}" data-efficiency-kind="${esc(insight.kind)}" data-efficiency-model="${esc(insight.model)}">Inspect usage<span class="sr-only">: ${esc(copy.title)} for ${esc(insight.model)}</span></button>${openView}</div></div><div class="efficiency-experiment"><span class="efficiency-kicker">Try this</span><p>${esc(copy.action)}</p><details><summary>What to compare afterward</summary><p>${esc(copy.compare)}</p></details></div></section>`;
   }).join('') : showFailedServer || crossView?.shown?.length ? '' : `<p class="muted">${summary.requests < 5 ? 'More recorded requests are needed to identify patterns. Try a wider date range or use Copilot, then refresh.' : 'No standout patterns meet the review rules in this range. Open Model comparisons or try a wider date range.'}</p>`;
   if (showFailedServer) {
     const completed = failedServer.failures + failedServer.successes;
-    $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP RELIABILITY</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">TRY THIS</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
+    $('efficiency-insights').innerHTML += `<section class="efficiency-insight"><div class="efficiency-observation"><span class="efficiency-kicker">MCP reliability</span><h3>Repeated tool failures deserve a look</h3><p>${esc(failedServer.name)}: ${number(failedServer.failures)} of ${number(completed)} calls with a known outcome failed (${number(failedServer.failures / completed * 100)}%). ${number(failedServer.unknown)} outcomes are unknown.</p><p class="footnote">These are failed tool calls, not a measurement of server uptime or proof of a connection problem.</p><button data-efficiency-mcp="true">Inspect MCP activity</button></div><div class="efficiency-experiment"><span class="efficiency-kicker">Try this</span><p>Check the server's current status and reproduce one failed operation. Verify authentication, permissions, and arguments before retrying a larger task.</p><details><summary>What to compare afterward</summary><p>Compare failures and known outcomes on the same operation after the change. A successful connection alone does not guarantee successful tools.</p></details></div></section>`;
   }
   $('efficiency-findings').innerHTML = renderFindings(crossView, { number, credits: creditNumber });
   $('efficiency-insight-count').textContent = `${visibleInsights.length + (showFailedServer ? 1 : 0) + (crossView?.shown?.length || 0)} patterns to review`;
   const reused = models.filter(row => row.cacheRequests >= 5 && row.cacheRequests / row.requests >= .8 && row.cacheInput >= 50000 && row.cacheHitRate >= 80).slice(0, 3);
-  if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">WORKING IN YOUR FAVOR</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
+  if (reused.length) $('efficiency-insights').innerHTML += `<div class="efficiency-positive"><span class="efficiency-kicker">Working in your favor</span>${reused.map(row => `<p><strong>${esc(row.name)} is reusing context.</strong> ${number(row.cacheHitRate)}% of measured input came from cache, across ${number(row.cacheRequests)} of ${number(row.requests)} requests. Keep stable context for related follow-ups when that workflow suits the task.</p>`).join('')}<p class="footnote">Cache reuse reduces repeated input processing. It does not by itself establish task quality or monetary savings.</p></div>`;
   const allModelsOpen = $('efficiency-models').querySelector('#efficiency-all-models')?.open ?? false;
   const allModelMeasures = [...efficiencyMeasures, { key: 'creditsPerMillionTokens', label: 'Credits / 1M tokens', count: 'creditTokenRequests', format: creditNumber, hint: 'Complete recorded charges divided by input (including cache) plus output tokens, times 1,000,000.' }];
   $('efficiency-model-mix').innerHTML = renderModelMix(state.report, { number, credits: creditNumber, showCoverage: !$('coverage').hidden });
@@ -1218,14 +1242,21 @@ function renderEfficiency() {
 }
 async function inspectEfficiency(target) {
   if (!target) return;
-  if (target.model !== undefined) $('model').value = target.model;
-  if (target.project !== undefined) $('project').value = target.project;
+  const setSelectValue = (id, value, allLabel, list) => {
+    if (value && list && !list.some(v => (typeof v === 'string' ? v : v.id) === value)) {
+      options(id, [...list, typeof list[0] === 'object' ? { id: value, name: value } : value], allLabel);
+    }
+    $(id).value = value;
+  };
+  if (target.model !== undefined) setSelectValue('model', target.model, 'All models', state.report?.options.models || []);
+  if (target.project !== undefined) setSelectValue('project', target.project, 'All projects', state.report?.options.projects || []);
   if (target.session !== undefined) {
-    options('session', (state.report?.options.sessions || []).filter(v => v.id === target.session), 'All sessions');
+    const matched = (state.report?.options.sessions || []).filter(v => v.id === target.session);
+    options('session', matched.length ? matched : (target.session ? [{ id: target.session, name: target.session }] : []), 'All sessions');
     $('session').value = target.session;
   }
   $('group').value = 'models';
-  state.requestView = null; state.projectView = null;
+  state.requestView = null; state.modelView = null; state.projectView = null;
   showView('breakdown');
   $('group').focus({ preventScroll: true });
   if (JSON.stringify(query()) !== state.filterKey) await load();
@@ -1241,7 +1272,7 @@ $('efficiency-insights').onclick = event => {
   }
   if (event.target.closest('[data-efficiency-mcp]')?.dataset.efficiencyMcp) {
     showView('breakdown');
-    $('breakdown-sections').onclick({ target: { dataset: { section: 'mcp' } } });
+    showBreakdownSection('mcp');
     $('mcp-sort').focus({ preventScroll: true });
     return;
   }
@@ -1385,12 +1416,13 @@ function renderContent() {
   if (state.view === 'efficiency') renderEfficiency();
   $('efficiency-review-open').disabled = !!r.loading || reviewRunning || reviewConnectionPending;
   if (state.view === 'usage') {
-    if (focusedDay) $('daily').querySelector(`[data-day="${focusedDay}"]`)?.focus({ preventScroll: true });
+    if (focusedDay) [...$('daily').querySelectorAll('[data-day]')].find(el => el.dataset.day === focusedDay)?.focus({ preventScroll: true });
     for (const type of ['model', 'project']) {
       const key = type === 'model' ? 'usageModel' : 'usageProject';
       if (focusedChoice?.[key] !== undefined) [...$(`${type}s-summary`).querySelectorAll(`[data-usage-${type}]`)].find(el => el.dataset[key] === focusedChoice[key])?.focus({ preventScroll: true });
     }
   }
+  $('end-date').max = $('start-date').max = dayKey(localDay());
 }
 function selectUsageFilter(type, value) {
   if (value === undefined) return;
@@ -1410,7 +1442,7 @@ function selectDay(day) {
   render();
   $('tip').hidden = true;
   $('live').textContent = state.selectedDay ? `Showing tokens for ${state.selectedDay}` : 'Showing tokens for all days';
-  $('daily').querySelector(`[data-day="${focusDay}"]`)?.focus({ preventScroll: true });
+  [...$('daily').querySelectorAll('[data-day]')].find(el => el.dataset.day === focusDay)?.focus({ preventScroll: true });
 }
 $('daily').onclick = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day) selectDay(day); };
 $('daily').onkeydown = e => { const day = e.target.closest('[data-day]')?.dataset.day; if (day && ['Enter', ' '].includes(e.key)) { e.preventDefault(); selectDay(day); } };
@@ -1523,15 +1555,15 @@ function showView(view) {
   for (const name of ['usage', 'breakdown', 'efficiency']) $(`${name}-view`).hidden = name !== view;
   render();
 }
-$('view').onclick = e => showView(e.target.dataset.view);
-$('breakdown-sections').onclick = e => {
-  const section = e.target.dataset.section;
+function showBreakdownSection(section) {
   if (!['skills', 'plugins', 'mcp'].includes(section)) return;
   selectButton('breakdown-sections', 'section', section);
   for (const name of ['skills', 'plugins', 'mcp']) $(`${name}-panel`).hidden = name !== section;
-};
+}
+$('view').onclick = e => showView((e.target?.closest?.('[data-view]') || e.target)?.dataset?.view);
+$('breakdown-sections').onclick = e => showBreakdownSection((e.target?.closest?.('[data-section]') || e.target)?.dataset?.section);
 $('metric').onclick = e => {
-  const metric = e.target.dataset.metric;
+  const metric = (e.target?.closest?.('[data-metric]') || e.target)?.dataset?.metric;
   if (!['tokens', 'credits'].includes(metric)) return;
   state.metricEmphasis = metric !== state.metric || !state.metricEmphasis;
   state.metric = metric;
@@ -1550,8 +1582,8 @@ $('breakdown').onclick = async event => {
     state.projectView.models = null;
     state.projectView.offset = Math.max(0, Number(sessionPage) || 0);
     renderBreakdown();
-    const total = state.report.projects.find(r => r.name === state.projectView.project).sessions;
-    $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
+    const total = state.projectView ? state.report?.projects.find(r => r.name === state.projectView.project)?.sessions ?? 0 : 0;
+    if (state.projectView && total) $('live').textContent = `Showing sessions ${state.projectView.offset + 1}–${Math.min(state.projectView.offset + 25, total)}`;
   } else if (projectSession !== undefined && state.projectView) {
     const view = state.projectView;
     if (!sortedUsage(state.report.sessions.filter(r => r.project === view.project)).slice(view.offset, view.offset + 25).some(r => r.id === projectSession)) return;
@@ -1630,11 +1662,13 @@ $('skills').onclick = async event => {
 $('clear-filters').onclick = () => { for (const id of ['environment', 'model', 'project', 'session']) $(id).value = ''; $('cache').checked = true; load(); };
 let settingsSources;
 let reviewModels = [], savedReviewReasoning, reviewReasoningTouched = false;
+const EFFORT_LABELS = { default: 'Model default', none: 'None', minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+const effortLabel = value => EFFORT_LABELS[value] || (typeof value === 'string' && value ? value[0].toUpperCase() + value.slice(1) : 'Model default');
 function reviewReasoningOptions(preferred = savedReviewReasoning) {
   const model = reviewModels.find(m => m.id === $('review-model').value);
   const choices = model ? ['default', ...(model.reasoningEfforts || [])] : ['default', 'medium', 'high'];
   const selected = preferred || (model?.reasoningEfforts?.includes('medium') ? 'medium' : 'default');
-  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(selected)} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${effort}">${effort === 'default' ? 'Model default' : effort === 'medium' ? 'Medium' : 'High'}</option>`).join('');
+  $('review-reasoning').innerHTML = (!choices.includes(selected) ? `<option value="${esc(selected)}">${esc(effortLabel(selected))} (saved; unsupported)</option>` : '') + choices.map(effort => `<option value="${esc(effort)}">${esc(effortLabel(effort))}</option>`).join('');
   $('review-reasoning').value = selected;
   $('review-reasoning-help').textContent = !model ? 'Refresh models to verify supported reasoning levels.' : !choices.includes(selected) ? 'The selected level is unsupported. Choose a supported level before analyzing.' : model.reasoningEfforts?.length ? 'High allows more reasoning and may use more credits. Choose Medium for a lighter review.' : 'This model does not advertise configurable Medium or High reasoning. Model default is used.';
 }
@@ -1652,21 +1686,30 @@ $('review-model').onchange = () => {
   reviewReasoningOptions(model?.reasoningEfforts?.includes('high') ? 'high' : null);
 };
 $('review-reasoning').onchange = () => { reviewReasoningTouched = true; };
+let reviewConnectionEpoch = 0;
 async function refreshReviewConnection(reconnect) {
-  if (reviewConnectionPending || reviewRunning) return;
+  if (reviewConnectionPending || reviewRunning || state.paused) return;
+  const epoch = ++reviewConnectionEpoch;
   reviewConnectionPending = true;
-  $('review-models-refresh').disabled = $('review-reconnect').disabled = true;
+  $('review-models-refresh').disabled = $('review-reconnect').disabled = $('efficiency-review-open').disabled = true;
   $('review-connection-cancel').hidden = false;
   $('review-connection-status').textContent = reconnect ? 'Verifying a fresh Copilot connection…' : 'Loading models from Copilot…';
   try {
     const result = await request(reconnect ? 'review.reconnect' : 'review.catalog');
+    if (epoch !== reviewConnectionEpoch || state.paused) return;
     reviewModelOptions(result.models, $('review-model').value || result.recommendedModel, reviewReasoningTouched ? $('review-reasoning').value : savedReviewReasoning);
-    $('review-connection-status').textContent = reconnect ? 'Connection verified with the same GitHub account. No prompt was sent. Choose a model and save settings.' : 'Models refreshed. Choose a model and save settings. The helper account is verified again before each review.';
-  } catch (error) { $('review-connection-status').textContent = error.message; }
+    const fallbackNote = !result.recommendedModel && result.suggestedFallbackModel && !$('review-model').value
+      ? ` Claude Sonnet 5.5 is not in your available models; consider selecting ${result.models.find(m => m.id === result.suggestedFallbackModel)?.label || result.suggestedFallbackModel}.`
+      : '';
+    $('review-connection-status').textContent = (reconnect ? 'Connection verified with the same GitHub account. No prompt was sent. Choose a model and save settings.' : 'Models refreshed. Choose a model and save settings. The helper account is verified again before each review.') + fallbackNote;
+  } catch (error) { if (epoch === reviewConnectionEpoch && !state.paused) $('review-connection-status').textContent = error.message; }
   finally {
-    reviewConnectionPending = false;
-    $('review-models-refresh').disabled = $('review-reconnect').disabled = false;
-    $('review-connection-cancel').hidden = true;
+    if (epoch === reviewConnectionEpoch) {
+      reviewConnectionPending = false;
+      $('review-models-refresh').disabled = $('review-reconnect').disabled = false;
+      $('efficiency-review-open').disabled = !!state.paused || !!historyLoading || reviewRunning;
+      $('review-connection-cancel').hidden = true;
+    }
   }
 }
 $('review-models-refresh').onclick = () => refreshReviewConnection(false);
@@ -1678,11 +1721,14 @@ function applyPaused(paused) {
   $('settings-pause-status').textContent = paused ? 'Paused. Settings and diagnostic logs remain available.' : 'Running. You can pause new data reads and AI reviews at any time.';
   if (paused && changed) {
     state.version++;
+    reviewConnectionEpoch++;
+    inventoryController?.abort(); inventoryController = null;
+    contextController?.abort(); contextController = null;
     state.report = null; state.creditsUnavailable = true;
     state.requestView = state.modelView = state.projectView = state.skillView = null;
     inventorySnapshot = undefined; inventoryQueued = false;
     historyLoading = null; clearTimeout(historyPoll); historyPoll = null;
-    efficiencyContextSnapshot = null;
+    efficiencyContextSnapshot = null; previousContextSnapshot = undefined;
     if (reviewRun) reviewRun.cancelled = true;
     reviewResult = null;
     reviewProgress(null);
@@ -1690,6 +1736,9 @@ function applyPaused(paused) {
     $('review-answer').textContent = '';
     $('review-preview').hidden = true;
     $('efficiency-review-output').value = '';
+    $('review-create-label').textContent = 'Create AI review';
+    $('efficiency-review-open').dataset.attention = 'true';
+    $('efficiency-review-open').disabled = true;
     $('tip').hidden = true;
     renderHeaderCredits();
   }
@@ -1713,13 +1762,17 @@ $('settings-pause').onclick = async () => {
   } catch (error) { $('settings-error').textContent = error.message; $('settings-error').hidden = false; }
   finally { $('settings-pause').disabled = false; }
 };
+let settingsOpenVersion = 0, settingsTrigger;
 $('settings-open').onclick = $('footer-settings').onclick = async () => {
+  const version = ++settingsOpenVersion;
+  if (!$('settings-dialog').open) settingsTrigger = document.activeElement;
   $('settings-error').hidden = true;
   $('settings-save').disabled = true;
   $('settings-pause').disabled = true;
-  $('settings-dialog').showModal();
+  if (!$('settings-dialog').open) $('settings-dialog').showModal();
   try {
     const config = await request('settings.get');
+    if (version !== settingsOpenVersion || !$('settings-dialog').open) return;
     applyPaused(config.paused === true);
     renderRuntimeSecurity(config.runtimeSecurity);
     $('settings-pause').disabled = false;
@@ -1737,10 +1790,11 @@ $('settings-open').onclick = $('footer-settings').onclick = async () => {
     $('default-home').textContent = config.defaultHome;
     $('extra-homes').value = config.extraHomes.join('\n'); $('disabled-homes').value = config.disabledHomes.join('\n');
     $('settings-save').disabled = false;
-  } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
+  } catch (e) { if (version === settingsOpenVersion) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; } }
 };
-$('settings-close').onclick = () => { if (reviewConnectionPending) void cancelReview(); $('settings-dialog').close(); };
-$('settings-dialog').addEventListener('cancel', () => { if (reviewConnectionPending) void cancelReview(); });
+$('settings-close').onclick = () => { settingsOpenVersion++; if (reviewConnectionPending) { reviewConnectionEpoch++; void cancelReview(); } $('settings-dialog').close(); };
+$('settings-dialog').addEventListener('cancel', () => { settingsOpenVersion++; if (reviewConnectionPending) { reviewConnectionEpoch++; void cancelReview(); } });
+$('settings-dialog').onclose = () => { if (settingsTrigger && !settingsTrigger.hidden && settingsTrigger.isConnected !== false) settingsTrigger.focus?.({ preventScroll: true }); settingsTrigger = null; };
 $('settings-save').onclick = async () => {
   $('settings-save').disabled = true;
   const lines = id => $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -1754,8 +1808,14 @@ $('settings-save').onclick = async () => {
   } catch (e) { $('settings-error').textContent = e.message; $('settings-error').hidden = false; }
   finally { $('settings-save').disabled = false; }
 };
-try { document.documentElement.classList.toggle('light', (localStorage.getItem('usage-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'light'); } catch {}
-$('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); try { localStorage.setItem('usage-theme', light ? 'light' : 'dark'); } catch {} };
+function syncThemeControl(light) {
+  $('theme').setAttribute('aria-pressed', String(Boolean(light)));
+  $('theme').setAttribute('aria-label', light ? 'Switch to dark theme' : 'Switch to light theme');
+}
+let initialLight = false;
+try { initialLight = (localStorage.getItem('usage-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'light'; document.documentElement.classList.toggle('light', initialLight); } catch {}
+syncThemeControl(initialLight);
+$('theme').onclick = () => { const light = document.documentElement.classList.toggle('light'); syncThemeControl(light); try { localStorage.setItem('usage-theme', light ? 'light' : 'dark'); } catch {} };
 let tooltipLayout;
 function showTooltip(mark, x, y) {
   const popup = $('tip');
@@ -1790,8 +1850,14 @@ $('daily').addEventListener('focusin', e => {
 $('daily').addEventListener('focusout', () => { $('tip').hidden = true; });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('tip').hidden = true; });
 document.addEventListener('pointerleave', () => { $('tip').hidden = true; });
-let resizeTimer;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+let resizeTimer, lastViewportWidth = globalThis.innerWidth ?? 0;
+window.addEventListener('resize', () => {
+  const width = globalThis.innerWidth ?? 0;
+  if (state.paused || (lastViewportWidth && width === lastViewportWidth)) return;
+  lastViewportWidth = width;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(render, 150);
+});
 document.addEventListener('visibilitychange', () => {
   syncReviewAnimation();
   clientDiagnostics.record('info', 'ui.visibility', connectionState());

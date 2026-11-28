@@ -42,7 +42,7 @@ Preserve recorded `totalNanoAiu` charges, exact zero versus missing values, prov
 
 **Decision:** keep automatic background completion, add an optional demand-loaded archive mode, or change the default. This changes when history becomes available even if all records remain accessible.
 
-**Current behavior:** first load prioritizes the actual last 30 days, then continues older histories and databases. Selected ranges outside available coverage display a loading state. The default Rolling 30 means month-to-date; it is not the same boundary as the scan's last-30-day priority. Do not conflate them. Filters reuse the current in-memory snapshot rather than independently rescanning.
+**Current behavior:** first load prioritizes the actual last 30 days, then continues older histories and databases. Selected ranges outside available coverage display a loading state. The default **This month** (`mtd`) means month-to-date; it is not the same boundary as the scan's last-30-day priority. Do not conflate them. Filters reuse the current in-memory snapshot rather than independently rescanning.
 
 **Evidence:** in the realistic 100k fixture, the complete 7-day load changed from 9.78 to 9.34 seconds after the audit. That is not a measurement of first provisional paint or of a demand-loading implementation. No claimed savings exist yet for stopping the background archive.
 

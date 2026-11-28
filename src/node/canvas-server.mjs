@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createSettings, copilotHome } from './settings.mjs';
 import { createIntegrationReader } from './integrations.mjs';
@@ -83,8 +83,16 @@ export async function startServer({ settings = createSettings(), scanner, defaul
   const diagnosticSnapshot = () => ({ version, capturedAt: now().toISOString(), runtime: { node: process.version, platform: process.platform, arch: process.arch, processId: process.pid }, ...diagnostics.snapshot() });
   const savedDiagnosticSnapshot = () => ({ ...diagnosticSnapshot(), ...(diagnostics.readPersisted ? { persisted: diagnostics.readPersisted() } : {}) });
   const token = endpoint?.token ?? randomBytes(32).toString('hex'), prefix = `/${token}/`;
+  const expectedPrefix = Buffer.from(prefix, 'utf8');
+  const expectedApi = Buffer.from(prefix + 'api', 'utf8');
+  const safePathEquals = (url, expected) => {
+    if (typeof url !== 'string') return false;
+    const actual = Buffer.from(url, 'utf8');
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  };
   let origin;
   const settingsWrites = new Set();
+  let pauseEpoch = 0;
   let history, reviewRequest, preparedReview, contextSnapshot;
   let scanId = 0;
   // Reports already built from the current scan, by filter. A scan is never altered once it is
@@ -171,7 +179,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     void handle(req, res).catch(e => {
       if (lifetime.signal.aborted) return;
       diagnostics.record('error', 'server.response', diagnosticError(e));
-      if (!res.headersSent) json(res, 500, { error: e.message });
+      if (!res.headersSent) json(res, 500, { error: 'Internal dashboard error.' });
       else res.end();
     });
   });
@@ -187,7 +195,7 @@ export async function startServer({ settings = createSettings(), scanner, defaul
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', contentPolicy);
     if (req.headers.host !== new URL(origin).host || req.headers.origin && req.headers.origin !== origin) return json(res, 403, { error: 'Origin not allowed' });
-    if (req.method === 'GET' && req.url === prefix) {
+    if (req.method === 'GET' && safePathEquals(req.url, expectedPrefix)) {
       const started = performance.now();
       diagnostics.record('info', 'server.page', { phase: 'started' });
       const page = html.replace('<script type="application/json" id="initial-diagnostics">null</script>',
@@ -195,13 +203,13 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       res.once('finish', () => diagnostics.record('info', 'server.page', { phase: 'finished', durationMs: performance.now() - started, responseBytes: Buffer.byteLength(page) }));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(page); return;
     }
-    if (req.method !== 'POST' || req.url !== prefix + 'api') return json(res, 404, { error: 'Not found' });
+    if (req.method !== 'POST' || !safePathEquals(req.url, expectedApi)) return json(res, 404, { error: 'Not found' });
     if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'Expected JSON' });
     let size = 0, body = '';
     req.setEncoding('utf8');
     for await (const chunk of req) {
       size += Buffer.byteLength(chunk);
-      if (size > MAX_BODY) { json(res, 413, { error: 'Request too large' }); return; }
+      if (size > MAX_BODY) { res.setHeader('Connection', 'close'); json(res, 413, { error: 'Request too large' }); req.destroy(); return; }
       body += chunk;
     }
     let message;
@@ -234,12 +242,12 @@ export async function startServer({ settings = createSettings(), scanner, defaul
       if (message.method === 'diagnostics.get') {
         if (Object.keys(input).length) throw new TypeError('Diagnostics does not accept options.');
         result = savedDiagnosticSnapshot();
-      } else if (['review.catalog', 'review.reconnect', 'review.run', 'review.prepare', 'review.analyze', 'review.cancel'].includes(message.method)) {
+      } else if (['review.catalog', 'review.reconnect', 'review.prepare', 'review.analyze', 'review.cancel'].includes(message.method)) {
         const { buildReport, createReviewService, safeReviewError, ReviewError, prepareInsightReview, finalizeInsightReview, describeModelReference } = await loadReview();
         lifetime.signal.throwIfAborted();
         reviewService ??= createReviewService(session, { diagnostics });
         reviewAbortReason = new ReviewError('cancelled');
-        const allowed = message.method === 'review.run' ? ['prompt', 'expectedModel'] : message.method === 'review.prepare' ? ['filters'] : message.method === 'review.analyze' ? ['snapshotId', 'expectedModel', 'expectedReasoning', 'allowSamples'] : [];
+        const allowed = message.method === 'review.prepare' ? ['filters'] : message.method === 'review.analyze' ? ['snapshotId', 'expectedModel', 'expectedReasoning', 'allowSamples'] : [];
         if (Object.keys(input).some(key => !allowed.includes(key))) throw new TypeError('Unexpected review options.');
         if (message.method === 'review.prepare') {
           const f = input.filters;
@@ -250,7 +258,6 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         if (message.method === 'review.analyze' && (typeof input.snapshotId !== 'string' || typeof input.allowSamples !== 'boolean' || !['default', 'medium', 'high'].includes(input.expectedReasoning))) throw new TypeError('Invalid analysis options.');
         if (message.method === 'review.cancel') { reviewRequest?.abort(new ReviewError('cancelled')); reviewService.cancel(); result = { ok: true }; }
         else {
-          if (message.method === 'review.run' && (typeof input.prompt !== 'string' || !input.prompt.trim() || Buffer.byteLength(input.prompt) > 48 * 1024)) throw new TypeError('Review snapshot must be nonempty and no larger than 48 KiB.');
           if (reviewRequest) throw new ReviewError('busy');
           const controller = new AbortController();
           reviewRequest = controller;
@@ -264,7 +271,6 @@ export async function startServer({ settings = createSettings(), scanner, defaul
             allowActivity(config);
             clearTimeout(timer);
             if (res.destroyed || controller.signal.aborted) throw new ReviewError('cancelled');
-            if (message.method === 'review.run' && (!input.expectedModel || input.expectedModel !== config.reviewModel)) throw new ReviewError('model');
             if (message.method === 'review.prepare') {
               if (!history) throw new ReviewError('snapshot');
               if (!history.complete || history.error) throw new ReviewError('snapshot');
@@ -276,6 +282,12 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               let catalog = { models: [], reference: null };
               try { catalog = await Promise.race([reviewService.catalog(controller.signal, { refresh: false }), aborted]); }
               catch { controller.signal.throwIfAborted(); /* A statistics-only review remains usable. */ }
+              // Fail fast when a loaded catalog already proves the saved model or reasoning effort is unsupported.
+              if (Array.isArray(catalog.models) && catalog.models.length > 0 && config.reviewModel) {
+                const chosenModel = catalog.models.find(m => m.id === config.reviewModel);
+                if (!chosenModel) throw new ReviewError('model');
+                if (config.reviewReasoning && config.reviewReasoning !== 'default' && !(chosenModel.reasoningEfforts || []).includes(config.reviewReasoning)) throw new ReviewError('effort');
+              }
               const snapshot = await prepareInsightReview(scan, input.filters, preparedAt, frozenContext, { catalog: catalog.reference });
               snapshot.catalogToken = catalog.token;
               const supported = catalog.models.find(m => m.id === config.reviewModel)?.reasoningEfforts || [];
@@ -302,13 +314,12 @@ export async function startServer({ settings = createSettings(), scanner, defaul
               result = { ...await active(() => reviewService.review({ model: snapshot.model, reasoningEffort: snapshot.reasoningEffort, analysis: snapshot, allowSamples }, controller.signal)),
                 scope: snapshot.scope, filterLabels: snapshot.filterLabels, capturedAt: snapshot.payload.capturedAt, filterKey: snapshot.filters };
             } else result = await active(() => message.method === 'review.catalog' ? reviewService.catalog(controller.signal)
-              : message.method === 'review.reconnect' ? reviewService.reconnect(config.reviewModel, controller.signal)
-                : reviewService.review({ model: config.reviewModel, prompt: input.prompt }, controller.signal));
+              : reviewService.reconnect(config.reviewModel, controller.signal));
             checkActivity();
           } catch (error) { throw requestActivity.signal.aborted ? requestActivity.signal.reason : error?.code === 'paused' ? error : safeReviewError(error); }
           finally {
             // Cancelled or failed reviews can also leave billed usage behind.
-            if (requestActivity === activity && ['review.run', 'review.analyze'].includes(message.method)) history = undefined;
+            if (requestActivity === activity && message.method === 'review.analyze') history = undefined;
             clearTimeout(timer); controller.signal.removeEventListener('abort', rejectAborted); res.removeListener('close', disconnected);
             if (reviewRequest === controller) reviewRequest = undefined;
           }
@@ -331,12 +342,17 @@ export async function startServer({ settings = createSettings(), scanner, defaul
         // loses its connection. No heartbeat, extra scan, or extra request is necessary.
         result = { ...result, diagnostics: savedDiagnosticSnapshot() };
       } else if (message.method === 'settings.get') {
+        const epoch = pauseEpoch;
         result = { ...await settings.get(), defaultHome, runtimeSecurity: runtimeSecurityStatus(process.version) };
-        if (result.paused === true) setPaused(true);
+        if (epoch === pauseEpoch && result.paused === true) setPaused(true);
       }
       else if (message.method === 'settings.set') {
+        if (input.paused === true) { pauseEpoch++; setPaused(true); }
         const write = settings.set(input); settingsWrites.add(write);
-        try { result = await write; setPaused(result.paused === true); } finally { settingsWrites.delete(write); }
+        try {
+          result = await write;
+          if (Object.hasOwn(input, 'paused')) { pauseEpoch++; setPaused(result.paused === true); }
+        } finally { settingsWrites.delete(write); }
       }
       else if (['usage.report', 'usage.refresh'].includes(message.method)) {
         const { buildReport, addInstalledSkillVersions } = await loadUsage();

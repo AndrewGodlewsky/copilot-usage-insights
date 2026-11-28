@@ -34,13 +34,19 @@ test('the delegation topic counts subagent calls per conversation, model and day
   add('b', 'Big', 'user'); add('b', 'Small', 'agent'); add('b', 'Big', 'agent'); add('b', 'Small', 'sub-agent', 11);
   add('c', 'Big', 'user', 11); add('c', 'Other', '', 11); add('c', 'Other', 'something-else', 12);
   assert.deepEqual(topic.finish(), {
-    requests: 11, mainRequests: 6, delegatedRequests: 3, conversations: 3, delegatedConversations: 2,
-    topConversations: [{ id: 'a', project: '', name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { id: 'b', project: '', name: 'Beta', requests: 4, delegated: 1, share: 25 }],
-    models: [{ name: 'Small', mainRequests: 1, delegatedRequests: 3 }, { name: 'Big', mainRequests: 5, delegatedRequests: 0 }],
+    requests: 11, mainRequests: 6, delegatedRequests: 3, mainCreditCalls: 0, mainCredits: null, delegatedCreditCalls: 0, delegatedCredits: null, conversations: 3, delegatedConversations: 2,
+    topConversations: [
+      { id: 'a', project: '', name: 'Alpha', requests: 4, delegated: 2, share: 50, delegatedCreditCalls: 0, delegatedCredits: null },
+      { id: 'b', project: '', name: 'Beta', requests: 4, delegated: 1, share: 25, delegatedCreditCalls: 0, delegatedCredits: null },
+    ],
+    models: [
+      { name: 'Small', mainRequests: 1, delegatedRequests: 3, mainCreditCalls: 0, mainCredits: null, delegatedCreditCalls: 0, delegatedCredits: null },
+      { name: 'Big', mainRequests: 5, delegatedRequests: 0, mainCreditCalls: 0, mainCredits: null, delegatedCreditCalls: 0, delegatedCredits: null },
+    ],
     otherModels: { models: 0, mainRequests: 0, delegatedRequests: 0 },
     series: { unit: 'day', points: [{ day: dayKey(10), requests: 7, delegated: 2 }, { day: dayKey(11), requests: 3, delegated: 1 }, { day: dayKey(12), requests: 1, delegated: 0 }], earlier: 0 },
   });
-  assert.deepEqual(createDelegationTopic().finish(), { requests: 0, mainRequests: 0, delegatedRequests: 0, conversations: 0, delegatedConversations: 0,
+  assert.deepEqual(createDelegationTopic().finish(), { requests: 0, mainRequests: 0, delegatedRequests: 0, mainCreditCalls: 0, mainCredits: null, delegatedCreditCalls: 0, delegatedCredits: null, conversations: 0, delegatedConversations: 0,
     topConversations: [], models: [], otherModels: { models: 0, mainRequests: 0, delegatedRequests: 0 }, series: { unit: 'day', points: [], earlier: 0 } });
 });
 
@@ -66,7 +72,7 @@ test('the model mix lists the leading subagent and main-conversation models and 
   add('d1', 'user', 5); add('unknown-only', '', 40);
   const result = topic.finish();
   assert.deepEqual(result.models.map(row => row.name), ['d1', 'd2', 'd3', 'd4', 'd5', 'm1', 'm2', 'm3', 'm4', 'm5']);
-  assert.deepEqual(result.models[0], { name: 'd1', mainRequests: 5, delegatedRequests: 6 });
+  assert.deepEqual(result.models[0], { name: 'd1', mainRequests: 5, delegatedRequests: 6, mainCreditCalls: 0, mainCredits: null, delegatedCreditCalls: 0, delegatedCredits: null });
   assert.deepEqual(result.otherModels, { models: 3, mainRequests: 30, delegatedRequests: 1 });
   assert.equal(result.models.reduce((sum, row) => sum + row.delegatedRequests, 0) + result.otherModels.delegatedRequests, result.delegatedRequests);
   assert.equal(result.models.reduce((sum, row) => sum + row.mainRequests, 0) + result.otherModels.mainRequests, result.mainRequests);
@@ -116,8 +122,14 @@ test('the report carries the delegation topic for the selected dates and models 
   assert.equal(all.delegatedRequests, 4);
   const recent = report(records, { range: '7d' }).efficiency.delegation;
   assert.deepEqual([recent.requests, recent.mainRequests, recent.delegatedRequests, recent.conversations, recent.delegatedConversations], [10, 6, 3, 3, 2]);
-  assert.deepEqual(recent.topConversations, [{ id: 'alpha', project: 'p', name: 'Alpha', requests: 4, delegated: 2, share: 50 }, { id: 'beta', project: 'p', name: 'Beta', requests: 4, delegated: 1, share: 25 }]);
-  assert.deepEqual(recent.models, [{ name: 'Small', mainRequests: 3, delegatedRequests: 3 }, { name: 'Big', mainRequests: 3, delegatedRequests: 0 }]);
+  assert.deepEqual(recent.topConversations, [
+    { id: 'alpha', project: 'p', name: 'Alpha', requests: 4, delegated: 2, share: 50, delegatedCreditCalls: 2, delegatedCredits: 1 },
+    { id: 'beta', project: 'p', name: 'Beta', requests: 4, delegated: 1, share: 25, delegatedCreditCalls: 1, delegatedCredits: 0.5 },
+  ]);
+  assert.deepEqual(recent.models, [
+    { name: 'Small', mainRequests: 3, delegatedRequests: 3, mainCreditCalls: 3, mainCredits: 3, delegatedCreditCalls: 3, delegatedCredits: 1.5 },
+    { name: 'Big', mainRequests: 3, delegatedRequests: 0, mainCreditCalls: 3, mainCredits: 3, delegatedCreditCalls: 0, delegatedCredits: null },
+  ]);
   assert.equal(recent.series.points.length, 1);
   const big = report(records, { range: '7d', models: ['Big'] }).efficiency.delegation;
   assert.deepEqual([big.requests, big.mainRequests, big.delegatedRequests, big.delegatedConversations], [3, 3, 0, 0]);
@@ -166,7 +178,7 @@ test('the delegated work view shows model routing and where delegation happens',
   assert.match(plain, /Big Subagents 0% 0 of 3 subagent calls Main conversation 50% 3 of 6 main-conversation calls/);
   assert.doesNotMatch(plain, /Other Subagents|Other models/, 'a model with only unrecorded initiators is on neither side');
   assert.match(plain, /2 of 3 conversations with model calls had at least one subagent call\./);
-  assert.match(plain, /Alpha 2 4 50% Beta 1 4 25% /);
+  assert.match(plain, /Alpha 2 4 50% 1 \(2 of 2 model calls\) Beta 1 4 25% 0\.5 \(1 of 1 model calls\) /);
   assert.match(plain, /The 2 conversations with the most subagent calls, of 2 that had any\. Together they made 100% of subagent calls\./);
   assert.doesNotMatch(plain, /Subagent share of model calls by/, 'one day is not a trend');
   const days = Array.from({ length: 5 }, (_, day) => [call({ ms: base - day * DAY }), call({ ms: base - day * DAY + 1 }), ...(day < 2 ? [subCall({ ms: base - day * DAY + 2 }), subCall({ ms: base - day * DAY + 3 })] : [])]).flat();

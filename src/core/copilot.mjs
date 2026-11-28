@@ -57,10 +57,11 @@ function emptyCheckpoint(data) {
 }
 // Copilot writes each line as {"type":"<name>",...}. Returns the name, or '' for any other shape.
 function leadingType(line) {
-  if (!line.startsWith('{"type":"')) return '';
-  const end = line.indexOf('"', 9);
-  if (end < 10 || end > 80 || line.charCodeAt(end + 1) !== 44 || line.charCodeAt(line.length - 1) !== 125) return '';
-  const name = line.slice(9, end);
+  const text = line.endsWith('\r') ? line.slice(0, -1) : line;
+  if (!text.startsWith('{"type":"')) return '';
+  const end = text.indexOf('"', 9);
+  if (end < 10 || end > 80 || text.charCodeAt(end + 1) !== 44 || text.charCodeAt(text.length - 1) !== 125) return '';
+  const name = text.slice(9, end);
   return /^[a-z0-9_.]+$/.test(name) ? name : '';
 }
 
@@ -210,10 +211,10 @@ export function createReceiptParser({ sessionId: initialSession, source, logFile
         const u = e.data?.compactionTokensUsed;
         if (!u || typeof u !== 'object') return;
         const key = id ? JSON.stringify(['compaction', sessionId, id]) : '';
-        if (compactions.has(key)) return;
+        if (key && compactions.has(key)) return;
         const result = normalizeUsage(u, { key, timestamp: e.timestamp, sessionId, cwd, project: label, source });
         // Separate these from ordinary receipts so older sessions still use database fallback.
-        compactions.set(key, result.record ? { ...result.record, logFile, origin: 'compaction' } : null);
+        if (key) compactions.set(key, result.record ? { ...result.record, logFile, origin: 'compaction' } : null);
         revision++;
         if (result.reason) rejectedEvent(result.reason, e, key, u);
         if (result.reason === 'excluded') excluded++;

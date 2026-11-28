@@ -2,7 +2,7 @@
 
 A review of every stage between Copilot's files on disk and the numbers on the dashboard, aimed at someone who uses Copilot all day and keeps months of history. It covers how the plugin works, what each stage cost, what was changed, how the changes were checked, and which further gains would mean giving something up.
 
-Starting point: version 0.1.70. It picks up the remaining costs listed in the [dashboard opening review](performance-review-2026-11-15.md). No feature, number or message on the dashboard was changed. The old and the new code were run side by side on generated histories and produced identical output in every comparison (see [How sameness was checked](#how-sameness-was-checked)).
+Starting point: version 0.1.70. It picks up the remaining costs listed in the [dashboard opening review](archive/audits/performance-review-2026-11-15.md). No feature, number or message on the dashboard was changed. The old and the new code were run side by side on generated histories and produced identical output in every comparison (see [How sameness was checked](#how-sameness-was-checked)).
 
 ## Result
 

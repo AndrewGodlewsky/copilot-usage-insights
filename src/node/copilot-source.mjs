@@ -196,8 +196,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     return entry.snapshot;
   }
 
-  async function readJournal(file, stat, real, sessionId, force, context = {}, metrics, phase) {
-    signal?.throwIfAborted();
+  async function readJournal(file, stat, real, sessionId, force, context = {}, metrics, phase, readSignal = signal) {
+    readSignal?.throwIfAborted();
     if (phase) {
       phase.files++;
       if (Number.isFinite(stat.mtimeMs) && stat.mtimeMs < phase.sinceMs) {
@@ -212,10 +212,11 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     if (!force && entry && sameFile(entry, stat)) { if (metrics) metrics.filesReused++; return current(entry); }
     const handle = await fs.open(file, 'r');
     const chunk = chunks.pop() || Buffer.allocUnsafe(CHUNK);
+    let mutatingCached = false;
     try {
       let prefixMatches = false, hash;
       if (!force && entry && entry.digest !== null && stat.size > entry.size && entry.ino === stat.ino && entry.dev === stat.dev) {
-        hash = await hashPrefix(handle, entry.offset, metrics, signal);
+        hash = await hashPrefix(handle, entry.offset, metrics, readSignal);
         prefixMatches = hash.copy().digest('hex') === entry.digest;
         if (!prefixMatches && metrics) metrics.prefixMismatches++;
       }
@@ -224,13 +225,13 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         hash = growing ? createHash('sha256') : null;
         const parser = context.format === 'vscode' ? createVSCodeParser({ source: real, logFile: file, ...context }) : createReceiptParser({ sessionId, source: real, logFile: file, skipUnused, backgroundActivity: context.backgroundActivity, createFingerprint: createCallFingerprint });
         entry = { parser, contextKey, environment: context.environment || sourceEnvironment(real).environment, offset: 0, digest: hash ? hash.copy().digest('hex') : null, snapshot: null, revision: -1 };
-      }
+      } else mutatingCached = true;
       if (metrics) metrics[prefixMatches ? 'filesAppended' : 'filesRead']++;
       const parser = entry.parser;
       let position = entry.offset, pending = [], pendingLength = 0, dropping = false, consumed = null;
       try {
         while (position < stat.size) {
-          signal?.throwIfAborted();
+          readSignal?.throwIfAborted();
           const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, stat.size - position), position);
           if (!bytesRead) break;
           if (metrics) metrics.bytesRead += bytesRead;
@@ -255,6 +256,9 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           }
           position += bytesRead;
         }
+      } catch (readError) {
+        if (mutatingCached) files.delete(file);
+        throw readError;
       } finally { if (consumed) entry.digest = consumed.digest('hex'); }
       Object.assign(entry, { size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs, ino: stat.ino, dev: stat.dev });
       files.set(file, entry);
@@ -265,8 +269,8 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
     } finally { chunks.push(chunk); await handle.close(); }
   }
 
-  async function readSession(stateDir, real, sessionId, force, context, metrics, phase) {
-    signal?.throwIfAborted();
+  async function readSession(stateDir, real, sessionId, force, context, metrics, phase, readSignal = signal) {
+    readSignal?.throwIfAborted();
     // A folder name has nothing to normalise, so its paths are put together directly.
     const dir = stateDir + path.sep + sessionId;
     const found = { id: sessionId, name: '', nameFile: dir + path.sep + 'workspace.yaml', file: '', snapshot: null, error: null };
@@ -275,15 +279,16 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       const file = dir + path.sep + 'events.jsonl', stat = await fs.stat(file);
       if (!stat.isFile()) return found;
       found.file = file;
-      found.snapshot = await readJournal(file, stat, real, sessionId, force, context, metrics, phase);
-    } catch (e) { signal?.throwIfAborted(); found.error = e; }
+      found.snapshot = await readJournal(file, stat, real, sessionId, force, context, metrics, phase, readSignal);
+    } catch (e) { readSignal?.throwIfAborted(); found.error = e; }
     return found;
   }
 
-  async function scan(roots, { force = false, disabled = [], includeWsl = true, readWslDatabases = true, includeVSCode = true, extraVSCodeHomes = [], phase, discovery } = {}) {
-    signal?.throwIfAborted();
+  async function scan(roots, { force = false, disabled = [], includeWsl = true, readWslDatabases = true, includeVSCode = true, extraVSCodeHomes = [], phase, discovery, signal: callSignal } = {}) {
+    const activeSignal = callSignal && signal ? AbortSignal.any([signal, callSignal]) : callSignal || signal;
+    activeSignal?.throwIfAborted();
     const seenRoots = new Set(), seenFiles = new Set(), seenNames = new Set(), sources = [], snapshots = [], owners = [], databases = [], sessionNames = new Map();
-    const discovered = discovery || (includeWsl && discoverWsl ? await measure('history.discovery', { environmentType: 'wsl' }, () => discoverWsl({ disabled })) : { homes: [], sources: [] });
+    const discovered = discovery || (includeWsl && discoverWsl ? await measure('history.discovery', { environmentType: 'wsl' }, () => discoverWsl({ disabled, signal: activeSignal })) : { homes: [], sources: [] });
     if (phase) phase.discovery = discovered;
     const disabledIds = new Set(disabled.map(p => sourceIdentity(p)));
     const helperHomes = new Set([enhancePromptUsageHome(), reviewUsageHome()].map(p => sourceIdentity(p)));
@@ -321,7 +326,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           metrics.folders = sessions.length;
           // Outcomes are applied in folder order, so the result does not depend on which read finished first.
           const context = { backgroundActivity: helperHomes.has(rootIdentity) || helperHomes.has(identity) };
-          for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force, context, metrics, phase))) {
+          for (const found of await inOrder(sessions, dir => readSession(stateDir, real, dir.name, force, context, metrics, phase, activeSignal))) {
             seenNames.add(found.nameFile);
             if (found.name) setName(real, found.id, found.name);
             if (found.file) { seenFiles.add(found.file); source.files++; }
@@ -340,20 +345,24 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       const metrics = { sourceKind: 'vscode', force, ...readMetrics() };
       const vscode = await measure('history.vscode', metrics, async () => {
         const result = await discoverVSCode({ homes: discovered.vscodeHomes || [], extraHomes: extraVSCodeHomes, include: includeVSCode, disabled, cliSessions, force,
-          readJournal: (file, stat, source, session, force, context = {}) => readJournal(file, stat, source, session, force, context, metrics, phase) });
+          readJournal: (file, stat, source, session, force, context = {}) => readJournal(file, stat, source, session, force, context, metrics, phase, activeSignal) });
         metrics.sources = result.sources.length;
         return result;
       });
       sources.push(...vscode.sources); snapshots.push(...vscode.snapshots); owners.push(...vscode.owners);
       for (const file of vscode.files) seenFiles.add(file);
     }
-    for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
-    for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
-    const mergeFields = { files: snapshots.length, cacheHit: !!merge && sameList(merge.snapshots, snapshots) };
-    measure('history.merge', mergeFields, () => {
+    if (!phase) {
+      for (const file of files.keys()) if (!seenFiles.has(file)) files.delete(file);
+      for (const file of names.keys()) if (!seenNames.has(file)) names.delete(file);
+    }
+    const mergeFields = { files: snapshots.length, cacheHit: !phase && !!merge && sameList(merge.snapshots, snapshots) };
+    const merged = measure('history.merge', mergeFields, () => {
+      if (phase) return mergeJournals(snapshots);
       if (!mergeFields.cacheHit) merge = { snapshots, journals: mergeJournals(snapshots) };
+      return merge.journals;
     });
-    const journals = merge.journals, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
+    const journals = merged, coverage = { ...journals.coverage }, extra = new Map(), kept = new Map();
     const summaryActivity = new Set(snapshots.map(s => s.summaryActivitySession).filter(Boolean));
     const coverageEntries = snapshots.flatMap(s => [...(s.coverageEntries || []), ...(s.emptySummary && summaryActivity.has(s.emptySummary.sessionId) ? [s.emptySummary] : [])]);
     for (let i = 0; i < owners.length; i++) owners[i].records += journals.added[i];
@@ -372,7 +381,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           if (fields.cacheHit) result = known.result;
           else {
             databaseCache.delete(db);
-            result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases, signal });
+            result = await readDatabase(db, journals.receiptSessions, source.path, { readWslDatabases, signal: activeSignal });
             if (stamp !== null && result.databaseRead !== 'wsl' && stamp === await databaseStamp(db)) databaseCache.set(db, { stamp, receipts: journals.receiptSessions, result });
           }
           Object.assign(fields, { records: result.records.length, databaseReader: result.databaseRead === 'wsl' ? 'wsl' : 'local' });
@@ -417,7 +426,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
         kept.set(db, rows);
       } catch (e) { source.state = 'warning'; source.message = e.message; source.diagnostic = diagnosticError(e); }
     }
-    fallback = kept;
+    if (!phase) fallback = kept;
     return measure('history.finalize', { records: journals.recordList.length + extra.size }, async () => {
       const databaseSessions = new Set([...extra.values()].map(r => r.sessionId)), compactions = [];
       const issues = mergeCoverage(coverageEntries, new Set([...journals.receiptSessions, ...databaseSessions]));
@@ -437,9 +446,9 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
           const source = sources.find(s => s.path === home);
           if (source?.kind === 'vscode') continue;
           try {
-            for (const [id, name] of await readDesktopSessionNamesInProcess(path.join(home, 'data.db'), ids, { signal })) setName(home, id, name);
+            for (const [id, name] of await readDesktopSessionNamesInProcess(path.join(home, 'data.db'), ids, { signal: activeSignal })) setName(home, id, name);
           } catch (error) {
-            signal?.throwIfAborted();
+            activeSignal?.throwIfAborted();
             if (source) { source.state = 'warning'; source.message = 'Desktop session names could not be read; usage remains included.'; source.diagnostic = diagnosticError(error); }
           }
         }
@@ -460,6 +469,7 @@ export function createScanner({ optionalHomes = [], skipUnused = false, discover
       for (const r of extra.values()) records[n++] = named(r);
       for (const r of compactions) records[n++] = named(r);
       const result = { records, skills: journals.skills, interactions: journals.interactions, promptEvents: journals.promptEvents, tools: journals.tools, modelChanges: journals.modelChanges, compactionEvents: journals.compactionEvents, skillExcludedSessions: [...skillExcluded], sources, coverage, coverageEntries: issues };
+      if (phase) { Object.defineProperty(result, 'cache', { value: { uniquePromptEvents: true } }); return result; }
       // Nothing changed: hand back the very same result, so everything derived from it stays valid.
       if (previous && previous.skills === result.skills && previous.interactions === result.interactions && previous.promptEvents === result.promptEvents && previous.tools === result.tools && previous.modelChanges === result.modelChanges && previous.compactionEvents === result.compactionEvents
         && !renamed && sameList(previous.records, records) && sameList(previous.skillExcludedSessions, result.skillExcludedSessions)

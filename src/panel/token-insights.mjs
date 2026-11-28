@@ -26,6 +26,12 @@ export function barList(rows, { format = String, total } = {}) {
     : esc(row.label);
   return `<div class="token-bar-list" role="list">${drawn.map(row => `<div class="token-bar-row" role="listitem"><span class="token-bar-label">${labelHtml(row)}</span><span class="token-bar-track" aria-hidden="true"><i style="width:${Math.min(100, row.value / scale * 100).toFixed(1)}%${row.color ? `;background:${row.color}` : ''}"></i></span><span class="token-bar-value">${esc(format(row.value))}</span>${row.detail ? `<span class="token-bar-detail">${esc(row.detail)}</span>` : ''}</div>`).join('')}</div>`;
 }
+// Private sentinel for trusted pre-escaped HTML cells so untrusted plain objects can never bypass esc().
+const RAW_HTML = Symbol('rawHtml');
+export const rawHtmlCell = (html, extra) => ({ [RAW_HTML]: html, ...extra });
+export const isRawHtmlCell = cell => Boolean(cell && typeof cell === 'object' && Object.hasOwn(cell, RAW_HTML));
+export const readRawHtmlCell = cell => cell[RAW_HTML];
+
 // Shared conversation drill-down button and Efficiency cross-topic jump button.
 export function openSessionButton(name, id, project = '') {
   const label = name || 'Unnamed session';
@@ -52,7 +58,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
   const coverage = (count, total = s.requests) => `${number(count ?? 0)} of ${number(total ?? 0)} model calls`;
   const partial = (count, total = s.requests) => count < total;
   const measured = (value, count, total = s.requests, format = number) => coverageValue(value, partial(count, total), format, showCoverage);
-  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}>${cell && typeof cell === 'object' && 'html' in cell ? cell.html : `<span class="cell-text">${esc(cell)}</span>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const table = (headers, rows) => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table"><thead><tr>${headers.map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell, index) => `<td${index === 0 ? ' class="text-cell"' : ''}>${isRawHtmlCell(cell) ? readRawHtmlCell(cell) : `<span class="cell-text">${esc(cell)}</span>`}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const insight = (observation, action, compare) => `<aside class="token-insight"><strong>${esc(observation)}</strong><p>${esc(action)}</p>${note(`Compare afterward: ${compare}`)}</aside>`;
   const jump = (topic, label) => `<button data-token-jump="${topic}">${esc(label)}</button>`;
   const inspect = '<button data-token-context="true">Open context inspector</button>';
@@ -226,7 +232,12 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
     const callCount = count => `${number(count)} ${count === 1 ? 'call' : 'calls'}`;
     const timingBars = (label, keys) => {
       const drawn = barList(keys.map(situation).filter(Boolean).map(row => ({ label: situationNames[row.id], value: row.share, color: 'var(--s3)',
-        detail: `${callCount(row.calls)} · ${number(row.cacheRead)} of ${number(row.input)} input tokens read from cache` })), { format: percent, total: 100 });
+        detail: [
+          callCount(row.calls),
+          `${number(row.cacheRead)} of ${number(row.input)} input tokens read from cache`,
+          row.creditCalls && valid(row.averageCredits) ? `${credits(row.averageCredits)} / call` : '',
+          valid(row.writeChurn) ? `${percent(row.writeChurn)} cache-write churn` : '',
+        ].filter(Boolean).join(' · ') })), { format: percent, total: 100 });
       return drawn ? `<p class="label cache-timing-group">${esc(label)}</p>${drawn}` : '';
     };
     const unmeasured = Object.keys(situationNames).filter(key => !valid(situation(key)?.share)).map(key => situationNames[key].toLowerCase() + (['under5', 'mid', 'over60'].includes(key) ? ' since the previous call' : ''));
@@ -243,7 +254,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
         + timingBars('Share of input read from cache, by time since the previous call in the same conversation', ['under5', 'mid', 'over60'])
         + timingBars('Share of input read from cache on a first call', ['first', 'modelChange'])
         + (unmeasured.length ? note(`Nothing measured in this selection for: ${unmeasured.join('; ')}. That is not zero reuse.`) : '')
-        + note(`Each call is counted in one row. The time rows cover calls on the same model as the call before them. A conversation's first call in the selected range is not necessarily its true start: earlier calls can fall outside the range or filters. Rows can differ in other ways too, such as how long the conversation already was.${timing.modelFiltered ? ' A model filter is on, so calls on other models are not seen: some pauses look longer than they were and some model changes are missed.' : ''}`)
+        + note(`Each call is counted in one row. The time rows cover calls on the same model as the call before them. Cache-write churn is cache writes as a share of cache reads plus cache writes; higher churn means more writes relative to reads. A conversation's first call in the selected range is not necessarily its true start: earlier calls can fall outside the range or filters. Rows can differ in other ways too, such as how long the conversation already was.${timing.modelFiltered ? ' A model filter is on, so calls on other models are not seen: some pauses look longer than they were and some model changes are missed.' : ''}`)
         + note(`The summary sentence below compares a row with the under 5 minutes row only when both have at least ${number(enoughCalls)} calls and the shares differ by at least ${number(clearGap)} percentage points.`)
       : empty('No main-conversation calls with a complete cache split match these filters, so reuse cannot be compared by timing. Missing data is not zero reuse.');
     const listed = timing?.sessions || [];
@@ -252,7 +263,7 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       ? table(hasSplitDetail ? ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Cache write', 'Uncached', 'Read share']
           : ['Conversation', 'Measured calls', 'Input tokens', 'Not read from cache', 'Read share'],
           listed.map(r => {
-            const nameCell = { html: openSessionButton(r.name || 'Unnamed session', r.id, r.project) };
+            const nameCell = rawHtmlCell(openSessionButton(r.name || 'Unnamed session', r.id, r.project));
             return hasSplitDetail
               ? [nameCell, number(r.calls), number(r.input), number(r.notRead), number(r.cacheWrite), number(r.uncached), percent(r.share)]
               : [nameCell, number(r.calls), number(r.input), number(r.notRead), percent(r.share)];
@@ -312,8 +323,15 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
       const at = Date.parse(row.lastUsed);
       return Number.isFinite(at) ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unavailable';
     };
-    const mostUsed = () => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table token-skill-table"><thead><tr>${['Skill', 'Source plugin', 'Uses', 'How it was loaded', 'Conversations', 'Projects', 'Last used', 'Failed loads'].map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${text(r.name || 'Unnamed skill')}</td><td>${text(r.plugin || 'None recorded')}</td><td>${text(count(r.invocations))}</td><td>${loadCell(r)}</td><td>${text(count(r.sessions))}</td><td>${text(count(r.projects))}</td><td>${text(usedOn(r))}</td><td>${text(count(r.failures))}</td></tr>`).join('')}</tbody></table></div>`
-      + note(`Showing ${number(rows.length)} of ${things(all.length, 'skill')} with recorded activity, most used first. Uses count recorded loads, including preloaded ones; failed loads are counted separately. Last used is the most recent recorded use or failed load.`);
+    const preloadedOnly = all.filter(r => valid(r.sessions) && r.sessions >= 3 && (r.triggers?.preloaded || 0) > 0 && !(r.triggers?.manual > 0) && !(r.triggers?.agent > 0))
+      .sort((a, b) => b.sessions - a.sessions || String(a.name).localeCompare(String(b.name)));
+    const preloadedOnlyNote = preloadedOnly.length
+      ? note(`Preloaded in 3+ conversations without explicit manual or agent invocations: ${preloadedOnly.slice(0, 5).map(r => `${r.name || 'Unnamed skill'} (${things(r.sessions, 'conversation')})`).join(', ')}${preloadedOnly.length > 5 ? ` (and ${number(preloadedOnly.length - 5)} more)` : ''}. Preloaded skills are already in context without needing a separate invocation, so this does not prove they went unused.`)
+      : '';
+    const failedCell = r => r.failures > 0 && valid(r.failureRate) ? `${count(r.failures)} (${percent(r.failureRate)})` : count(r.failures);
+    const mostUsed = () => `<div class="table-wrap"><table class="efficiency-outcomes token-insight-table token-skill-table"><thead><tr>${['Skill', 'Source plugin', 'Uses', 'How it was loaded', 'Conversations', 'Projects', 'Last used', 'Failed loads'].map(h => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr><td class="text-cell">${text(r.name || 'Unnamed skill')}</td><td>${text(r.plugin || 'None recorded')}</td><td>${text(count(r.invocations))}</td><td>${loadCell(r)}</td><td>${text(count(r.sessions))}</td><td>${text(count(r.projects))}</td><td>${text(usedOn(r))}</td><td>${text(failedCell(r))}</td></tr>`).join('')}</tbody></table></div>`
+      + note(`Showing ${number(rows.length)} of ${things(all.length, 'skill')} with recorded activity, most used first. Uses count recorded loads, including preloaded ones; failed loads are counted separately. Last used is the most recent recorded use or failed load.`)
+      + preloadedOnlyNote;
 
     // Conversations with model calls give a sense of scale. They are not a matched denominator:
     // skill activity ignores the model filter and can come from a conversation with no model call
@@ -549,7 +567,17 @@ export function renderTokenInsight(id, report, { number, credits, context, previ
           r.creditRequests ? `${measured(r.credits, r.creditRequests, r.requests, credits)} (${covered(r.creditRequests, r.requests)})` : 'Unavailable']))
           + note('Each column averages only the subagent calls that record that measure. Cache read uses complete cache splits; credits include complete recorded charges only.') : '')) : '')
       + (where && sub.requests ? section('Where delegation happens', lead(`${covered(where.delegatedConversations, where.conversations, 'conversations')} with model calls had at least one subagent call.`)
-        + (top.length ? table(['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'], top.map(r => [{ html: openSessionButton(r.name, r.id, r.project) }, number(r.delegated), number(r.requests), percent(r.share)]))
+        + (top.length ? (() => {
+            const hasDelegatedCredits = top.some(r => r.delegatedCreditCalls > 0 && valid(r.delegatedCredits));
+            const headers = hasDelegatedCredits
+              ? ['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls', 'Subagent credits']
+              : ['Conversation', 'Subagent calls', 'All calls', 'Subagent share of its calls'];
+            return table(headers, top.map(r => {
+              const base = [rawHtmlCell(openSessionButton(r.name, r.id, r.project)), number(r.delegated), number(r.requests), percent(r.share)];
+              if (hasDelegatedCredits) base.push(r.delegatedCreditCalls > 0 && valid(r.delegatedCredits) ? `${measured(r.delegatedCredits, r.delegatedCreditCalls, r.delegated, credits)} (${covered(r.delegatedCreditCalls, r.delegated)})` : 'Unavailable');
+              return base;
+            }));
+          })()
           + note(`The ${exact(top.length)} conversations with the most subagent calls, of ${exact(where.delegatedConversations)} that had any. Together they made ${percent(share(top.reduce((n, r) => n + r.delegated, 0), where.delegatedRequests))} of subagent calls. A conversation here is one recorded session.`) : '')
         + trendRow(series, p => p.requests > 0 ? p.delegated / p.requests * 100 : null, { label: 'Subagent share of model calls', format: percent })
         + (series?.earlier ? note(`The line covers the latest ${exact(series.points.length)} ${series.unit === 'week' ? 'weeks' : 'days'} with calls. ${exact(series.earlier)} earlier ones are left out.`) : '')) : '')

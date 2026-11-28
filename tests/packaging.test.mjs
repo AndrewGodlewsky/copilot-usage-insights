@@ -24,7 +24,7 @@ test('marketplace package has a runnable desktop entry and self-contained dashbo
   assert.ok(html.includes(`>v${plugin.version}</button>`));
   assert.ok(html.includes(`const BUILD_VERSION = ${JSON.stringify(plugin.version)};`));
   new Script(html.match(/<script>([\s\S]*)<\/script>/)[1]);
-  assert.match(html, /function buildModelReference\(/, 'custom flattening includes the shared reference normalizer');
+  assert.doesNotMatch(html, /function buildModelReference\(/, 'server-only model reference code stays out of panel/index.html');
   assert.match(html, /Prepared review prompt/);
   assert.doesNotMatch(html, /PANEL_SCRIPT|PANEL_STYLES|<script[^>]+src=/);
   // Exercise the package's real relative import graph with only the host SDK substituted.

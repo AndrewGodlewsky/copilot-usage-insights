@@ -26,8 +26,10 @@ test('all shipped facts validate, preserve counts/provenance and are exactly emb
   for (const r of data.results) { assert.equal(r.source.license, 'Apache-2.0'); assert.ok(r.source.url.includes(r.source.revision)); assert.equal(r.uncertainty, null); }
   assert.equal(data.results[1].publishedAt, '2025-05-25'); assert.equal(data.results[1].evaluatedAt, '2025-05-24');
   assert.equal(data.models.find(m => m.id === 'sonnet4').copilotId, null);
+  const generated = readFileSync(new URL('../src/generated/model-benchmarks.mjs', import.meta.url), 'utf8');
+  assert.equal(generated, benchmarkModuleSource(data));
   const html = readFileSync(new URL('../panel/index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes(benchmarkModuleSource(data).replace('export const', 'const')));
+  assert.doesNotMatch(html, /\bbundledModelBenchmarks\b/, 'server-only benchmark data should not bloat panel/index.html');
   assert.ok(html.includes(readFileSync(new URL('../licenses/aider-Apache-2.0.txt', import.meta.url), 'utf8').trim()));
 });
 

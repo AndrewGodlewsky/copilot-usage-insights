@@ -2,6 +2,10 @@ name: test
 
 on: [push, pull_request, workflow_dispatch]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -14,6 +18,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -25,22 +31,30 @@ jobs:
       - name: Build panel
         shell: bash
         run: node scripts/build.mjs
-      - name: Check committed panel is current
+      - name: Check committed generated files are current
         shell: bash
-        run: git diff --exit-code panel/index.html
+        run: git diff --exit-code panel/index.html src/generated/model-benchmarks.mjs
       - name: Require version bump for shipped plugin changes on PRs to main
         if: github.event_name == 'pull_request' && github.base_ref == 'main' && matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          git fetch --no-tags --depth=1 origin main
-          changed=$(git diff --name-only origin/main...HEAD -- src/ panel/ assets/ data/ com.github.copilot/)
+          git fetch --no-tags origin main
+          changed=$(git diff --name-only origin/main...HEAD -- src/ panel/ assets/ data/ com.github.copilot/ plugin.json .github/plugin/marketplace.json licenses/ LICENSE security-dependencies.json)
           if [ -n "$changed" ]; then
             base_ver=$(git show origin/main:package.json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.version)")
             head_ver=$(node -e "const d=JSON.parse(require('fs').readFileSync('package.json','utf8'));console.log(d.version)")
-            if [ "$base_ver" = "$head_ver" ]; then
-              echo "Shipped plugin files changed without bumping version ($head_ver). See AGENTS.md."
-              exit 1
-            fi
+            node -e "
+              const cmp = (a, b) => {
+                const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+                for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+                return 0;
+              };
+              const [base, head] = process.argv.slice(1);
+              if (cmp(head, base) <= 0) {
+                console.error('Shipped plugin files changed without bumping version strictly above main (' + base + ' -> ' + head + '). See AGENTS.md.');
+                process.exit(1);
+              }
+            " "$base_ver" "$head_ver"
           fi
       - name: Test
         shell: bash

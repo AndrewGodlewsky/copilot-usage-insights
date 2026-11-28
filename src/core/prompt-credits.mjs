@@ -1,4 +1,5 @@
 import { dayOfMs, dayKey } from './query.mjs';
+import { createNanoTotal, medianOf, medianFromCounts, bucketTrend } from './stats.mjs';
 import { createConversationAccumulator } from './conversations.mjs';
 import { createContextGrowthAccumulator } from './context-growth.mjs';
 import { createHabitsAccumulator } from './efficiency-habits.mjs';
@@ -96,11 +97,7 @@ export function createPromptEventSet() {
 
 // Exact integer total without allocating a BigInt per addend; spills only beyond 2^53.
 export function exactTotal() {
-  let low = 0, high = 0n;
-  return {
-    add(n) { if (low > Number.MAX_SAFE_INTEGER - n) { high += BigInt(low); low = 0; } low += n; },
-    number: () => high ? Number(high + BigInt(low)) : low,
-  };
+  return createNanoTotal();
 }
 
 const order = { user: 0, 'turn-start': 1, receipt: 2, message: 3, 'tool-start': 4, 'agent-start': 5, 'agent-end': 6, 'tool-end': 7, 'turn-end': 8, abort: 9, resume: 10 };
@@ -117,18 +114,8 @@ const INITIAL = 0, CONTINUATION = 1, SUBAGENT = 2, UNRECORDED = 3;
 const CALL_BINS = ['1 call', '2 to 5 calls', '6 to 15 calls', '16+ calls'];
 const HEAVIEST = 5, TREND_POINTS = 62;
 
-function medianOf(values) {
-  if (!values.length) return null;
-  const sorted = Float64Array.from(values).sort(), low = Math.floor((sorted.length - 1) / 2), high = Math.floor(sorted.length / 2);
-  return (sorted[low] + sorted[high]) / 2;
-}
-
-// The spread behind the per-prompt averages, over the same eligible prompts and the same
-// selected charges. Charges of eligible prompts are complete, so each total is exact. The
-// per-prompt totals fill one numeric buffer for the length of the pass; only a few numbers
-// and the heaviest prompts are reported.
 function promptSpread() {
-  const callCounts = [], bins = CALL_BINS.map(() => ({ prompts: 0, nano: 0 })), roles = ROLES.map(() => ({ requests: 0, nano: 0 })), top = [];
+  const callCounts = new Map(), bins = CALL_BINS.map(() => ({ prompts: 0, nano: exactTotal() })), roles = ROLES.map(() => ({ requests: 0, nano: exactTotal() })), top = [];
   const sides = [0, 1].map(() => ({ calls: [], nano: [], requests: 0, nanoTotal: exactTotal() }));
   const days = new Map();
   let totals = new Float64Array(1024), count = 0, delegatedPrompts = 0;
@@ -142,12 +129,12 @@ function promptSpread() {
       let nano = 0, delegated = false;
       for (const r of charges) {
         const role = roles[r.role];
-        nano += r.nano; role.requests++; role.nano += r.nano;
+        nano += r.nano; role.requests++; role.nano.add(r.nano);
         if (r.role === SUBAGENT) delegated = true;
       }
       const calls = charges.length, bin = bins[calls <= 1 ? 0 : calls <= 5 ? 1 : calls <= 15 ? 2 : 3];
-      bin.prompts++; bin.nano += nano;
-      callCounts[calls] = (callCounts[calls] || 0) + 1;
+      bin.prompts++; bin.nano.add(nano);
+      callCounts.set(calls, (callCounts.get(calls) || 0) + 1);
       if (delegated) delegatedPrompts++;
       const side = sides[delegated ? 1 : 0];
       side.calls.push(calls); side.nano.push(nano); side.requests += calls; side.nanoTotal.add(nano);
@@ -167,18 +154,12 @@ function promptSpread() {
     },
     finish(labels) {
       const sorted = totals.subarray(0, count).sort(), low = Math.floor((count - 1) / 2), high = Math.floor(count / 2), heavy = Math.floor(count / 10);
-      const spread = { medianRequests: null, bins: bins.map((b, i) => ({ label: CALL_BINS[i], prompts: b.prompts, credits: b.prompts ? credits(b.nano) : null })),
+      const spread = { medianRequests: null, bins: bins.map((b, i) => ({ label: CALL_BINS[i], prompts: b.prompts, credits: b.prompts ? b.nano.credits() : null })),
         medianCredits: null, heavyPrompts: heavy, heavyCredits: null, heavyShare: null, halfPrompts: null };
       let total = 0;
       for (let i = 0; i < count; i++) total += sorted[i];
       if (count) {
-        let seen = 0, lower;
-        for (let calls = 0; calls < callCounts.length; calls++) {
-          if (!callCounts[calls]) continue;
-          seen += callCounts[calls];
-          if (lower === undefined && seen > low) lower = calls;
-          if (seen > high) { spread.medianRequests = (lower + calls) / 2; break; }
-        }
+        spread.medianRequests = medianFromCounts(callCounts, count);
         spread.medianCredits = credits((sorted[low] + sorted[high]) / 2);
       }
       // A tenth needs at least ten prompts; a share needs a charge above zero.
@@ -194,34 +175,22 @@ function promptSpread() {
         spread.halfPrompts = prompts;
       }
       const mix = { delegatedPrompts };
-      ROLES.forEach((name, i) => { mix[name] = { requests: roles[i].requests, credits: roles[i].requests ? credits(roles[i].nano) : null }; });
-      const heaviest = top.map(({ prompt, nano, requests, tokens }) => ({ day: dayKey(prompt.day), session: prompt.sessionId, sessionName: labels?.get(prompt.sessionId) ?? null,
+      ROLES.forEach((name, i) => { mix[name] = { requests: roles[i].requests, credits: roles[i].requests ? roles[i].nano.credits() : null }; });
+      const heaviest = top.map(({ prompt, nano, requests, tokens }) => ({ day: Number.isFinite(prompt.day) ? dayKey(prompt.day) : '', session: prompt.sessionId, sessionName: labels?.get(prompt.sessionId) ?? null,
         project: prompt.project, requests, tokens, credits: credits(nano) }));
       const finishSide = side => {
-        const prompts = side.calls.length, sumCredits = prompts ? credits(side.nanoTotal.number()) : null;
+        const prompts = side.calls.length, sumCredits = prompts ? side.nanoTotal.credits() : null;
         return { prompts, medianCalls: medianOf(side.calls), averageCalls: prompts ? side.requests / prompts : null,
           medianCredits: prompts ? credits(medianOf(side.nano)) : null, averageCredits: prompts ? sumCredits / prompts : null, credits: sumCredits };
       };
       const delegationSplit = { mainOnly: finishSide(sides[0]), delegated: finishSide(sides[1]) };
-      const orderedDays = [...days].sort((a, b) => a[0] - b[0]);
-      let trend = { unit: 'day', points: [] };
-      if (orderedDays.length) {
-        const first = orderedDays[0][0], weekly = orderedDays.at(-1)[0] - first >= TREND_POINTS, span = weekly ? 7 : 1, points = [];
-        let startBucket = null, cur = null;
-        const flush = () => {
-          if (!cur) return;
-          points.push({ day: dayKey(startBucket), prompts: cur.prompts, averageRequests: cur.requests / cur.prompts,
-            averageCredits: credits(cur.nano.number()) / cur.prompts });
-        };
-        for (const [day, d] of orderedDays) {
-          const bucket = first + Math.floor((day - first) / span) * span;
-          if (bucket !== startBucket) { flush(); startBucket = bucket; cur = { prompts: 0, requests: 0, nano: exactTotal() }; }
-          cur.prompts += d.prompts; cur.requests += d.requests; cur.nano.add(d.nano.number());
-        }
-        flush();
-        trend = { unit: weekly ? 'week' : 'day', points: points.slice(-TREND_POINTS) };
-      }
-      return { spread, mix, heaviest, delegationSplit, trend };
+      const { unit, points } = bucketTrend(days, {
+        maxPoints: TREND_POINTS,
+        create: () => ({ prompts: 0, requests: 0, nano: exactTotal() }),
+        merge: (cur, d) => { cur.prompts += d.prompts; cur.requests += d.requests; cur.nano.addTotal(d.nano); },
+        finish: (day, cur) => ({ day, prompts: cur.prompts, averageRequests: cur.requests / cur.prompts, averageCredits: cur.nano.credits() / cur.prompts }),
+      });
+      return { spread, mix, heaviest, delegationSplit, trend: { unit, points } };
     },
   };
 }
